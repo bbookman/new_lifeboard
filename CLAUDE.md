@@ -103,3 +103,18 @@ Test organization:
 ```
 
 The project is currently in planning phase with comprehensive documentation for a fresh implementation of the memory chat architecture.
+
+## Development Practices
+
+### Package Management
+- Keep requirments.txt up to date
+
+## Claude Guidelines
+
+### Recommendation Approach
+- Claude should always recommend an approach that:
+  - Prioritizes simplicity and readability
+  - Follows KISS (Keep It Simple, Stupid) principles
+  - Emphasizes maintainability and clear design patterns
+  - Considers performance and scalability
+  - Provides clear, actionable recommendations
