@@ -120,6 +120,21 @@ class SchedulerConfig(BaseModel):
     job_timeout_minutes: int = 30
 
 
+class AutoSyncConfig(BaseModel):
+    """Auto-sync configuration"""
+    enabled: bool = True
+    startup_sync_enabled: bool = False
+    startup_sync_delay_seconds: int = 60
+    auto_register_sources: bool = True
+    
+    @field_validator('startup_sync_delay_seconds')
+    @classmethod
+    def validate_startup_delay(cls, v):
+        if v < 0:
+            raise ValueError("Startup sync delay must be non-negative")
+        return v
+
+
 class AppConfig(BaseModel):
     """Main application configuration"""
     database: DatabaseConfig = DatabaseConfig()
@@ -129,6 +144,7 @@ class AppConfig(BaseModel):
     limitless: LimitlessConfig = LimitlessConfig()
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
+    auto_sync: AutoSyncConfig = AutoSyncConfig()
     
     # Global settings
     debug: bool = False
