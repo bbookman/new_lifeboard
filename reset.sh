@@ -83,8 +83,14 @@ fi
 # Start the main application
 echo "Starting main application..."
 
+# Set PYTHONPATH to current directory for module imports
+export PYTHONPATH=$(pwd):$PYTHONPATH
+
 # Try common startup patterns
-if [ -f "main.py" ]; then
+if [ -f "api/server.py" ]; then
+    echo "Starting Lifeboard server..."
+    cd "$(dirname "$0")" && python api/server.py &
+elif [ -f "main.py" ]; then
     echo "Starting Python application..."
     python main.py &
 elif [ -f "app.py" ]; then
@@ -100,3 +106,16 @@ fi
 
 echo "Lifeboard services started successfully!"
 echo "Application should be available shortly."
+echo ""
+echo "========================================="
+echo "           ACCESS INSTRUCTIONS"
+echo "========================================="
+echo ""
+echo "The Lifeboard web UI is accessible at:"
+echo "  • http://localhost:8000"
+echo ""
+echo "If you need to use a different port, stop the service"
+echo "and run: python api/server.py --port [PORT_NUMBER]"
+echo ""
+echo "To stop all services, run this script again."
+echo "========================================="
