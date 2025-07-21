@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig
+    LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig
 )
 
 
@@ -61,8 +61,15 @@ def create_test_config(temp_dir: str = None) -> AppConfig:
             startup_sync_delay_seconds=10,
             auto_register_sources=True
         ),
-        debug=True,
-        log_level="DEBUG"
+        logging=LoggingConfig(
+            level="DEBUG",
+            file_path=str(temp_path / "test_lifeboard.log"),
+            max_file_size=1024 * 1024,  # 1MB for tests
+            backup_count=2,
+            console_logging=True,
+            include_correlation_ids=False
+        ),
+        debug=True
     )
 
 
@@ -115,6 +122,14 @@ def create_production_config() -> AppConfig:
             startup_sync_delay_seconds=int(os.getenv("STARTUP_SYNC_DELAY_SECONDS", "60")),
             auto_register_sources=os.getenv("AUTO_REGISTER_SOURCES", "true").lower() == "true"
         ),
-        debug=os.getenv("DEBUG", "false").lower() == "true",
-        log_level=os.getenv("LOG_LEVEL", "INFO")
+        logging=LoggingConfig(
+            level=os.getenv("LOG_LEVEL", "INFO"),
+            file_path=os.getenv("LOG_FILE_PATH", "logs/lifeboard.log"),
+            max_file_size=int(os.getenv("LOG_MAX_FILE_SIZE", str(10 * 1024 * 1024))),  # 10MB default
+            backup_count=int(os.getenv("LOG_BACKUP_COUNT", "5")),
+            console_logging=os.getenv("LOG_CONSOLE_ENABLED", "true").lower() == "true",
+            include_correlation_ids=os.getenv("LOG_CORRELATION_IDS", "false").lower() == "true",
+            log_format=os.getenv("LOG_FORMAT")  # None if not set, will use default
+        ),
+        debug=os.getenv("DEBUG", "false").lower() == "true"
     )
