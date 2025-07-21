@@ -82,6 +82,12 @@ class LimitlessConfig(BaseModel):
         if v is not None and not isinstance(v, str):
             raise ValueError("API key must be a string")
         return v
+    
+    def is_api_key_configured(self) -> bool:
+        """Check if API key is properly configured"""
+        return (self.api_key is not None and 
+                self.api_key.strip() != "" and 
+                self.api_key != "your_api_key_here")
 
 
 class SourceConfig(BaseModel):
