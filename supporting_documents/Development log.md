@@ -6,14 +6,16 @@
 - ✅ **Phase 2: Sync Strategy Implementation** (COMPLETED)
 - ✅ **Phase 3: Automatic Sync** (COMPLETED)
 - ✅ **Phase 4: Centralized Logging** (COMPLETED)
-- ❌ **Phase 5: Advanced Features** (NOT IMPLEMENTED)
-- ❌ **Phase 6: Production Features** (NOT IMPLEMENTED)
-- ❌ **Phase 7: Advanced Integrations** (NOT IMPLEMENTED)
-- ❌ **Phase 8: User Interface** (NOT IMPLEMENTED)
+- ✅ **Phase 5: Configuration & Debugging Enhancements** (COMPLETED)
+- ❌ **Phase 6: LLM and Chat Capabilities** (NOT IMPLEMENTED)
+- ❌ **Phase 7: Advanced Features** (NOT IMPLEMENTED)
+- ❌ **Phase 8: Production Features** (NOT IMPLEMENTED)
+- ❌ **Phase 9: Advanced Integrations** (NOT IMPLEMENTED)
+- ❌ **Phase 10: User Interface** (NOT IMPLEMENTED)
 
 ---
 
-## Implementation Status: 43 Tasks Completed ✅
+## Implementation Status: 48 Tasks Completed ✅
 
 **Test Coverage:** 99+ tests with 100% pass rate across all implemented phases.
 
@@ -309,7 +311,314 @@ def setup_application_logging(log_level="INFO", log_file_path="logs/lifeboard.lo
 
 ---
 
-## ❌ Phase 5: Advanced Features (NOT IMPLEMENTED)
+## ✅ Phase 5: Configuration & Debugging Enhancements (COMPLETED)
+
+### Overview
+Enhanced configuration management, debugging capabilities, and operational reliability with proper .env file support, API key validation, sync timing fixes, and comprehensive logging improvements.
+
+### Components Implemented
+
+#### 5.1 .env File Support & Configuration Fixes
+- **File:** `config/factory.py`
+- **Features:**
+  - Fixed .env file loading with `load_dotenv(override=True)`
+  - Environment variable precedence correction (.env overrides shell environment)
+  - Complete environment variable validation
+  - No environment variable pollution (read-only configuration)
+
+#### 5.2 API Key Validation & Protection
+- **Files:** `config/models.py`, `sources/limitless.py`, `sources/sync_manager.py`
+- **Features:**
+  - `LimitlessConfig.is_api_key_configured()` validation method
+  - Comprehensive API key validation (null, empty, placeholder detection)
+  - Pre-flight API key checks in all fetch operations
+  - Clear warning messages when API key not configured
+  - Graceful operation skipping with proper state management
+  - No sync time updates when operations are skipped
+
+#### 5.3 Curl-Equivalent Logging for Debugging
+- **File:** `sources/limitless.py`
+- **Features:**
+  - `_generate_curl_command()` method for exact API call reproduction
+  - Complete curl command logging with headers and parameters
+  - No API key redaction for debugging purposes
+  - Copy-paste ready commands for manual testing
+  - URL parameter encoding and formatting
+
+#### 5.4 Sync Timing Logic Fixes
+- **File:** `sources/sync_manager.py`
+- **Features:**
+  - Fixed incremental sync to use actual data timestamps instead of sync completion time
+  - Proper last sync time based on latest processed data (`result.last_timestamp`)
+  - Corrected first-run vs. incremental sync detection
+  - Enhanced overlap handling to prevent data gaps
+  - Comprehensive sync state validation
+
+#### 5.5 Enhanced Reset Script
+- **File:** `reset.sh`
+- **Features:**
+  - Complete application lifecycle management (stop → clean → start)
+  - Database cleanup including SQLite WAL/SHM files
+  - Vector store and embedding cleanup
+  - Port release functionality
+  - Dependency installation automation
+  - Application startup with proper environment
+  - User-friendly access instructions with correct port information
+
+### Technical Implementation Details
+
+#### .env File Loading Fix
+```python
+# Before: .env values ignored if shell environment set
+load_dotenv()
+
+# After: .env values take precedence
+load_dotenv(override=True)
+```
+
+#### API Key Validation
+```python
+def is_api_key_configured(self) -> bool:
+    """Check if API key is properly configured"""
+    return (self.api_key is not None and 
+            self.api_key.strip() != "" and 
+            self.api_key != "your_api_key_here")
+```
+
+#### Curl Command Generation
+```python
+def _generate_curl_command(self, endpoint: str, params: Dict[str, Any]) -> str:
+    """Generate curl command equivalent for debugging"""
+    # Build full URL with parameters
+    base_url = self.config.base_url.rstrip('/')
+    full_url = f"{base_url}{endpoint}"
+    
+    if params:
+        query_string = urllib.parse.urlencode(params)
+        full_url = f"{full_url}?{query_string}"
+    
+    # Build curl command - no API key redaction for debugging
+    curl_cmd = f'curl -H "X-API-Key: {self.config.api_key}" "{full_url}"'
+    return curl_cmd
+```
+
+#### Sync Timing Fix
+```python
+# Before: Used sync completion time (could miss data)
+sync_completion_time = datetime.now(timezone.utc)
+await self.set_last_sync_time(sync_completion_time)
+
+# After: Use actual latest data timestamp
+if result.last_timestamp:
+    await self.set_last_sync_time(result.last_timestamp)
+    logger.info(f"Updated last sync time to latest data timestamp: {result.last_timestamp}")
+else:
+    # Fallback to sync completion time if no data timestamps available
+    sync_completion_time = datetime.now(timezone.utc)
+    await self.set_last_sync_time(sync_completion_time)
+```
+
+### Example Log Output Improvements
+
+#### API Key Validation Warnings
+```
+2025-07-21 17:06:10 - sources.sync_manager - WARNING - LIMITLESS_API_KEY not configured. Incremental sync skipped. Please set a valid API key in .env file.
+```
+
+#### Curl Command Logging
+```
+2025-07-21 16:47:49 - sources.limitless - INFO - API Request (curl equivalent): curl -H "X-API-Key: b37686e8-921a-4884-b0cd-7fa11523348f" "https://api.limitless.ai/v1/lifelogs?limit=10&includeMarkdown=True&includeHeadings=True&timezone=UTC"
+```
+
+#### Sync Timing Updates
+```
+2025-07-21 16:47:50 - sources.sync_manager - INFO - Updated last sync time to latest data timestamp: 2025-07-21T19:45:30.123456+00:00
+```
+
+### Key Benefits Achieved
+- **Proper Configuration:** .env files work correctly with environment variable precedence
+- **API Key Security:** Comprehensive validation prevents failed operations and provides clear guidance
+- **Enhanced Debugging:** Copy-paste curl commands for manual API testing
+- **Accurate Sync Logic:** No data gaps due to proper timestamp management
+- **Operational Excellence:** Complete application lifecycle management with reset script
+- **Developer Experience:** Clear warnings, helpful error messages, and debugging tools
+
+---
+
+## ❌ Phase 6: LLM and Chat Capabilities (NOT IMPLEMENTED)
+
+### Overview
+Comprehensive LLM integration adding chat interface, automated insights generation, and intelligent data enhancement capabilities. Provider-agnostic architecture supporting both local (Ollama) and cloud (OpenAI) LLM providers with full access to user's personal data.
+
+### Core Architecture Decisions
+
+#### LLM Provider Support
+- **Primary**: Ollama (local models) for privacy and speed
+- **Secondary**: OpenAI (cloud models) for enhanced capabilities
+- **Future**: Anthropic, Google, Azure OpenAI, and other providers
+- **Configuration**: Single active provider selection (simple setup)
+
+#### Data Access Strategy
+- **Hybrid Approach**: Combination of vector search and database queries
+- **Vector Search**: Leverage existing FAISS + sentence-transformers for semantic queries
+- **Database Queries**: Direct SQLite access for structured data retrieval
+- **Context**: Full access to all user data across all timeframes
+- **Future Enhancement**: Dedicated abstraction layer for advanced data access patterns
+
+#### User Interface Design
+- **Web-based Chat**: Integrated into FastAPI server at `/chat` endpoint
+- **HTTP-based Messaging**: REST API communication (1-3 second response times)
+- **Chat History**: Persistent conversation management
+- **Real-time Display**: Immediate response rendering
+
+### Components Planned
+
+#### 6.1 LLM Provider Abstraction Layer
+- **File Structure**: `llm/` directory with provider interfaces
+- **Features**:
+  - Abstract base classes for provider independence
+  - Ollama integration with local model management
+  - OpenAI integration with API key management
+  - Configuration system for provider selection and model parameters
+  - Error handling and fallback mechanisms
+  - Response streaming and token counting
+
+#### 6.2 Data Access Integration
+- **Files**: Enhanced search services and query builders
+- **Features**:
+  - Integration with existing FAISS vector store (sentence-transformers)
+  - SQL query generation for structured data access
+  - Hybrid query routing (semantic vs. structured)
+  - Context window management for large data sets
+  - Query optimization and caching
+
+#### 6.3 Interactive Chat Interface
+- **Files**: Chat API endpoints and web UI templates
+- **Features**:
+  - Web-based chat interface at localhost:8000/chat
+  - RESTful chat API with message history
+  - Real-time response streaming
+  - User session management
+  - Chat export and search capabilities
+  - Mobile-responsive design
+
+#### 6.4 Automated Insights Generation
+- **Files**: Insights service and scheduling system
+- **Features**:
+  - **Hybrid Trigger System**:
+    - User-configurable scheduling (hourly, daily, weekly, custom intervals)
+    - On-demand insight generation
+    - Threshold-based triggers (significant data volume)
+    - Event-driven insights (patterns, anomalies)
+  - **Insight Types**:
+    - Daily/weekly activity summaries
+    - Mood and sentiment trends
+    - Conversation topic analysis
+    - Meeting and productivity insights
+    - Personal pattern recognition
+  - **Delivery Options**:
+    - Web dashboard display
+    - Insight history and search
+    - Export capabilities
+
+#### 6.5 Data Enhancement Processing
+- **Files**: Background processing service and analysis modules  
+- **Features**:
+  - **Background Batch Processing** (maintains fast sync performance)
+  - **Content Analysis**:
+    - Sentiment analysis and emotional state detection
+    - Topic categorization and tagging
+    - Speaker sentiment and relationship analysis
+    - Content summarization and key point extraction
+  - **Metadata Enrichment**:
+    - Enhanced searchability tags
+    - Content type classification
+    - Importance scoring
+    - Relationship mapping between conversations
+  - **Scheduling**: Configurable batch processing (nightly/custom intervals)
+
+### Technical Implementation Strategy
+
+#### Implementation Order (Foundation First)
+1. **LLM Abstraction Layer** - Core provider interfaces and configuration
+2. **Basic Chat Interface** - Simple web chat with data access
+3. **Automated Insights** - Scheduled analysis and generation
+4. **Data Enhancement** - Background processing and enrichment
+
+#### Performance Expectations
+- **Chat Response Times**: 1-3 seconds (web interface overhead)
+- **Vector Search**: 10-50ms (existing FAISS system)
+- **Database Queries**: 1-5ms (SQLite direct access)
+- **Background Processing**: Scheduled during low-usage periods
+- **Sync Impact**: Minimal (enhancement processing separate from ingestion)
+
+#### Integration Points
+- **Existing Embeddings**: Leverage current sentence-transformers + FAISS
+- **Database Schema**: Use existing data_items and metadata structure
+- **Configuration**: Extend current environment variable system
+- **Logging**: Integrate with existing centralized logging
+- **API**: Extend current FastAPI server structure
+
+### Example User Workflows
+
+#### Interactive Chat Scenarios
+```
+User: "What did I discuss about work stress this week?"
+System: [Vector search for "work stress" + date filter] → LLM analysis → Response
+
+User: "How many meetings did I have yesterday?"  
+System: [SQL query for meeting count] → Direct response
+
+User: "Summarize my conversations with Sarah"
+System: [Hybrid search: speaker filter + content analysis] → LLM summary
+```
+
+#### Automated Insights Examples
+```
+Daily Summary: "Today you had 4 conversations totaling 2.3 hours. Main topics were project planning (40%) and team coordination (35%). Overall sentiment was positive with some concerns about timeline."
+
+Weekly Pattern: "Your productivity peaks Tuesday-Thursday. Monday conversations show 23% more stress indicators. Consider lighter scheduling on Mondays."
+
+Relationship Insight: "Your conversations with the engineering team have become 15% more collaborative this month, with increased solution-focused language."
+```
+
+### Configuration Requirements
+
+#### Environment Variables
+```env
+# LLM Provider Configuration
+LLM_PROVIDER=ollama  # or openai
+LLM_MODEL=llama2     # or gpt-4
+OLLAMA_BASE_URL=http://localhost:11434
+OPENAI_API_KEY=sk-your-key-here
+
+# Chat Configuration  
+CHAT_ENABLED=true
+CHAT_HISTORY_LIMIT=1000
+CHAT_CONTEXT_WINDOW=4000
+
+# Insights Configuration
+INSIGHTS_ENABLED=true
+INSIGHTS_SCHEDULE=daily  # hourly, daily, weekly, custom
+INSIGHTS_CUSTOM_CRON=0 8 * * *  # 8 AM daily
+
+# Enhancement Processing
+ENHANCEMENT_ENABLED=true
+ENHANCEMENT_SCHEDULE=nightly
+ENHANCEMENT_BATCH_SIZE=100
+```
+
+### Key Benefits Expected
+- **Conversational Data Access**: Natural language queries about personal data
+- **Intelligent Insights**: Automated analysis and pattern recognition  
+- **Enhanced Searchability**: LLM-powered content categorization and tagging
+- **Personal Intelligence**: Deep understanding of behavior patterns and trends
+- **Privacy Control**: Local processing option with Ollama
+- **Extensible Architecture**: Easy addition of new LLM providers and capabilities
+
+---
+
+## ❌ Phase 7: Advanced Features (NOT IMPLEMENTED)
 
 ### Planned Components
 1. **Real-time Sync & Webhooks**
@@ -337,7 +646,7 @@ def setup_application_logging(log_level="INFO", log_file_path="logs/lifeboard.lo
 
 ---
 
-## ❌ Phase 6: Production Features (NOT IMPLEMENTED)
+## ❌ Phase 8: Production Features (NOT IMPLEMENTED)
 
 ### Planned Components
 1. **Monitoring & Observability**
@@ -360,7 +669,7 @@ def setup_application_logging(log_level="INFO", log_file_path="logs/lifeboard.lo
 
 ---
 
-## ❌ Phase 7: Advanced Integrations (NOT IMPLEMENTED)
+## ❌ Phase 9: Advanced Integrations (NOT IMPLEMENTED)
 
 ### Planned Components
 1. **Multi-Source Synchronization**
@@ -383,7 +692,7 @@ def setup_application_logging(log_level="INFO", log_file_path="logs/lifeboard.lo
 
 ---
 
-## ❌ Phase 8: User Interface (NOT IMPLEMENTED)
+## ❌ Phase 10: User Interface (NOT IMPLEMENTED)
 
 ### Planned Components
 1. **Web Dashboard**
@@ -499,20 +808,27 @@ Sync Manager → API Fetch → Content Processing → Database Storage → Vecto
 
 ## Next Steps (When Ready)
 
-### Priority 1: Phase 5 - Advanced Features
+### Priority 1: Phase 6 - LLM and Chat Capabilities
+Implement comprehensive LLM integration with chat interface and automated insights including:
+- LLM provider abstraction layer (Ollama + OpenAI)
+- Web-based chat interface with full data access
+- Automated insights generation with configurable scheduling
+- Background data enhancement processing
+
+### Priority 2: Phase 7 - Advanced Features
 Implement semantic search, content deduplication, and performance optimizations including:
 - Real-time sync & webhooks
 - Advanced content processing with semantic similarity
 - Enhanced search capabilities with fuzzy and semantic search
 - Performance optimizations for large datasets
 
-### Priority 2: Phase 6 - Production Features
+### Priority 3: Phase 8 - Production Features
 Add monitoring, security, and data management capabilities including:
 - Enhanced health monitoring and alerting
 - API key rotation and security measures
 - Data retention policies and backup systems
 
-### Priority 3: Phase 7-8 - Advanced Integration & UI
+### Priority 4: Phase 9-10 - Advanced Integration & UI
 Build multi-source coordination and user interface components including:
 - Multi-source synchronization with cross-source deduplication
 - GraphQL API extensions and analytics
@@ -530,4 +846,4 @@ Build multi-source coordination and user interface components including:
 ---
 
 *Last Updated: July 2025*
-*Implementation Status: Phase 4 Complete (Centralized Logging), Ready for Phase 5 (Advanced Features)*
+*Implementation Status: Phase 5 Complete (Configuration & Debugging Enhancements), Ready for Phase 6 (LLM and Chat Capabilities)*
