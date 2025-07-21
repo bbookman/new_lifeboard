@@ -135,6 +135,46 @@ class AutoSyncConfig(BaseModel):
         return v
 
 
+class LoggingConfig(BaseModel):
+    """Centralized logging configuration"""
+    level: str = "INFO"
+    file_path: str = "logs/lifeboard.log"
+    max_file_size: int = 10 * 1024 * 1024  # 10MB
+    backup_count: int = 5
+    console_logging: bool = True
+    include_correlation_ids: bool = False
+    log_format: Optional[str] = None
+    
+    @field_validator('level')
+    @classmethod
+    def validate_level(cls, v):
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        if v.upper() not in valid_levels:
+            raise ValueError(f"Log level must be one of: {valid_levels}")
+        return v.upper()
+    
+    @field_validator('max_file_size')
+    @classmethod
+    def validate_max_file_size(cls, v):
+        if v <= 0:
+            raise ValueError("Max file size must be positive")
+        return v
+    
+    @field_validator('backup_count')
+    @classmethod
+    def validate_backup_count(cls, v):
+        if v < 0:
+            raise ValueError("Backup count must be non-negative")
+        return v
+    
+    @field_validator('file_path')
+    @classmethod
+    def validate_file_path(cls, v):
+        if not v or not isinstance(v, str):
+            raise ValueError("File path must be a non-empty string")
+        return v
+
+
 class AppConfig(BaseModel):
     """Main application configuration"""
     database: DatabaseConfig = DatabaseConfig()
@@ -145,18 +185,16 @@ class AppConfig(BaseModel):
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     auto_sync: AutoSyncConfig = AutoSyncConfig()
+    logging: LoggingConfig = LoggingConfig()
     
     # Global settings
     debug: bool = False
-    log_level: str = "INFO"
     
-    @field_validator('log_level')
-    @classmethod
-    def validate_log_level(cls, v):
-        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        if v not in valid_levels:
-            raise ValueError(f"Log level must be one of: {valid_levels}")
-        return v
+    # Backward compatibility - kept for existing code that might use it
+    @property
+    def log_level(self) -> str:
+        """Get log level from logging config for backward compatibility"""
+        return self.logging.level
     
     model_config = ConfigDict(
         env_file=".env",
