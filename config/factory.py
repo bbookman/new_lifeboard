@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
+    LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
     LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
 )
 
@@ -29,13 +29,6 @@ def create_test_config(temp_dir: str = None) -> AppConfig:
             index_path=str(temp_path / "test_vector_index.faiss"),
             id_map_path=str(temp_path / "test_vector_ids.json"),
             dimension=384
-        ),
-        llm=LLMConfig(
-            provider="mock",  # Use mock for tests
-            model="mock-model",
-            api_key="test-key",
-            max_tokens=500,
-            temperature=0.0  # Deterministic for tests
         ),
         limitless=LimitlessConfig(
             api_key="test-limitless-key",
@@ -94,13 +87,6 @@ def create_production_config() -> AppConfig:
             index_path=os.getenv("VECTOR_INDEX_PATH", "vector_index.faiss"),
             id_map_path=os.getenv("VECTOR_ID_MAP_PATH", "vector_ids.json"),
             dimension=int(os.getenv("VECTOR_DIMENSION", "384"))
-        ),
-        llm=LLMConfig(
-            provider=os.getenv("LLM_PROVIDER", "openai"),
-            model=os.getenv("LLM_MODEL", "gpt-3.5-turbo"),
-            api_key=os.getenv("LLM_API_KEY"),
-            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "1000")),
-            temperature=float(os.getenv("LLM_TEMPERATURE", "0.7"))
         ),
         limitless=LimitlessConfig(
             api_key=os.getenv("LIMITLESS_API_KEY"),
