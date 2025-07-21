@@ -1,0 +1,102 @@
+#!/bin/bash
+
+# Reset script - stops services and removes all log files and directories
+
+echo "Stopping all lifeboard-related services..."
+
+# Kill processes by name pattern
+pkill -f "lifeboard" 2>/dev/null
+pkill -f "python.*lifeboard" 2>/dev/null
+pkill -f "node.*lifeboard" 2>/dev/null
+
+# Wait a moment for graceful shutdown
+sleep 2
+
+# Force kill if still running
+pkill -9 -f "lifeboard" 2>/dev/null
+pkill -9 -f "python.*lifeboard" 2>/dev/null
+pkill -9 -f "node.*lifeboard" 2>/dev/null
+
+echo "Services stopped."
+
+echo "Releasing ports used by the app..."
+
+# Common ports that might be used by the lifeboard app
+PORTS=(8000 8080 3000 5000 5001 8001 8888 9000)
+
+for port in "${PORTS[@]}"; do
+    # Find and kill processes using these ports
+    lsof -ti:$port 2>/dev/null | xargs kill -9 2>/dev/null
+done
+
+echo "Ports released."
+
+echo "Removing all log files and directories..."
+
+# Remove /logs directory if it exists
+if [ -d "logs" ]; then
+    echo "Removing logs directory..."
+    rm -rf logs
+fi
+
+# Remove all .log files in the project (recursively)
+echo "Removing all .log files..."
+find . -name "*.log" -type f -delete
+
+# Remove all .db files in the project (recursively)
+echo "Removing all .db files..."
+find . -name "*.db" -type f -delete
+
+# Remove vector store files
+echo "Removing vector store files..."
+find . -name "*.faiss" -type f -delete
+find . -name "*.index" -type f -delete
+find . -name "*.pkl" -type f -delete
+
+# Remove vector store directories
+if [ -d "vector_store" ]; then
+    echo "Removing vector_store directory..."
+    rm -rf vector_store
+fi
+
+if [ -d "embeddings" ]; then
+    echo "Removing embeddings directory..."
+    rm -rf embeddings
+fi
+
+echo "Cleanup complete."
+
+echo "Starting lifeboard services..."
+
+# Check if we have a requirements.txt and install dependencies
+if [ -f "requirements.txt" ]; then
+    echo "Installing Python dependencies..."
+    pip install -r requirements.txt
+fi
+
+# Check if we have package.json and install dependencies
+if [ -f "package.json" ]; then
+    echo "Installing Node.js dependencies..."
+    npm install
+fi
+
+# Start the main application
+echo "Starting main application..."
+
+# Try common startup patterns
+if [ -f "main.py" ]; then
+    echo "Starting Python application..."
+    python main.py &
+elif [ -f "app.py" ]; then
+    echo "Starting Python Flask/FastAPI application..."
+    python app.py &
+elif [ -f "server.py" ]; then
+    echo "Starting Python server..."
+    python server.py &
+elif [ -f "package.json" ]; then
+    echo "Starting Node.js application..."
+    npm start &
+fi
+
+echo "Lifeboard services started successfully!"
+echo "Application should be available shortly."
