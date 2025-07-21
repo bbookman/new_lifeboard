@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 .env
 .DS_store
+*.db
 
 # C extensions
 *.so
