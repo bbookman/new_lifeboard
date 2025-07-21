@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
@@ -51,11 +52,47 @@ def get_sync_manager(startup_service: StartupService = Depends(get_startup_servi
         raise HTTPException(status_code=503, detail="Sync manager not available")
     return startup_service.sync_manager
 
-# Create FastAPI app
+# Lifespan context manager for FastAPI
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    try:
+        logger.info("Starting Lifeboard API server...")
+        
+        # Initialize application
+        from services.startup import initialize_application
+        config = create_production_config()
+        
+        result = await initialize_application(config, enable_auto_sync=True)
+        
+        if result["success"]:
+            logger.info("Application initialized successfully")
+        else:
+            logger.error(f"Application initialization failed: {result.get('errors', [])}")
+    
+    except Exception as e:
+        logger.error(f"Failed to initialize application on startup: {e}")
+    
+    yield
+    
+    # Shutdown
+    try:
+        logger.info("Shutting down Lifeboard API server...")
+        
+        from services.startup import shutdown_application
+        await shutdown_application()
+        
+        logger.info("Application shutdown completed")
+    
+    except Exception as e:
+        logger.error(f"Error during application shutdown: {e}")
+
+# Create FastAPI app with lifespan
 app = FastAPI(
     title="Lifeboard API",
     description="API for Lifeboard personal data management system",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Health and status endpoints
@@ -308,41 +345,6 @@ async def internal_server_error_handler(request, exc):
         content={"error": "Internal server error", "detail": "An unexpected error occurred"}
     )
 
-# Application startup/shutdown events
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize application on startup"""
-    try:
-        logger.info("Starting Lifeboard API server...")
-        
-        # Initialize application
-        from services.startup import initialize_application
-        config = create_production_config()
-        
-        result = await initialize_application(config, enable_auto_sync=True)
-        
-        if result["success"]:
-            logger.info("Application initialized successfully")
-        else:
-            logger.error(f"Application initialization failed: {result.get('errors', [])}")
-    
-    except Exception as e:
-        logger.error(f"Failed to initialize application on startup: {e}")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    try:
-        logger.info("Shutting down Lifeboard API server...")
-        
-        from services.startup import shutdown_application
-        await shutdown_application()
-        
-        logger.info("Application shutdown completed")
-    
-    except Exception as e:
-        logger.error(f"Error during application shutdown: {e}")
 
 # Development server runner
 def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False):
