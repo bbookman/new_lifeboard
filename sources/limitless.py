@@ -1,10 +1,14 @@
 import httpx
 import asyncio
+import logging
+import urllib.parse
 from typing import List, Dict, Any, Optional, AsyncIterator
 from datetime import datetime, timezone
 
 from .base import BaseSource, DataItem
 from config.models import LimitlessConfig
+
+logger = logging.getLogger(__name__)
 
 
 class LimitlessSource(BaseSource):
@@ -14,6 +18,7 @@ class LimitlessSource(BaseSource):
         super().__init__("limitless")
         self.config = config
         self.client = None
+        self._api_key_configured = config.is_api_key_configured()
     
     def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client"""
@@ -42,6 +47,10 @@ class LimitlessSource(BaseSource):
     
     async def test_connection(self) -> bool:
         """Test API connectivity"""
+        if not self._api_key_configured:
+            logger.warning("LIMITLESS_API_KEY is not configured in .env file. Connection test skipped.")
+            return False
+        
         try:
             client = self._get_client()
             response = await client.get("/v1/lifelogs", params={"limit": 1})
@@ -51,6 +60,10 @@ class LimitlessSource(BaseSource):
     
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """Fetch lifelogs with pagination"""
+        if not self._api_key_configured:
+            logger.warning("LIMITLESS_API_KEY is not configured in .env file. Skipping data fetch. Please set a valid API key.")
+            return
+        
         client = self._get_client()
         cursor = None
         fetched_count = 0
@@ -104,6 +117,10 @@ class LimitlessSource(BaseSource):
     
     async def get_item(self, source_id: str) -> Optional[DataItem]:
         """Get specific lifelog by ID"""
+        if not self._api_key_configured:
+            logger.warning("LIMITLESS_API_KEY is not configured in .env file. Skipping item fetch.")
+            return None
+        
         try:
             client = self._get_client()
             params = {
@@ -235,6 +252,21 @@ class LimitlessSource(BaseSource):
         
         return list(types)
     
+    def _generate_curl_command(self, endpoint: str, params: Dict[str, Any]) -> str:
+        """Generate curl command equivalent for debugging"""
+        # Build full URL with parameters
+        base_url = self.config.base_url.rstrip('/')
+        full_url = f"{base_url}{endpoint}"
+        
+        if params:
+            query_string = urllib.parse.urlencode(params)
+            full_url = f"{full_url}?{query_string}"
+        
+        # Build curl command
+        curl_cmd = f'curl -H "X-API-Key: {self.config.api_key}" "{full_url}"'
+        
+        return curl_cmd
+    
     async def _make_request_with_retry(
         self, 
         client: httpx.AsyncClient, 
@@ -242,6 +274,10 @@ class LimitlessSource(BaseSource):
         params: Dict[str, Any]
     ) -> Optional[httpx.Response]:
         """Make HTTP request with retry logic"""
+        # Log the curl equivalent for debugging
+        curl_cmd = self._generate_curl_command(endpoint, params)
+        logger.info(f"API Request (curl equivalent): {curl_cmd}")
+        
         last_exception = None
         
         for attempt in range(self.config.max_retries):

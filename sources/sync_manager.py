@@ -137,6 +137,13 @@ class LimitlessSyncManager:
         self._current_result = result
         
         try:
+            # Check if API key is configured before attempting sync
+            if not self.config.is_api_key_configured():
+                logger.warning("LIMITLESS_API_KEY not configured. Incremental sync skipped. Please set a valid API key in .env file.")
+                result.end_time = datetime.now(timezone.utc)
+                await self.store_sync_result(result)
+                return
+            
             # Get last sync time and calculate start time with overlap
             last_sync = await self.get_last_sync_time()
             sync_start_time = self.calculate_sync_start_time(last_sync)
@@ -193,10 +200,17 @@ class LimitlessSyncManager:
                     result.errors.append(error_msg)
                     continue
             
-            # Update sync timestamps on successful completion
+            # Update sync timestamps on successful completion - only if we actually processed data
             if result.success and result.items_processed > 0:
-                sync_completion_time = datetime.now(timezone.utc)
-                await self.set_last_sync_time(sync_completion_time)
+                # Use the latest data timestamp, not sync completion time
+                if result.last_timestamp:
+                    await self.set_last_sync_time(result.last_timestamp)
+                    logger.info(f"Updated last sync time to latest data timestamp: {result.last_timestamp}")
+                else:
+                    # Fallback to sync completion time if no data timestamps available
+                    sync_completion_time = datetime.now(timezone.utc)
+                    await self.set_last_sync_time(sync_completion_time)
+                    logger.info(f"Updated last sync time to completion time: {sync_completion_time}")
                 
                 if result.last_processed_id:
                     await self.set_last_processed_id(result.last_processed_id)
@@ -220,6 +234,13 @@ class LimitlessSyncManager:
         self._current_result = result
         
         try:
+            # Check if API key is configured before attempting sync
+            if not self.config.is_api_key_configured():
+                logger.warning("LIMITLESS_API_KEY not configured. Full sync skipped. Please set a valid API key in .env file.")
+                result.end_time = datetime.now(timezone.utc)
+                await self.store_sync_result(result)
+                return
+            
             logger.info("Starting full sync")
             
             processed_count = 0
@@ -255,8 +276,15 @@ class LimitlessSyncManager:
             
             # Update sync state on successful completion
             if result.success:
-                sync_completion_time = datetime.now(timezone.utc)
-                await self.set_last_sync_time(sync_completion_time)
+                # Use the latest data timestamp, not sync completion time
+                if result.last_timestamp:
+                    await self.set_last_sync_time(result.last_timestamp)
+                    logger.info(f"Updated last sync time to latest data timestamp: {result.last_timestamp}")
+                else:
+                    # Fallback to sync completion time if no data timestamps available
+                    sync_completion_time = datetime.now(timezone.utc)
+                    await self.set_last_sync_time(sync_completion_time)
+                    logger.info(f"Updated last sync time to completion time: {sync_completion_time}")
                 
                 if result.last_processed_id:
                     await self.set_last_processed_id(result.last_processed_id)
