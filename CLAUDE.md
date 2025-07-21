@@ -118,3 +118,9 @@ The project is currently in planning phase with comprehensive documentation for 
   - Emphasizes maintainability and clear design patterns
   - Considers performance and scalability
   - Provides clear, actionable recommendations
+
+### Questioning Approach
+- When asking questions of the user, add information for the decisions:
+  - Include the impact on user experience for each potential decision
+  - Provide insights into the performance implications of different choices
+  - Help users understand the trade-offs and consequences of their decisions
