@@ -1,0 +1,293 @@
+"""
+OpenAI LLM provider implementation
+"""
+
+import httpx
+import json
+import asyncio
+from typing import Dict, Any, Optional, List, AsyncIterator
+
+from .base import BaseLLMProvider, LLMResponse, LLMError
+from config.models import OpenAIConfig
+
+
+class OpenAIProvider(BaseLLMProvider):
+    """OpenAI cloud LLM provider"""
+    
+    def __init__(self, config: OpenAIConfig):
+        super().__init__("openai")
+        self.config = config
+        self.client = None
+    
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create HTTP client"""
+        if self.client is None:
+            headers = {
+                "Authorization": f"Bearer {self.config.api_key}",
+                "Content-Type": "application/json"
+            }
+            self.client = httpx.AsyncClient(
+                base_url=self.config.base_url,
+                timeout=self.config.timeout,
+                headers=headers
+            )
+        return self.client
+    
+    async def close(self):
+        """Close HTTP client"""
+        if self.client:
+            await self.client.aclose()
+            self.client = None
+    
+    async def is_available(self) -> bool:
+        """Check if OpenAI is available and configured"""
+        if not self.config.is_configured():
+            self.logger.warning("OpenAI not configured - missing API key")
+            return False
+        
+        try:
+            client = self._get_client()
+            response = await client.get("/models")
+            return response.status_code == 200
+        except Exception as e:
+            self.logger.warning(f"OpenAI not available: {e}")
+            return False
+    
+    async def generate_response(self, 
+                              prompt: str, 
+                              context: Optional[str] = None,
+                              max_tokens: Optional[int] = None,
+                              temperature: Optional[float] = None) -> LLMResponse:
+        """Generate a response using OpenAI"""
+        self._validate_parameters(max_tokens, temperature)
+        self._log_request(prompt, context=bool(context), max_tokens=max_tokens, temperature=temperature)
+        
+        if not await self.is_available():
+            raise LLMError("OpenAI is not available", self.provider_name)
+        
+        # Build the messages array
+        messages = []
+        if context:
+            messages.append({
+                "role": "system",
+                "content": f"Context: {context}"
+            })
+        
+        messages.append({
+            "role": "user", 
+            "content": prompt
+        })
+        
+        # Prepare request payload
+        payload = {
+            "model": self.config.model,
+            "messages": messages,
+            "stream": False
+        }
+        
+        # Add optional parameters
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        else:
+            payload["max_tokens"] = self.config.max_tokens
+        
+        try:
+            client = self._get_client()
+            response = await self._make_request_with_retry(client, "/chat/completions", payload)
+            
+            if response.status_code != 200:
+                error_data = {}
+                try:
+                    error_data = response.json()
+                except:
+                    pass
+                error_msg = error_data.get("error", {}).get("message", f"HTTP {response.status_code}")
+                raise LLMError(f"OpenAI API error: {error_msg}", self.provider_name)
+            
+            data = response.json()
+            
+            # Extract response content
+            choices = data.get("choices", [])
+            if not choices:
+                raise LLMError("No choices in OpenAI response", self.provider_name)
+            
+            content = choices[0].get("message", {}).get("content", "")
+            if not content:
+                raise LLMError("Empty response from OpenAI", self.provider_name)
+            
+            # Build usage information
+            usage_data = data.get("usage", {})
+            usage = {
+                "prompt_tokens": usage_data.get("prompt_tokens", 0),
+                "completion_tokens": usage_data.get("completion_tokens", 0),
+                "total_tokens": usage_data.get("total_tokens", 0)
+            }
+            
+            # Build metadata
+            metadata = {
+                "model": data.get("model", self.config.model),
+                "finish_reason": choices[0].get("finish_reason"),
+                "system_fingerprint": data.get("system_fingerprint"),
+                "created": data.get("created"),
+                "object": data.get("object")
+            }
+            
+            llm_response = LLMResponse.create(
+                content=content,
+                model=self.config.model,
+                provider=self.provider_name,
+                usage=usage,
+                metadata=metadata
+            )
+            
+            self._log_response(llm_response)
+            return llm_response
+            
+        except httpx.RequestError as e:
+            raise LLMError(f"OpenAI request failed: {e}", self.provider_name)
+        except json.JSONDecodeError as e:
+            raise LLMError(f"Invalid JSON response from OpenAI: {e}", self.provider_name)
+    
+    async def generate_streaming_response(self, 
+                                        prompt: str, 
+                                        context: Optional[str] = None,
+                                        max_tokens: Optional[int] = None,
+                                        temperature: Optional[float] = None) -> AsyncIterator[str]:
+        """Generate a streaming response using OpenAI"""
+        self._validate_parameters(max_tokens, temperature)
+        self._log_request(prompt, context=bool(context), max_tokens=max_tokens, temperature=temperature, streaming=True)
+        
+        if not await self.is_available():
+            raise LLMError("OpenAI is not available", self.provider_name)
+        
+        # Build the messages array
+        messages = []
+        if context:
+            messages.append({
+                "role": "system",
+                "content": f"Context: {context}"
+            })
+        
+        messages.append({
+            "role": "user", 
+            "content": prompt
+        })
+        
+        # Prepare request payload
+        payload = {
+            "model": self.config.model,
+            "messages": messages,
+            "stream": True
+        }
+        
+        # Add optional parameters
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        else:
+            payload["max_tokens"] = self.config.max_tokens
+        
+        try:
+            client = self._get_client()
+            
+            async with client.stream("POST", "/chat/completions", json=payload) as response:
+                if response.status_code != 200:
+                    error_data = {}
+                    try:
+                        error_content = await response.aread()
+                        error_data = json.loads(error_content)
+                    except:
+                        pass
+                    error_msg = error_data.get("error", {}).get("message", f"HTTP {response.status_code}")
+                    raise LLMError(f"OpenAI streaming API error: {error_msg}", self.provider_name)
+                
+                async for line in response.aiter_lines():
+                    line = line.strip()
+                    if line.startswith("data: "):
+                        data_str = line[6:]  # Remove "data: " prefix
+                        
+                        if data_str == "[DONE]":
+                            break
+                        
+                        try:
+                            data = json.loads(data_str)
+                            choices = data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    yield content
+                                    
+                                # Check if streaming is done
+                                if choices[0].get("finish_reason") is not None:
+                                    break
+                                    
+                        except json.JSONDecodeError:
+                            continue  # Skip invalid JSON lines
+                            
+        except httpx.RequestError as e:
+            raise LLMError(f"OpenAI streaming request failed: {e}", self.provider_name)
+    
+    async def get_models(self) -> List[str]:
+        """Get list of available OpenAI models"""
+        if not await self.is_available():
+            return []
+        
+        try:
+            client = self._get_client()
+            response = await client.get("/models")
+            
+            if response.status_code != 200:
+                self.logger.warning(f"Failed to get OpenAI models: {response.status_code}")
+                return []
+            
+            data = response.json()
+            models = [model.get("id", "") for model in data.get("data", [])]
+            # Filter for chat models only
+            chat_models = [model for model in models if "gpt" in model.lower() and model]
+            return sorted(chat_models)
+            
+        except Exception as e:
+            self.logger.warning(f"Error getting OpenAI models: {e}")
+            return []
+    
+    async def get_model_info(self, model_name: str) -> Dict[str, Any]:
+        """Get information about a specific OpenAI model"""
+        if not await self.is_available():
+            return {}
+        
+        try:
+            client = self._get_client()
+            response = await client.get(f"/models/{model_name}")
+            
+            if response.status_code != 200:
+                self.logger.warning(f"Failed to get OpenAI model info for {model_name}: {response.status_code}")
+                return {}
+            
+            return response.json()
+            
+        except Exception as e:
+            self.logger.warning(f"Error getting OpenAI model info for {model_name}: {e}")
+            return {}
+    
+    async def _make_request_with_retry(self, client: httpx.AsyncClient, endpoint: str, payload: Dict[str, Any]) -> httpx.Response:
+        """Make HTTP request with retry logic"""
+        last_exception = None
+        
+        for attempt in range(self.config.max_retries):
+            try:
+                response = await client.post(endpoint, json=payload)
+                return response
+                
+            except httpx.RequestError as e:
+                last_exception = e
+                if attempt < self.config.max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    await asyncio.sleep(wait_time)
+                    continue
+        
+        # All retries failed
+        raise last_exception

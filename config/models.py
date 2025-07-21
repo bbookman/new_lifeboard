@@ -181,6 +181,124 @@ class LoggingConfig(BaseModel):
         return v
 
 
+class ChatConfig(BaseModel):
+    """Chat interface configuration"""
+    enabled: bool = True
+    history_limit: int = 1000
+    context_window: int = 4000
+    response_timeout: float = 30.0
+    
+    @field_validator('history_limit')
+    @classmethod
+    def validate_history_limit(cls, v):
+        if v <= 0:
+            raise ValueError("History limit must be positive")
+        return v
+    
+    @field_validator('context_window')
+    @classmethod
+    def validate_context_window(cls, v):
+        if v <= 0:
+            raise ValueError("Context window must be positive")
+        return v
+
+
+class InsightsConfig(BaseModel):
+    """Insights generation configuration"""
+    enabled: bool = True
+    schedule: str = "daily"  # hourly, daily, weekly, custom
+    custom_cron: Optional[str] = None
+    max_insights_history: int = 100
+    
+    @field_validator('schedule')
+    @classmethod
+    def validate_schedule(cls, v):
+        valid_schedules = ["hourly", "daily", "weekly", "custom"]
+        if v not in valid_schedules:
+            raise ValueError(f"Schedule must be one of: {valid_schedules}")
+        return v
+
+
+class EnhancementConfig(BaseModel):
+    """Data enhancement processing configuration"""
+    enabled: bool = True
+    schedule: str = "nightly"
+    batch_size: int = 100
+    max_concurrent_jobs: int = 2
+    
+    @field_validator('batch_size')
+    @classmethod
+    def validate_batch_size(cls, v):
+        if v <= 0:
+            raise ValueError("Batch size must be positive")
+        return v
+
+
+class OllamaConfig(BaseModel):
+    """Ollama provider configuration"""
+    base_url: str = "http://localhost:11434"
+    model: str = "llama2"
+    timeout: float = 60.0
+    max_retries: int = 3
+    
+    def is_configured(self) -> bool:
+        """Check if Ollama is properly configured"""
+        return bool(self.base_url and self.model)
+
+
+class OpenAIConfig(BaseModel):
+    """OpenAI provider configuration"""
+    api_key: Optional[str] = None
+    model: str = "gpt-3.5-turbo"
+    base_url: str = "https://api.openai.com/v1"
+    timeout: float = 60.0
+    max_retries: int = 3
+    max_tokens: int = 1000
+    temperature: float = 0.7
+    
+    @field_validator('api_key')
+    @classmethod
+    def validate_api_key(cls, v):
+        if v is not None and not isinstance(v, str):
+            raise ValueError("API key must be a string")
+        return v
+    
+    def is_configured(self) -> bool:
+        """Check if OpenAI is properly configured"""
+        return (self.api_key is not None and 
+                self.api_key.strip() != "" and 
+                self.api_key != "your_openai_api_key_here")
+
+
+class LLMProviderConfig(BaseModel):
+    """LLM provider configuration"""
+    provider: str = "ollama"  # ollama or openai
+    ollama: OllamaConfig = OllamaConfig()
+    openai: OpenAIConfig = OpenAIConfig()
+    
+    @field_validator('provider')
+    @classmethod
+    def validate_provider(cls, v):
+        valid_providers = ["ollama", "openai"]
+        if v not in valid_providers:
+            raise ValueError(f"Provider must be one of: {valid_providers}")
+        return v
+    
+    def get_active_provider_config(self):
+        """Get the configuration for the active provider"""
+        if self.provider == "ollama":
+            return self.ollama
+        elif self.provider == "openai":
+            return self.openai
+        else:
+            raise ValueError(f"Unknown provider: {self.provider}")
+    
+    def is_active_provider_configured(self) -> bool:
+        """Check if the active provider is properly configured"""
+        active_config = self.get_active_provider_config()
+        return active_config.is_configured()
+
+
 class AppConfig(BaseModel):
     """Main application configuration"""
     database: DatabaseConfig = DatabaseConfig()
@@ -192,6 +310,12 @@ class AppConfig(BaseModel):
     scheduler: SchedulerConfig = SchedulerConfig()
     auto_sync: AutoSyncConfig = AutoSyncConfig()
     logging: LoggingConfig = LoggingConfig()
+    
+    # Phase 6: LLM and Chat Capabilities
+    llm_provider: LLMProviderConfig = LLMProviderConfig()
+    chat: ChatConfig = ChatConfig()
+    insights: InsightsConfig = InsightsConfig()
+    enhancement: EnhancementConfig = EnhancementConfig()
     
     # Global settings
     debug: bool = False

@@ -69,6 +69,7 @@ Key parameters for Limitless integration:
 - **Dependency injection:** Pass dependencies to constructors for testability
 - **Single responsibility:** Keep components focused on specific tasks
 - **Interface-first design:** Define clear APIs between components
+- **Configuration Management:** All configuration settings such as endpoints, api keys, llm models and others are read from .env and not from exports. There should be zero dependency on exports to the OS
 
 ### Implementation Strategy
 The project follows a phased development approach:

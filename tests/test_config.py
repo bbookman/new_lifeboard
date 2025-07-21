@@ -10,7 +10,9 @@ from pydantic import ValidationError
 
 from config.models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig
+    LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig,
+    LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig,
+    InsightsConfig, EnhancementConfig
 )
 from config.factory import create_test_config, create_production_config
 
@@ -340,3 +342,329 @@ class TestConfigIntegration:
         assert restored_config.limitless.api_key == "test-key"
         assert restored_config.limitless.timezone == "UTC"
         assert restored_config.debug is True
+
+
+class TestOllamaConfig:
+    """Test Ollama configuration"""
+    
+    def test_default_values(self):
+        """Test default configuration values"""
+        config = OllamaConfig()
+        assert config.base_url == "http://localhost:11434"
+        assert config.model == "llama2"
+        assert config.timeout == 60.0
+        assert config.max_retries == 3
+    
+    def test_custom_values(self):
+        """Test custom configuration values"""
+        config = OllamaConfig(
+            base_url="http://custom:8080",
+            model="custom-model",
+            timeout=30.0,
+            max_retries=5
+        )
+        assert config.base_url == "http://custom:8080"
+        assert config.model == "custom-model"
+        assert config.timeout == 30.0
+        assert config.max_retries == 5
+    
+    def test_is_configured_valid(self):
+        """Test is_configured with valid config"""
+        config = OllamaConfig(
+            base_url="http://localhost:11434",
+            model="llama2"
+        )
+        assert config.is_configured() is True
+    
+    def test_is_configured_invalid(self):
+        """Test is_configured with invalid config"""
+        config = OllamaConfig(base_url="", model="llama2")
+        assert config.is_configured() is False
+        
+        config = OllamaConfig(base_url="http://localhost:11434", model="")
+        assert config.is_configured() is False
+
+
+class TestOpenAIConfig:
+    """Test OpenAI configuration"""
+    
+    def test_default_values(self):
+        """Test default configuration values"""
+        config = OpenAIConfig()
+        assert config.api_key is None
+        assert config.model == "gpt-3.5-turbo"
+        assert config.base_url == "https://api.openai.com/v1"
+        assert config.timeout == 60.0
+        assert config.max_retries == 3
+        assert config.max_tokens == 1000
+        assert config.temperature == 0.7
+    
+    def test_custom_values(self):
+        """Test custom configuration values"""
+        config = OpenAIConfig(
+            api_key="sk-test-key",
+            model="gpt-4",
+            base_url="https://custom.openai.com/v1",
+            timeout=30.0,
+            max_retries=5,
+            max_tokens=2000,
+            temperature=0.5
+        )
+        assert config.api_key == "sk-test-key"
+        assert config.model == "gpt-4"
+        assert config.base_url == "https://custom.openai.com/v1"
+        assert config.timeout == 30.0
+        assert config.max_retries == 5
+        assert config.max_tokens == 2000
+        assert config.temperature == 0.5
+    
+    def test_is_configured_valid(self):
+        """Test is_configured with valid config"""
+        config = OpenAIConfig(api_key="sk-valid-key")
+        assert config.is_configured() is True
+    
+    def test_is_configured_invalid(self):
+        """Test is_configured with invalid config"""
+        config = OpenAIConfig(api_key=None)
+        assert config.is_configured() is False
+        
+        config = OpenAIConfig(api_key="")
+        assert config.is_configured() is False
+        
+        config = OpenAIConfig(api_key="your_openai_api_key_here")
+        assert config.is_configured() is False
+    
+    def test_api_key_validation(self):
+        """Test API key validation"""
+        config = OpenAIConfig(api_key="valid-key")
+        assert config.api_key == "valid-key"
+        
+        config = OpenAIConfig(api_key=None)
+        assert config.api_key is None
+        
+        with pytest.raises(ValidationError):
+            OpenAIConfig(api_key=123)
+
+
+class TestLLMProviderConfig:
+    """Test LLM provider configuration"""
+    
+    def test_default_values(self):
+        """Test default configuration values"""
+        config = LLMProviderConfig()
+        assert config.provider == "ollama"
+        assert isinstance(config.ollama, OllamaConfig)
+        assert isinstance(config.openai, OpenAIConfig)
+    
+    def test_custom_values(self):
+        """Test custom configuration values"""
+        ollama_config = OllamaConfig(model="custom-llama")
+        openai_config = OpenAIConfig(api_key="sk-test")
+        
+        config = LLMProviderConfig(
+            provider="openai",
+            ollama=ollama_config,
+            openai=openai_config
+        )
+        
+        assert config.provider == "openai"
+        assert config.ollama is ollama_config
+        assert config.openai is openai_config
+    
+    def test_provider_validation(self):
+        """Test provider validation"""
+        config = LLMProviderConfig(provider="ollama")
+        assert config.provider == "ollama"
+        
+        config = LLMProviderConfig(provider="openai")
+        assert config.provider == "openai"
+        
+        with pytest.raises(ValidationError):
+            LLMProviderConfig(provider="invalid")
+    
+    def test_get_active_provider_config(self):
+        """Test getting active provider configuration"""
+        config = LLMProviderConfig(provider="ollama")
+        active_config = config.get_active_provider_config()
+        assert active_config is config.ollama
+        
+        config = LLMProviderConfig(provider="openai")
+        active_config = config.get_active_provider_config()
+        assert active_config is config.openai
+        
+        config.provider = "invalid"
+        with pytest.raises(ValueError):
+            config.get_active_provider_config()
+    
+    def test_is_active_provider_configured(self):
+        """Test checking if active provider is configured"""
+        # Ollama with valid config
+        config = LLMProviderConfig(
+            provider="ollama",
+            ollama=OllamaConfig(base_url="http://localhost:11434", model="llama2")
+        )
+        assert config.is_active_provider_configured() is True
+        
+        # Ollama with invalid config
+        config = LLMProviderConfig(
+            provider="ollama",
+            ollama=OllamaConfig(base_url="", model="llama2")
+        )
+        assert config.is_active_provider_configured() is False
+        
+        # OpenAI with valid config
+        config = LLMProviderConfig(
+            provider="openai",
+            openai=OpenAIConfig(api_key="sk-valid-key")
+        )
+        assert config.is_active_provider_configured() is True
+        
+        # OpenAI with invalid config
+        config = LLMProviderConfig(
+            provider="openai",
+            openai=OpenAIConfig(api_key=None)
+        )
+        assert config.is_active_provider_configured() is False
+
+
+class TestChatConfig:
+    """Test chat configuration"""
+    
+    def test_default_values(self):
+        """Test default configuration values"""
+        config = ChatConfig()
+        assert config.enabled is True
+        assert config.history_limit == 1000
+        assert config.context_window == 4000
+        assert config.response_timeout == 30.0
+    
+    def test_custom_values(self):
+        """Test custom configuration values"""
+        config = ChatConfig(
+            enabled=False,
+            history_limit=500,
+            context_window=2000,
+            response_timeout=60.0
+        )
+        assert config.enabled is False
+        assert config.history_limit == 500
+        assert config.context_window == 2000
+        assert config.response_timeout == 60.0
+    
+    def test_validation(self):
+        """Test configuration validation"""
+        with pytest.raises(ValidationError):
+            ChatConfig(history_limit=0)
+        
+        with pytest.raises(ValidationError):
+            ChatConfig(context_window=0)
+
+
+class TestInsightsConfig:
+    """Test insights configuration"""
+    
+    def test_default_values(self):
+        """Test default configuration values"""
+        config = InsightsConfig()
+        assert config.enabled is True
+        assert config.schedule == "daily"
+        assert config.custom_cron is None
+        assert config.max_insights_history == 100
+    
+    def test_custom_values(self):
+        """Test custom configuration values"""
+        config = InsightsConfig(
+            enabled=False,
+            schedule="custom",
+            custom_cron="0 8 * * *",
+            max_insights_history=50
+        )
+        assert config.enabled is False
+        assert config.schedule == "custom"
+        assert config.custom_cron == "0 8 * * *"
+        assert config.max_insights_history == 50
+    
+    def test_schedule_validation(self):
+        """Test schedule validation"""
+        valid_schedules = ["hourly", "daily", "weekly", "custom"]
+        
+        for schedule in valid_schedules:
+            config = InsightsConfig(schedule=schedule)
+            assert config.schedule == schedule
+        
+        with pytest.raises(ValidationError):
+            InsightsConfig(schedule="invalid")
+
+
+class TestEnhancementConfig:
+    """Test enhancement configuration"""
+    
+    def test_default_values(self):
+        """Test default configuration values"""
+        config = EnhancementConfig()
+        assert config.enabled is True
+        assert config.schedule == "nightly"
+        assert config.batch_size == 100
+        assert config.max_concurrent_jobs == 2
+    
+    def test_custom_values(self):
+        """Test custom configuration values"""
+        config = EnhancementConfig(
+            enabled=False,
+            schedule="hourly",
+            batch_size=50,
+            max_concurrent_jobs=1
+        )
+        assert config.enabled is False
+        assert config.schedule == "hourly"
+        assert config.batch_size == 50
+        assert config.max_concurrent_jobs == 1
+    
+    def test_batch_size_validation(self):
+        """Test batch size validation"""
+        config = EnhancementConfig(batch_size=10)
+        assert config.batch_size == 10
+        
+        with pytest.raises(ValidationError):
+            EnhancementConfig(batch_size=0)
+        
+        with pytest.raises(ValidationError):
+            EnhancementConfig(batch_size=-1)
+
+
+class TestAppConfigPhase6:
+    """Test app configuration with Phase 6 components"""
+    
+    def test_default_phase6_values(self):
+        """Test default Phase 6 configuration"""
+        config = AppConfig()
+        
+        # Check Phase 6 configs are properly initialized
+        assert isinstance(config.llm_provider, LLMProviderConfig)
+        assert isinstance(config.chat, ChatConfig)
+        assert isinstance(config.insights, InsightsConfig)
+        assert isinstance(config.enhancement, EnhancementConfig)
+        
+        # Check defaults
+        assert config.llm_provider.provider == "ollama"
+        assert config.chat.enabled is True
+        assert config.insights.enabled is True
+        assert config.enhancement.enabled is True
+    
+    def test_custom_phase6_values(self):
+        """Test custom Phase 6 configuration"""
+        config = AppConfig(
+            llm_provider=LLMProviderConfig(
+                provider="openai",
+                openai=OpenAIConfig(api_key="sk-test")
+            ),
+            chat=ChatConfig(enabled=False),
+            insights=InsightsConfig(schedule="weekly"),
+            enhancement=EnhancementConfig(batch_size=50)
+        )
+        
+        assert config.llm_provider.provider == "openai"
+        assert config.llm_provider.openai.api_key == "sk-test"
+        assert config.chat.enabled is False
+        assert config.insights.schedule == "weekly"
+        assert config.enhancement.batch_size == 50

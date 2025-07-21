@@ -4,7 +4,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig
+    LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
+    LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
 )
 
 
@@ -135,6 +136,44 @@ def create_production_config() -> AppConfig:
             console_logging=os.getenv("LOG_CONSOLE_ENABLED", "true").lower() == "true",
             include_correlation_ids=os.getenv("LOG_CORRELATION_IDS", "false").lower() == "true",
             log_format=os.getenv("LOG_FORMAT")  # None if not set, will use default
+        ),
+        
+        # Phase 6: LLM and Chat Capabilities
+        llm_provider=LLMProviderConfig(
+            provider=os.getenv("LLM_PROVIDER", "ollama"),
+            ollama=OllamaConfig(
+                base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                model=os.getenv("OLLAMA_MODEL", "llama2"),
+                timeout=float(os.getenv("OLLAMA_TIMEOUT", "60.0")),
+                max_retries=int(os.getenv("OLLAMA_MAX_RETRIES", "3"))
+            ),
+            openai=OpenAIConfig(
+                api_key=os.getenv("OPENAI_API_KEY"),
+                model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+                base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                timeout=float(os.getenv("OPENAI_TIMEOUT", "60.0")),
+                max_retries=int(os.getenv("OPENAI_MAX_RETRIES", "3")),
+                max_tokens=int(os.getenv("OPENAI_MAX_TOKENS", "1000")),
+                temperature=float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
+            )
+        ),
+        chat=ChatConfig(
+            enabled=os.getenv("CHAT_ENABLED", "true").lower() == "true",
+            history_limit=int(os.getenv("CHAT_HISTORY_LIMIT", "1000")),
+            context_window=int(os.getenv("CHAT_CONTEXT_WINDOW", "4000")),
+            response_timeout=float(os.getenv("CHAT_RESPONSE_TIMEOUT", "30.0"))
+        ),
+        insights=InsightsConfig(
+            enabled=os.getenv("INSIGHTS_ENABLED", "true").lower() == "true",
+            schedule=os.getenv("INSIGHTS_SCHEDULE", "daily"),
+            custom_cron=os.getenv("INSIGHTS_CUSTOM_CRON"),
+            max_insights_history=int(os.getenv("INSIGHTS_MAX_HISTORY", "100"))
+        ),
+        enhancement=EnhancementConfig(
+            enabled=os.getenv("ENHANCEMENT_ENABLED", "true").lower() == "true",
+            schedule=os.getenv("ENHANCEMENT_SCHEDULE", "nightly"),
+            batch_size=int(os.getenv("ENHANCEMENT_BATCH_SIZE", "100")),
+            max_concurrent_jobs=int(os.getenv("ENHANCEMENT_MAX_CONCURRENT_JOBS", "2"))
         ),
         debug=os.getenv("DEBUG", "false").lower() == "true"
     )
