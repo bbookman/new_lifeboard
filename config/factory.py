@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig
+    LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig
 )
 
 
@@ -55,6 +55,12 @@ def create_test_config(temp_dir: str = None) -> AppConfig:
             max_concurrent_jobs=2,
             job_timeout_minutes=5
         ),
+        auto_sync=AutoSyncConfig(
+            enabled=True,
+            startup_sync_enabled=False,
+            startup_sync_delay_seconds=10,
+            auto_register_sources=True
+        ),
         debug=True,
         log_level="DEBUG"
     )
@@ -102,6 +108,12 @@ def create_production_config() -> AppConfig:
             check_interval_seconds=int(os.getenv("SCHEDULER_CHECK_INTERVAL", "300")),
             max_concurrent_jobs=int(os.getenv("SCHEDULER_MAX_JOBS", "3")),
             job_timeout_minutes=int(os.getenv("SCHEDULER_JOB_TIMEOUT", "30"))
+        ),
+        auto_sync=AutoSyncConfig(
+            enabled=os.getenv("AUTO_SYNC_ENABLED", "true").lower() == "true",
+            startup_sync_enabled=os.getenv("STARTUP_SYNC_ENABLED", "false").lower() == "true",
+            startup_sync_delay_seconds=int(os.getenv("STARTUP_SYNC_DELAY_SECONDS", "60")),
+            auto_register_sources=os.getenv("AUTO_REGISTER_SOURCES", "true").lower() == "true"
         ),
         debug=os.getenv("DEBUG", "false").lower() == "true",
         log_level=os.getenv("LOG_LEVEL", "INFO")
