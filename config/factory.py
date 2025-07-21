@@ -1,6 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
+from dotenv import load_dotenv
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
     LLMConfig, LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig
@@ -75,6 +76,10 @@ def create_test_config(temp_dir: str = None) -> AppConfig:
 
 def create_production_config() -> AppConfig:
     """Create production configuration from environment"""
+    # Load environment variables from .env file if it exists
+    # Use override=True to ensure .env values take precedence over shell environment
+    load_dotenv(override=True)
+    
     return AppConfig(
         database=DatabaseConfig(
             path=os.getenv("LIFEBOARD_DB_PATH", "lifeboard.db")
