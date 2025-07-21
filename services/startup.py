@@ -10,6 +10,7 @@ from sources.limitless import LimitlessSource
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
+from core.logging_config import setup_application_logging
 from config.models import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class StartupService:
         self.scheduler: Optional[AsyncScheduler] = None
         self.sync_manager: Optional[SyncManagerService] = None
         self.startup_complete = False
+        self.logging_setup_result: Optional[Dict[str, Any]] = None
         
     async def initialize_application(self, enable_auto_sync: Optional[bool] = None) -> Dict[str, Any]:
         """Initialize all application services and components"""
@@ -45,6 +47,9 @@ class StartupService:
         }
         
         try:
+            # 0. Initialize centralized logging first (before any other logging)
+            await self._initialize_logging(startup_result)
+            
             logger.info("Starting application initialization...")
             
             # 1. Initialize core services
@@ -85,6 +90,43 @@ class StartupService:
         
         return startup_result
     
+    async def _initialize_logging(self, startup_result: Dict[str, Any]):
+        """Initialize centralized logging system"""
+        try:
+            logger.info("Initializing centralized logging system...")
+            
+            # Setup application logging using the configuration parameters
+            self.logging_setup_result = setup_application_logging(
+                log_level=self.config.logging.level,
+                log_file_path=self.config.logging.file_path,
+                max_file_size=self.config.logging.max_file_size,
+                backup_count=self.config.logging.backup_count,
+                console_logging=self.config.logging.console_logging,
+                include_correlation_ids=self.config.logging.include_correlation_ids
+            )
+            
+            if self.logging_setup_result.get("success", False):
+                startup_result["services_initialized"].append("logging")
+                logger.info("Centralized logging system initialized successfully")
+            else:
+                # Log setup failed but don't fail the entire startup
+                error_msg = f"Logging setup failed: {self.logging_setup_result.get('error', 'Unknown error')}"
+                logger.warning(error_msg)
+                startup_result["errors"].append(error_msg)
+                
+        except Exception as e:
+            # Fallback logging setup failed - continue with basic logging
+            error_msg = f"Failed to initialize logging system: {str(e)}"
+            logger.error(error_msg)
+            startup_result["errors"].append(error_msg)
+            
+            # Store failed result for status reporting
+            self.logging_setup_result = {
+                "success": False,
+                "error": str(e),
+                "fallback_logging": True
+            }
+
     async def _initialize_core_services(self, startup_result: Dict[str, Any]):
         """Initialize core services (database, vector store, embeddings)"""
         try:
@@ -336,6 +378,7 @@ class StartupService:
         status = {
             "startup_complete": self.startup_complete,
             "services": {
+                "logging": self.logging_setup_result is not None and self.logging_setup_result.get("success", False),
                 "database": self.database is not None,
                 "vector_store": self.vector_store is not None,
                 "embedding_service": self.embedding_service is not None,
@@ -344,6 +387,10 @@ class StartupService:
                 "sync_manager": self.sync_manager is not None
             }
         }
+        
+        # Add logging setup details if available
+        if self.logging_setup_result:
+            status["logging_details"] = self.logging_setup_result
         
         # Add detailed status if services are available
         if self.ingestion_service:
