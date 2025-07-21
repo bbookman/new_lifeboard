@@ -43,28 +43,6 @@ class VectorStoreConfig(BaseModel):
         return v
 
 
-class LLMConfig(BaseModel):
-    """LLM service configuration"""
-    provider: str = "openai"
-    model: str = "gpt-3.5-turbo"
-    api_key: Optional[str] = None
-    max_tokens: int = 1000
-    temperature: float = 0.7
-    
-    @field_validator('provider')
-    @classmethod
-    def validate_provider(cls, v):
-        if v not in ["openai", "anthropic", "mock"]:
-            raise ValueError("Provider must be one of: openai, anthropic, mock")
-        return v
-    
-    @field_validator('api_key')
-    @classmethod
-    def validate_api_key(cls, v):
-        if v is not None and not isinstance(v, str):
-            raise ValueError("API key must be a string")
-        return v
-
 
 class LimitlessConfig(BaseModel):
     """Limitless API configuration"""
@@ -304,7 +282,6 @@ class AppConfig(BaseModel):
     database: DatabaseConfig = DatabaseConfig()
     embeddings: EmbeddingConfig = EmbeddingConfig()
     vector_store: VectorStoreConfig = VectorStoreConfig()
-    llm: LLMConfig = LLMConfig()
     limitless: LimitlessConfig = LimitlessConfig()
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
