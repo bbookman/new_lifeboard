@@ -47,6 +47,11 @@ find . -name "*.log" -type f -delete
 echo "Removing all .db files..."
 find . -name "*.db" -type f -delete
 
+# Also remove any .db-wal and .db-shm files (SQLite temp files)
+echo "Removing SQLite temporary files..."
+find . -name "*.db-wal" -type f -delete
+find . -name "*.db-shm" -type f -delete
+
 # Remove vector store files
 echo "Removing vector store files..."
 find . -name "*.faiss" -type f -delete
