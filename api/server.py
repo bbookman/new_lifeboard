@@ -3,17 +3,22 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request, Form
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 import uvicorn
 
 from services.startup import get_startup_service, StartupService
 from services.sync_manager_service import SyncManagerService
 from services.ingestion import IngestionResult
+from services.chat_service import ChatService
 from config.factory import create_production_config
 
 logger = logging.getLogger(__name__)
+
+# Initialize templates
+templates = Jinja2Templates(directory="templates")
 
 # Pydantic models for API requests/responses
 
@@ -51,6 +56,11 @@ def get_sync_manager(startup_service: StartupService = Depends(get_startup_servi
     if not startup_service.sync_manager:
         raise HTTPException(status_code=503, detail="Sync manager not available")
     return startup_service.sync_manager
+
+def get_chat_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> ChatService:
+    if not startup_service.chat_service:
+        raise HTTPException(status_code=503, detail="Chat service not available")
+    return startup_service.chat_service
 
 # Lifespan context manager for FastAPI
 @asynccontextmanager
@@ -327,6 +337,65 @@ async def shutdown_system():
     except Exception as e:
         logger.error(f"Failed to shutdown system: {e}")
         raise HTTPException(status_code=500, detail=f"System shutdown failed: {str(e)}")
+
+# Chat endpoints (Phase 7)
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_page(request: Request, chat_service: ChatService = Depends(get_chat_service)):
+    """Get the chat page with recent history"""
+    try:
+        # Get recent chat history
+        history = chat_service.get_chat_history(limit=10)
+        
+        return templates.TemplateResponse("chat.html", {
+            "request": request,
+            "history": history
+        })
+    
+    except Exception as e:
+        logger.error(f"Failed to load chat page: {e}")
+        return templates.TemplateResponse("chat.html", {
+            "request": request,
+            "error": "Failed to load chat history",
+            "history": []
+        })
+
+@app.post("/chat", response_class=HTMLResponse)
+async def process_chat(
+    request: Request, 
+    message: str = Form(...),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """Process a chat message and return the response"""
+    try:
+        # Process the chat message
+        response = await chat_service.process_chat_message(message)
+        
+        # Get updated chat history
+        history = chat_service.get_chat_history(limit=10)
+        
+        return templates.TemplateResponse("chat.html", {
+            "request": request,
+            "user_message": message,
+            "response": response,
+            "history": history
+        })
+    
+    except Exception as e:
+        logger.error(f"Failed to process chat message: {e}")
+        
+        # Get chat history for the error response
+        try:
+            history = chat_service.get_chat_history(limit=10)
+        except Exception:
+            history = []
+        
+        return templates.TemplateResponse("chat.html", {
+            "request": request,
+            "user_message": message,
+            "error": "Failed to process your message. Please try again.",
+            "history": history
+        })
 
 # Error handlers
 

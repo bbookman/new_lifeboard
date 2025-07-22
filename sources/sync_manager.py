@@ -108,6 +108,43 @@ class LimitlessSyncManager:
         # Subtract overlap to ensure we don't miss any data
         return last_sync - timedelta(hours=self.overlap_hours)
     
+    def _parse_database_timestamp(self, timestamp_str: str) -> datetime:
+        """
+        Parse timestamp from database, handling both SQLite and ISO formats.
+        
+        SQLite's CURRENT_TIMESTAMP produces '2025-07-22 01:12:40' format without timezone.
+        ISO format from API produces '2025-07-22T01:12:40+00:00' with timezone.
+        
+        Args:
+            timestamp_str: Timestamp string from database
+            
+        Returns:
+            datetime: Timezone-aware datetime object (assumes UTC if no timezone info)
+            
+        Raises:
+            ValueError: If timestamp format is invalid
+        """
+        if not timestamp_str:
+            raise ValueError("Empty timestamp string")
+        
+        try:
+            # First try ISO format parsing (handles timezone-aware strings)
+            return datetime.fromisoformat(timestamp_str)
+        except ValueError:
+            # If ISO parsing fails, try SQLite format (assumes UTC)
+            try:
+                # Parse SQLite CURRENT_TIMESTAMP format: '2025-07-22 01:12:40'
+                naive_dt = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+                # Assume UTC timezone for SQLite timestamps
+                return naive_dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                # Try alternative SQLite format with microseconds
+                try:
+                    naive_dt = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+                    return naive_dt.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    raise ValueError(f"Unable to parse timestamp format: {timestamp_str}")
+    
     async def should_process_item(self, item: DataItem) -> bool:
         """Determine if an item should be processed (new or updated)"""
         # Check if item already exists in database
@@ -121,11 +158,11 @@ class LimitlessSyncManager:
         # Compare update timestamps if available
         if item.updated_at and existing_item.get('updated_at'):
             try:
-                existing_updated = datetime.fromisoformat(existing_item['updated_at'])
+                existing_updated = self._parse_database_timestamp(existing_item['updated_at'])
                 # Process if the item has been updated since we last saw it
                 return item.updated_at > existing_updated
-            except (ValueError, TypeError):
-                logger.warning(f"Invalid timestamp in existing item: {existing_item.get('updated_at')}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid timestamp in existing item: {existing_item.get('updated_at')} - Error: {str(e)}")
         
         # If we can't compare timestamps, skip to avoid duplicates
         return False
