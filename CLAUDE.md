@@ -125,3 +125,7 @@ The project is currently in planning phase with comprehensive documentation for 
   - Include the impact on user experience for each potential decision
   - Provide insights into the performance implications of different choices
   - Help users understand the trade-offs and consequences of their decisions
+
+## Memory Management Guidelines
+- Updates to the development log are intentional and made by the human
+- Purge cache of the development log and only read the file that exists and not any kind of memory or cache
