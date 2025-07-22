@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
+import socket
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request, Form
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -62,6 +63,19 @@ def get_chat_service(startup_service: StartupService = Depends(get_startup_servi
         raise HTTPException(status_code=503, detail="Chat service not available")
     return startup_service.chat_service
 
+# Global variable to store server info for banner
+_server_info = {"host": None, "port": None}
+
+def print_startup_banner(host: str, port: int):
+    """Print the startup banner with server URL"""
+    # Convert 0.0.0.0 to localhost for user-friendly display
+    display_host = "localhost" if host == "0.0.0.0" else host
+    print("\n" + "*" * 51)
+    print("*" * 51)
+    print(f"Visit http://{display_host}:{port} for home ui")
+    print("*" * 51)
+    print("*" * 51 + "\n")
+
 # Lifespan context manager for FastAPI
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -77,6 +91,10 @@ async def lifespan(app: FastAPI):
         
         if result["success"]:
             logger.info("Application initialized successfully")
+            
+            # Print startup banner if server info is available
+            if _server_info["host"] and _server_info["port"]:
+                print_startup_banner(_server_info["host"], _server_info["port"])
         else:
             logger.error(f"Application initialization failed: {result.get('errors', [])}")
     
@@ -104,6 +122,80 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Root endpoint
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    """Root endpoint with API overview"""
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Lifeboard API</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+            .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            h1 { color: #333; border-bottom: 2px solid #007acc; padding-bottom: 10px; }
+            h2 { color: #555; margin-top: 30px; }
+            .endpoint { margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 4px solid #007acc; }
+            .method { font-weight: bold; color: #007acc; }
+            a { color: #007acc; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🏠 Lifeboard API</h1>
+            <p>Personal data management system with AI-powered chat and memory integration.</p>
+            
+            <h2>Available Endpoints</h2>
+            
+            <div class="endpoint">
+                <span class="method">GET</span> <a href="/health">/health</a> - Application health status
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">GET</span> <a href="/status">/status</a> - Detailed application status
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">GET</span> <a href="/chat">/chat</a> - Interactive chat interface
+            </div>
+            
+            <h3>API Endpoints</h3>
+            
+            <div class="endpoint">
+                <span class="method">GET</span> /api/sync/status - All sources sync status
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">GET</span> /api/sync/{namespace}/status - Specific source sync status
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">POST</span> /api/sync/{namespace} - Trigger sync for namespace
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">POST</span> /api/embeddings/process - Process pending embeddings
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">POST</span> /api/system/startup - Initialize system
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">POST</span> /api/system/shutdown - Shutdown system
+            </div>
+            
+            <p style="margin-top: 30px; color: #666;">
+                Visit <a href="/chat">/chat</a> to start interacting with your personal data assistant.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 # Health and status endpoints
 
@@ -415,18 +507,75 @@ async def internal_server_error_handler(request, exc):
     )
 
 
+def is_port_available(host: str, port: int) -> bool:
+    """Check if a port is available for binding"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, port))
+            return True
+    except (OSError, socket.error):
+        return False
+
+def find_available_port(host: str, preferred_port: int, max_attempts: int = 10) -> Optional[int]:
+    """Find an available port starting from the preferred port"""
+    # First, try the preferred port
+    if is_port_available(host, preferred_port):
+        return preferred_port
+    
+    logger.warning(f"Port {preferred_port} is not available, searching for alternatives...")
+    
+    # Try ports in a reasonable range around the preferred port
+    for offset in range(1, max_attempts):
+        candidate_port = preferred_port + offset
+        if candidate_port > 65535:  # Max port number
+            continue
+            
+        if is_port_available(host, candidate_port):
+            logger.info(f"Found available port: {candidate_port}")
+            return candidate_port
+    
+    # If no port found in the preferred range, try some common fallback ports
+    fallback_ports = [3000, 5000, 8080, 8888, 9000]
+    for fallback_port in fallback_ports:
+        if fallback_port != preferred_port and is_port_available(host, fallback_port):
+            logger.info(f"Using fallback port: {fallback_port}")
+            return fallback_port
+    
+    return None
+
 # Development server runner
 def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False):
-    """Run the development server"""
+    """Run the development server with automatic port conflict resolution"""
     log_level = "debug" if debug else "info"
     
-    uvicorn.run(
-        "api.server:app",
-        host=host,
-        port=port,
-        log_level=log_level,
-        reload=debug
-    )
+    # Find an available port
+    available_port = find_available_port(host, port)
+    
+    if available_port is None:
+        logger.error(f"Could not find an available port starting from {port}")
+        raise RuntimeError(f"No available ports found for binding on {host}")
+    
+    if available_port != port:
+        logger.info(f"Port {port} was not available, using port {available_port} instead")
+    
+    logger.info(f"Starting Lifeboard API server on {host}:{available_port}")
+    
+    # Store server info for the startup banner
+    _server_info["host"] = host
+    _server_info["port"] = available_port
+    
+    try:
+        uvicorn.run(
+            "api.server:app",
+            host=host,
+            port=available_port,
+            log_level=log_level,
+            reload=debug
+        )
+    except Exception as e:
+        logger.error(f"Failed to start server: {e}")
+        raise
 
 if __name__ == "__main__":
     import argparse
