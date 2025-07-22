@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from services.scheduler import AsyncScheduler
 from services.ingestion import IngestionService
 from services.sync_manager_service import SyncManagerService
+from services.chat_service import ChatService
 from sources.limitless import LimitlessSource
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
@@ -27,6 +28,7 @@ class StartupService:
         self.ingestion_service: Optional[IngestionService] = None
         self.scheduler: Optional[AsyncScheduler] = None
         self.sync_manager: Optional[SyncManagerService] = None
+        self.chat_service: Optional[ChatService] = None
         self.startup_complete = False
         self.logging_setup_result: Optional[Dict[str, Any]] = None
         
@@ -57,6 +59,9 @@ class StartupService:
             
             # 2. Initialize ingestion service
             await self._initialize_ingestion_service(startup_result)
+            
+            # 2.5. Initialize chat service (Phase 7)
+            await self._initialize_chat_service(startup_result)
             
             # 3. Register data sources (if auto-register is enabled)
             if self.config.auto_sync.auto_register_sources:
@@ -169,6 +174,29 @@ class StartupService:
             
         except Exception as e:
             error_msg = f"Failed to initialize ingestion service: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+    
+    async def _initialize_chat_service(self, startup_result: Dict[str, Any]):
+        """Initialize the chat service (Phase 7)"""
+        try:
+            logger.info("Initializing chat service...")
+            
+            self.chat_service = ChatService(
+                config=self.config,
+                database=self.database,
+                vector_store=self.vector_store,
+                embeddings=self.embedding_service
+            )
+            
+            # Initialize the chat service (sets up LLM provider)
+            await self.chat_service.initialize()
+            
+            startup_result["services_initialized"].append("chat")
+            logger.info("Chat service initialized successfully")
+            
+        except Exception as e:
+            error_msg = f"Failed to initialize chat service: {str(e)}"
             logger.error(error_msg)
             raise Exception(error_msg)
     
@@ -364,6 +392,10 @@ class StartupService:
             if self.sync_manager:
                 await self.sync_manager.stop_auto_sync()
             
+            # Close chat service
+            if self.chat_service:
+                await self.chat_service.close()
+            
             # Close other services
             if self.vector_store:
                 self.vector_store.cleanup()
@@ -383,6 +415,7 @@ class StartupService:
                 "vector_store": self.vector_store is not None,
                 "embedding_service": self.embedding_service is not None,
                 "ingestion_service": self.ingestion_service is not None,
+                "chat_service": self.chat_service is not None,
                 "scheduler": self.scheduler is not None,
                 "sync_manager": self.sync_manager is not None
             }
