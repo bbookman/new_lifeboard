@@ -5,7 +5,7 @@ __pycache__/
 .env
 .DS_store
 *.db
-
+vector_ids.json
 # C extensions
 *.so
 
