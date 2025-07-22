@@ -58,10 +58,21 @@ class DatabaseService:
                 )
             """)
             
+            # Chat messages table for Phase 7
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_message TEXT NOT NULL,
+                    assistant_response TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Create indexes
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_namespace ON data_items(namespace)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_embedding_status ON data_items(embedding_status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_updated_at ON data_items(updated_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp)")
             
             conn.commit()
     
@@ -255,3 +266,34 @@ class DatabaseService:
                 'database_path': self.db_path,
                 'database_size_mb': os.path.getsize(self.db_path) / (1024 * 1024) if os.path.exists(self.db_path) else 0
             }
+    
+    def store_chat_message(self, user_message: str, assistant_response: str):
+        """Store a chat message exchange"""
+        with self.get_connection() as conn:
+            conn.execute("""
+                INSERT INTO chat_messages (user_message, assistant_response)
+                VALUES (?, ?)
+            """, (user_message, assistant_response))
+            conn.commit()
+    
+    def get_chat_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get recent chat history"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT id, user_message, assistant_response, timestamp
+                FROM chat_messages
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (limit,))
+            
+            messages = []
+            for row in cursor.fetchall():
+                messages.append({
+                    'id': row['id'],
+                    'user_message': row['user_message'],
+                    'assistant_response': row['assistant_response'],
+                    'timestamp': row['timestamp']
+                })
+            
+            # Return in chronological order (oldest first)
+            return list(reversed(messages))
