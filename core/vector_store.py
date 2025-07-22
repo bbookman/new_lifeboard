@@ -54,7 +54,11 @@ class VectorStoreService:
                 'dimension': self.dimension
             }
             
-            os.makedirs(os.path.dirname(self.config.id_map_path), exist_ok=True)
+            # Create directory if needed
+            id_map_dir = os.path.dirname(self.config.id_map_path)
+            if id_map_dir:  # Only create if there's actually a directory path
+                os.makedirs(id_map_dir, exist_ok=True)
+            
             with open(self.config.id_map_path, 'w') as f:
                 json.dump(data, f)
             
@@ -74,7 +78,12 @@ class VectorStoreService:
                 
                 if vectors_list:
                     vectors_array = np.array(vectors_list)
-                    os.makedirs(os.path.dirname(self.config.index_path), exist_ok=True)
+                    
+                    # Create directory if needed
+                    index_dir = os.path.dirname(self.config.index_path)
+                    if index_dir:  # Only create if there's actually a directory path
+                        os.makedirs(index_dir, exist_ok=True)
+                    
                     np.save(self.config.index_path, vectors_array)
                     
         except Exception as e:
@@ -128,17 +137,24 @@ class VectorStoreService:
                namespace_filter: Optional[List[str]] = None) -> List[Tuple[str, float]]:
         """Search for similar vectors"""
         try:
+            logger.debug(f"Vector Debug - Starting search with k={k}, namespace_filter={namespace_filter}")
+            logger.debug(f"Vector Debug - Total vectors in store: {len(self.vectors)}")
+            
             if not self.vectors:
+                logger.info("Vector Debug - No vectors in store, returning empty results")
                 return []
             
             query_vector = np.array(query_vector, dtype=np.float32)
+            logger.debug(f"Vector Debug - Query vector dimension: {query_vector.shape[0]}")
             
             results = []
+            filtered_count = 0
             for vector_id, vector in self.vectors.items():
                 # Apply namespace filter if provided
                 if namespace_filter:
                     namespace = vector_id.split(':', 1)[0] if ':' in vector_id else vector_id
                     if namespace not in namespace_filter:
+                        filtered_count += 1
                         continue
                 
                 # Calculate cosine similarity
@@ -147,9 +163,19 @@ class VectorStoreService:
                 )
                 results.append((vector_id, float(similarity)))
             
+            logger.debug(f"Vector Debug - Considered {len(results)} vectors (filtered out {filtered_count})")
+            
             # Sort by similarity and return top k
             results.sort(key=lambda x: x[1], reverse=True)
-            return results[:k]
+            top_results = results[:k]
+            
+            logger.info(f"Vector Debug - Returning {len(top_results)} results out of {len(results)} candidates")
+            
+            # Log top results for debugging
+            for i, (vector_id, score) in enumerate(top_results[:3]):
+                logger.debug(f"Vector Debug - Result {i+1}: {vector_id} (similarity: {score:.4f})")
+            
+            return top_results
             
         except Exception as e:
             logger.error(f"Error searching vectors: {e}")

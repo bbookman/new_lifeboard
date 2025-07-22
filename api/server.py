@@ -92,9 +92,28 @@ async def lifespan(app: FastAPI):
         if result["success"]:
             logger.info("Application initialized successfully")
             
-            # Print startup banner if server info is available
-            if _server_info["host"] and _server_info["port"]:
-                print_startup_banner(_server_info["host"], _server_info["port"])
+            # Show startup banner with server URL
+            import threading
+            import time
+            
+            def delayed_banner():
+                # Wait for uvicorn to fully start and print its messages
+                time.sleep(3)
+                # Try to detect the server port from uvicorn or use default
+                server_port = 8000  # Default port
+                # Check if uvicorn server info is available
+                try:
+                    import uvicorn
+                    # Try to get the actual port if possible
+                    pass  # Keep default for now
+                except:
+                    pass
+                print_startup_banner("localhost", server_port)
+            
+            # Start the banner in a separate thread
+            banner_thread = threading.Thread(target=delayed_banner)
+            banner_thread.daemon = True
+            banner_thread.start()
         else:
             logger.error(f"Application initialization failed: {result.get('errors', [])}")
     
@@ -566,6 +585,19 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False):
     _server_info["port"] = available_port
     
     try:
+        import threading
+        import time
+        
+        def delayed_banner():
+            # Wait for uvicorn to fully start and print its messages
+            time.sleep(2)
+            print_startup_banner(host, available_port)
+        
+        # Start the banner in a separate thread
+        banner_thread = threading.Thread(target=delayed_banner)
+        banner_thread.daemon = True
+        banner_thread.start()
+        
         uvicorn.run(
             "api.server:app",
             host=host,

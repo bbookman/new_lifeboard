@@ -128,6 +128,23 @@ class IngestionService:
         
         finally:
             result.end_time = datetime.now(timezone.utc)
+            
+            # Automatically process embeddings for newly ingested items
+            if result.items_stored > 0:
+                try:
+                    logger.info(f"Auto-processing embeddings for {result.items_stored} newly ingested items...")
+                    embedding_result = await self.process_pending_embeddings(batch_size=32)
+                    result.embeddings_generated = embedding_result.get("successful", 0)
+                    logger.info(f"Auto-embedding processing completed: {result.embeddings_generated} embeddings generated")
+                    
+                    if embedding_result.get("errors"):
+                        result.errors.extend(embedding_result["errors"])
+                        
+                except Exception as e:
+                    error_msg = f"Auto-embedding processing failed: {str(e)}"
+                    logger.error(error_msg)
+                    result.errors.append(error_msg)
+            
             logger.info(f"Ingestion completed for {namespace}: {result.to_dict()}")
         
         return result
@@ -275,6 +292,15 @@ class IngestionService:
         if result.errors:
             raise Exception(f"Failed to ingest item: {result.errors[0]}")
         
+        # Auto-process embeddings for the manually ingested item
+        if result.items_stored > 0:
+            try:
+                embedding_result = await self.process_pending_embeddings(batch_size=1)
+                result.embeddings_generated = embedding_result.get("successful", 0)
+                logger.info(f"Auto-generated embedding for manually ingested item")
+            except Exception as e:
+                logger.warning(f"Auto-embedding failed for manually ingested item: {e}")
+        
         namespaced_id = NamespacedIDManager.create_id(namespace, source_id)
         logger.info(f"Manually ingested item: {namespaced_id}")
         
@@ -300,6 +326,16 @@ class IngestionService:
                 error_result.errors.append(str(e))
                 results[namespace] = error_result
         
+        # Process any remaining pending embeddings after all syncs
+        total_items = sum(result.items_stored for result in results.values() if hasattr(result, 'items_stored'))
+        if total_items > 0:
+            try:
+                logger.info(f"Processing any remaining pending embeddings after full sync...")
+                final_embedding_result = await self.process_pending_embeddings(batch_size=64)
+                logger.info(f"Final embedding processing: {final_embedding_result.get('successful', 0)} embeddings generated")
+            except Exception as e:
+                logger.warning(f"Final embedding processing failed: {e}")
+        
         return results
     
     async def incremental_sync_all_sources(self, limit_per_source: int = 1000) -> Dict[str, IngestionResult]:
@@ -321,6 +357,16 @@ class IngestionService:
                 error_result = IngestionResult()
                 error_result.errors.append(str(e))
                 results[namespace] = error_result
+        
+        # Process any remaining pending embeddings after all syncs
+        total_items = sum(result.items_stored for result in results.values() if hasattr(result, 'items_stored'))
+        if total_items > 0:
+            try:
+                logger.info(f"Processing any remaining pending embeddings after incremental sync...")
+                final_embedding_result = await self.process_pending_embeddings(batch_size=64)
+                logger.info(f"Final embedding processing: {final_embedding_result.get('successful', 0)} embeddings generated")
+            except Exception as e:
+                logger.warning(f"Final embedding processing failed: {e}")
         
         return results
     

@@ -1,8 +1,11 @@
 import sqlite3
 import json
 import os
+import logging
 from typing import List, Dict, Optional, Any
 from contextlib import contextmanager
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
@@ -90,9 +93,12 @@ class DatabaseService:
     
     def get_data_items_by_ids(self, ids: List[str]) -> List[Dict]:
         """Batch fetch data items by namespaced IDs"""
+        logger.debug(f"Database Debug - Fetching data items for {len(ids) if ids else 0} IDs")
         if not ids:
+            logger.debug("Database Debug - No IDs provided, returning empty list")
             return []
         
+        logger.debug(f"Database Debug - IDs to fetch: {ids[:5]}{'...' if len(ids) > 5 else ''}")
         placeholders = ','.join('?' * len(ids))
         with self.get_connection() as conn:
             cursor = conn.execute(f"""
@@ -110,8 +116,16 @@ class DatabaseService:
                     try:
                         item['metadata'] = json.loads(item['metadata'])
                     except json.JSONDecodeError:
+                        logger.warning(f"Database Debug - Failed to parse metadata for item {item['id']}")
                         item['metadata'] = None
                 results.append(item)
+            
+            logger.info(f"Database Debug - Retrieved {len(results)} data items from database")
+            
+            # Log sample content for debugging
+            for i, item in enumerate(results[:2]):
+                content_preview = item.get('content', '')[:100] + '...' if len(item.get('content', '')) > 100 else item.get('content', '')
+                logger.debug(f"Database Debug - Item {i+1}: ID={item.get('id')}, namespace={item.get('namespace')}, content_preview='{content_preview}'")
             
             return results
     
