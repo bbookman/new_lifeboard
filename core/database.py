@@ -46,7 +46,7 @@ class DatabaseService:
                 )
             """)
             
-            # Unified data storage
+            # Enhanced data storage with preprocessing fields
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS data_items (
                     id TEXT PRIMARY KEY,
@@ -54,9 +54,22 @@ class DatabaseService:
                     source_id TEXT NOT NULL,
                     content TEXT NOT NULL,
                     metadata TEXT,
+                    
+                    -- Structured preprocessing outputs
+                    summary_content TEXT,
+                    named_entities TEXT,
+                    content_classification TEXT,
+                    temporal_context TEXT,
+                    conversation_turns TEXT,
+                    
+                    -- Quality metrics
+                    content_quality_score REAL,
+                    semantic_density REAL,
+                    
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     embedding_status TEXT DEFAULT 'pending',
+                    preprocessing_status TEXT DEFAULT 'pending',
                     FOREIGN KEY (namespace) REFERENCES data_sources(namespace)
                 )
             """)
