@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, ConfigDict
+from pydantic import BaseModel, field_validator, ConfigDict, Field
 from typing import Optional, List
 import os
 
@@ -27,6 +27,16 @@ class EmbeddingConfig(BaseModel):
         if v not in ["cpu", "cuda", "mps"]:
             raise ValueError("Device must be one of: cpu, cuda, mps")
         return v
+    
+    @classmethod
+    def from_env(cls):
+        """Create config from environment variables"""
+        import os
+        return cls(
+            model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
+            device=os.getenv("EMBEDDING_DEVICE", "cpu"),
+            batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
+        )
 
 
 class VectorStoreConfig(BaseModel):
