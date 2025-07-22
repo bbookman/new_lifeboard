@@ -362,26 +362,33 @@ class ChatService:
         
         logger.info("=== END CONTEXT BUILDING RESULTS ===")
         
-        # Create enhanced prompt to encourage inference and comprehensive analysis
-        prompt = f"""You are an intelligent personal assistant analyzing my personal data to answer questions. Your goal is to provide rich, context-aware responses by leveraging all available information and making logical inferences.
+        # Create comprehensive AI assistant prompt following advanced principles
+        prompt = f"""You are an advanced AI assistant designed to provide comprehensive, contextually-rich responses by fully leveraging all available data and applying logical reasoning. Your core operational principles:
 
-INSTRUCTIONS:
-1. ANALYZE ALL PROVIDED DATA: Look for direct facts, relationships, patterns, and contextual clues
-2. MAKE LOGICAL INFERENCES: Connect related information to draw reasonable conclusions
-3. SYNTHESIZE COMPREHENSIVELY: Combine multiple data points into cohesive insights
-4. BE CONFIDENT: When data supports a conclusion, state it clearly rather than hedging
-5. PROVIDE RICH CONTEXT: Give detailed, multi-faceted answers that demonstrate deep understanding
+COMPREHENSIVE DATA UTILIZATION: Always access and incorporate every relevant fact, tag, annotation, and data point from your knowledge base. Never ignore or overlook explicitly tagged information or documented relationships between entities.
+
+LOGICAL INFERENCE APPLICATION: When data supports clear conclusions, state them confidently rather than expressing unnecessary uncertainty. Apply standard reasoning patterns: if an entity is tagged or categorized as something specific, affirm that relationship. Draw logical connections between related data points.
+
+CONTEXTUAL SYNTHESIS: Combine all available information about entities, people, or topics into rich, multifaceted responses. Instead of providing single-aspect answers, weave together background details, attributes, relationships, activities, and characteristics to create comprehensive profiles and explanations.
+
+INTELLIGENT EXTRAPOLATION: When direct information is incomplete but contextual clues exist, make educated inferences based on available patterns and data. Use demographic indicators, behavioral patterns, communication styles, and associated information to reasonably infer missing details like age ranges, interests, or characteristics.
+
+PROACTIVE INFORMATION ASSEMBLY: For biographical or summary requests, actively gather and synthesize all relevant data points across categories including personal details, professional background, interests, relationships, activities, and any other documented attributes to provide thorough, well-rounded responses.
+
+ADAPTIVE REASONING: Replace default responses of uncertainty or data insufficiency with analytical thinking that extracts maximum insight from available information, making reasonable deductions while acknowledging confidence levels when appropriate.
 
 QUESTION: {user_message}
 
-When answering:
-- If you find direct evidence, state it confidently
-- If you can infer information from context (e.g., names, relationships, patterns), make that inference
-- If multiple data points relate to the question, synthesize them into a comprehensive response
-- Only say "not enough information" if there truly is insufficient data after thorough analysis
-- For profile questions, combine all relevant details into a rich biographical summary
+RESPONSE GUIDELINES:
+- Demonstrate deep understanding of context, relationships, and implications
+- Provide substantive, informative responses that fully utilize the knowledge base
+- When data supports conclusions, state them confidently without unnecessary hedging
+- For biographical questions, create comprehensive profiles combining all available data
+- Make logical inferences from patterns, associations, and contextual clues
+- Synthesize information across multiple data points and categories
+- Only express uncertainty when truly insufficient data exists after thorough analysis
 
-Provide a thoughtful, comprehensive response based on ALL the available context."""
+Analyze the provided personal data context thoroughly and provide a comprehensive response that demonstrates the full depth of understanding possible from the available information."""
         
         logger.info(f"Chat Debug - LLM input - Prompt: '{prompt}'")
         logger.info(f"Chat Debug - LLM parameters: max_tokens=800, temperature=0.7")
@@ -401,19 +408,22 @@ Provide a thoughtful, comprehensive response based on ALL the available context.
         return response
     
     def _build_context_text(self, context: ChatContext) -> str:
-        """Build enhanced context text from search results with entity relationships and structured facts"""
+        """
+        Build comprehensive context text from search results with enhanced entity relationships,
+        structured facts, and comprehensive data utilization for advanced AI assistant behavior
+        """
         context_parts = []
         all_items = []
         
         logger.debug(f"Context Building - Starting with {len(context.vector_results)} vector results, {len(context.sql_results)} SQL results")
         
-        # Combine all results for comprehensive analysis
-        all_items.extend(context.vector_results[:10])  # Increase limit for more comprehensive context
+        # Combine all results for comprehensive analysis - increased limits
+        all_items.extend(context.vector_results[:15])  # Increased from 10 to 15
         
         # Add unique SQL results
         vector_ids = {item.get('id') for item in context.vector_results}
         unique_sql_results = [
-            item for item in context.sql_results[:10] 
+            item for item in context.sql_results[:15]  # Increased from 10 to 15
             if item.get('id') not in vector_ids
         ]
         all_items.extend(unique_sql_results)
@@ -422,58 +432,78 @@ Provide a thoughtful, comprehensive response based on ALL the available context.
             logger.warning("Context Building - No context items available")
             return "No relevant information found in your personal data."
         
-        # Build structured context with entity extraction
-        context_parts.append("=== Personal Data Context ===")
+        # Build comprehensive structured context for advanced AI analysis
+        context_parts.append("=== COMPREHENSIVE PERSONAL DATA ANALYSIS ===")
         
-        # Extract and organize information
+        # Extract and organize information with enhanced categorization
         entities_found = set()
+        entity_attributes = {}
         conversations = []
         activities = []
         relationships = []
         facts = []
+        temporal_patterns = []
+        behavioral_indicators = []
         
         for item in all_items:
             content = item.get('content', '')
             metadata = item.get('metadata', {})
             timestamp = item.get('created_at', 'Unknown time')
+            namespace = item.get('namespace', 'Unknown')
+            source_id = item.get('source_id', 'Unknown')
             
-            # Extract key information with full content (not truncated)
-            full_content = content[:1500]  # Increase from 500 to 1500 characters
+            # Use full content for comprehensive analysis - increased limit
+            full_content = content[:2000]  # Increased from 1500 to 2000 characters
             
-            # Categorize by content type
+            # Categorize by content type and source
             content_lower = content.lower()
             
             # Enhanced entity extraction and relationship mapping
             import re
             
-            # Pet/animal entity detection
-            if any(pet_word in content_lower for pet_word in ['dog', 'pet', 'puppy', 'canine', 'pup']):
+            # Comprehensive pet/animal entity detection with attributes
+            pet_indicators = ['dog', 'pet', 'puppy', 'canine', 'pup', 'animal', 'doggy']
+            if any(pet_word in content_lower for pet_word in pet_indicators):
                 entities_found.add('pets_mentioned')
-                # Look for pet names near dog mentions
+                
+                # Enhanced pet name detection patterns
                 pet_name_patterns = [
                     r'\b([A-Z][a-z]+)\s+(?:is|was|the)\s+(?:dog|puppy|pet)',
                     r'(?:dog|pet|puppy)\s+(?:named|called)\s+([A-Z][a-z]+)',
-                    r'([A-Z][a-z]+)(?:\s+the)?\s+dog',
-                    r'my\s+dog\s+([A-Z][a-z]+)',
+                    r'([A-Z][a-z]+)(?:\s+the)?\s+(?:dog|puppy|pet)',
+                    r'my\s+(?:dog|pet|puppy)\s+([A-Z][a-z]+)',
+                    r'([A-Z][a-z]+)\s*[,.]?\s*(?:my|our)\s+(?:dog|pet)',
                 ]
                 for pattern in pet_name_patterns:
                     matches = re.findall(pattern, content, re.IGNORECASE)
                     for match in matches:
-                        if match.lower() not in ['the', 'my', 'his', 'her', 'their']:
-                            entities_found.add(f'pet_name_{match.lower()}')
+                        if match.lower() not in ['the', 'my', 'his', 'her', 'their', 'our', 'this', 'that']:
+                            pet_key = f'pet_name_{match.lower()}'
+                            entities_found.add(pet_key)
+                            if pet_key not in entity_attributes:
+                                entity_attributes[pet_key] = {'mentions': [], 'contexts': []}
+                            entity_attributes[pet_key]['mentions'].append(content[:200])
+                            entity_attributes[pet_key]['contexts'].append(namespace)
             
-            # Person name detection (Bruce, Bookman, email patterns)
-            if any(name in content_lower for name in ['bruce', 'bookman']):
+            # Enhanced person name detection with relationship mapping
+            person_indicators = ['bruce', 'bookman']
+            if any(name in content_lower for name in person_indicators):
                 entities_found.add('bruce_mentioned')
+                if 'bruce' not in entity_attributes:
+                    entity_attributes['bruce'] = {'mentions': [], 'contexts': [], 'attributes': []}
+                entity_attributes['bruce']['mentions'].append(content[:200])
+                entity_attributes['bruce']['contexts'].append(namespace)
                 
-            # Email detection for identity
+            # Email detection with identity linking
             email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
             emails = re.findall(email_pattern, content)
             for email in emails:
                 if 'bruce' in email.lower() or 'bookman' in email.lower():
                     entities_found.add('bruce_email_found')
+                    if 'bruce' in entity_attributes:
+                        entity_attributes['bruce']['attributes'].append(f'email: {email}')
             
-            # Age/demographic indicators
+            # Enhanced demographic and behavioral indicators
             age_patterns = [
                 r'(\d{1,2})\s+years?\s+old',
                 r'age\s+(\d{1,2})',
@@ -483,103 +513,175 @@ Provide a thoughtful, comprehensive response based on ALL the available context.
                 matches = re.findall(pattern, content, re.IGNORECASE)
                 if matches:
                     entities_found.add('age_info_found')
+                    if 'bruce' in entity_attributes:
+                        entity_attributes['bruce']['attributes'].append(f'age_reference: {matches[0]}')
             
-            # Gender indicators
-            gender_patterns = ['he ', 'his ', 'him ', 'she ', 'her ', 'herself', 'himself']
-            if any(g in content_lower for g in gender_patterns[:4]):  # Male indicators
+            # Gender indicators with confidence tracking
+            male_patterns = ['he ', 'his ', 'him ', 'himself', 'mr.', 'man ', 'guy ', 'male']
+            female_patterns = ['she ', 'her ', 'herself', 'ms.', 'mrs.', 'woman ', 'lady ', 'female']
+            
+            male_count = sum(1 for pattern in male_patterns if pattern in content_lower)
+            female_count = sum(1 for pattern in female_patterns if pattern in content_lower)
+            
+            if male_count > 0:
                 entities_found.add('male_pronouns')
-            if any(g in content_lower for g in gender_patterns[4:]):  # Female indicators  
+                behavioral_indicators.append(f'male_references: {male_count} occurrences')
+            if female_count > 0:
                 entities_found.add('female_pronouns')
+                behavioral_indicators.append(f'female_references: {female_count} occurrences')
                 
-            # Professional/hobby indicators
-            if any(work_word in content_lower for work_word in ['work', 'job', 'career', 'project', 'meeting', 'client']):
+            # Professional context with detailed extraction
+            professional_indicators = ['work', 'job', 'career', 'project', 'meeting', 'client', 'business', 'office', 'company', 'team']
+            prof_matches = [word for word in professional_indicators if word in content_lower]
+            if prof_matches:
                 entities_found.add('professional_info')
+                behavioral_indicators.append(f'professional_context: {", ".join(prof_matches)}')
                 
-            if any(hobby_word in content_lower for hobby_word in ['hobby', 'interest', 'enjoy', 'like', 'love', 'play', 'watch']):
+            # Interest and hobby indicators with categorization
+            hobby_indicators = ['hobby', 'interest', 'enjoy', 'like', 'love', 'play', 'watch', 'listen', 'read', 'gaming']
+            hobby_matches = [word for word in hobby_indicators if word in content_lower]
+            if hobby_matches:
                 entities_found.add('interests_hobbies')
+                behavioral_indicators.append(f'interests: {", ".join(hobby_matches)}')
                 
-            # Categorize content
-            if 'speaker' in metadata or 'conversation' in content_lower:
+            # Temporal pattern detection
+            time_indicators = ['today', 'yesterday', 'tomorrow', 'morning', 'afternoon', 'evening', 'night', 'weekend']
+            time_matches = [word for word in time_indicators if word in content_lower]
+            if time_matches:
+                temporal_patterns.append(f'{timestamp}: {", ".join(time_matches)}')
+                
+            # Enhanced content categorization with metadata integration
+            if (metadata and 'speaker' in metadata) or 'conversation' in content_lower or 'said' in content_lower:
                 conversations.append({
                     'content': full_content,
                     'timestamp': timestamp,
-                    'metadata': metadata
+                    'metadata': metadata,
+                    'namespace': namespace,
+                    'source_id': source_id,
+                    'speakers': metadata.get('speaker', 'Unknown')
                 })
-            elif any(activity_word in content_lower for activity_word in ['went', 'visited', 'did', 'activity', 'meeting']):
+            elif any(activity_word in content_lower for activity_word in ['went', 'visited', 'did', 'activity', 'meeting', 'traveled', 'walked']):
                 activities.append({
                     'content': full_content,
                     'timestamp': timestamp,
-                    'metadata': metadata
+                    'metadata': metadata,
+                    'namespace': namespace,
+                    'source_id': source_id
                 })
             else:
                 facts.append({
                     'content': full_content,
                     'timestamp': timestamp,
-                    'metadata': metadata
+                    'metadata': metadata,
+                    'namespace': namespace,
+                    'source_id': source_id
                 })
         
-        # Build structured sections
+        # Build comprehensive structured sections for advanced AI analysis
         if conversations:
-            context_parts.append("\n--- Conversations ---")
-            for i, conv in enumerate(conversations[:5], 1):
-                speaker_info = ""
-                if 'speaker' in conv['metadata']:
-                    speaker_info = f" [Speaker: {conv['metadata']['speaker']}]"
-                context_parts.append(f"{i}. {conv['content']}{speaker_info}")
+            context_parts.append("\n=== CONVERSATION DATA ===")
+            for i, conv in enumerate(conversations[:7], 1):  # Increased from 5 to 7
+                speaker_info = f" [Speaker: {conv['speakers']}]" if conv['speakers'] != 'Unknown' else ""
+                source_info = f" [Source: {conv['namespace']}]"
+                context_parts.append(f"{i}. {conv['content']}{speaker_info}{source_info}")
                 
         if activities:
-            context_parts.append("\n--- Activities ---")
-            for i, activity in enumerate(activities[:3], 1):
-                context_parts.append(f"{i}. {activity['content']}")
+            context_parts.append("\n=== ACTIVITY DATA ===")
+            for i, activity in enumerate(activities[:5], 1):  # Increased from 3 to 5
+                source_info = f" [Source: {activity['namespace']}]"
+                context_parts.append(f"{i}. {activity['content']}{source_info}")
                 
         if facts:
-            context_parts.append("\n--- Other Relevant Information ---")
-            for i, fact in enumerate(facts[:3], 1):
-                context_parts.append(f"{i}. {fact['content']}")
+            context_parts.append("\n=== FACTUAL DATA ===")
+            for i, fact in enumerate(facts[:5], 1):  # Increased from 3 to 5
+                source_info = f" [Source: {fact['namespace']}]"
+                context_parts.append(f"{i}. {fact['content']}{source_info}")
         
-        # Add comprehensive entity relationship mapping
+        # Comprehensive entity relationship mapping for advanced AI inference
         if entities_found:
-            context_parts.append("\n--- Entity Relationship Map ---")
-            entity_hints = []
+            context_parts.append("\n=== ENTITY ANALYSIS & RELATIONSHIP MAP ===")
+            entity_insights = []
             
-            # Pet relationships
+            # Enhanced pet relationship analysis
             if 'pets_mentioned' in entities_found:
                 pet_names = [e for e in entities_found if e.startswith('pet_name_')]
                 if pet_names:
-                    names = [name.replace('pet_name_', '').title() for name in pet_names]
-                    entity_hints.append(f"• PETS: {', '.join(names)} identified as dog(s)/pet(s)")
+                    pet_details = []
+                    for pet_key in pet_names:
+                        name = pet_key.replace('pet_name_', '').title()
+                        if pet_key in entity_attributes:
+                            contexts = set(entity_attributes[pet_key]['contexts'])
+                            pet_details.append(f"{name} (mentioned in: {', '.join(contexts)})")
+                        else:
+                            pet_details.append(name)
+                    entity_insights.append(f"• PETS IDENTIFIED: {', '.join(pet_details)}")
                 else:
-                    entity_hints.append("• Pet/dog references found (unnamed)")
+                    entity_insights.append("• PET REFERENCES: Unnamed pets/dogs mentioned")
             
-            # Person relationships
+            # Enhanced person analysis with comprehensive attributes
             if 'bruce_mentioned' in entities_found:
-                bruce_info = ["Bruce Bookman identified"]
+                bruce_profile = ["Bruce Bookman (primary entity)"]
+                if 'bruce' in entity_attributes:
+                    contexts = set(entity_attributes['bruce']['contexts'])
+                    bruce_profile.append(f"mentioned across {len(contexts)} data sources: {', '.join(contexts)}")
+                    if entity_attributes['bruce']['attributes']:
+                        bruce_profile.append(f"attributes: {', '.join(entity_attributes['bruce']['attributes'])}")
+                
                 if 'bruce_email_found' in entities_found:
-                    bruce_info.append("email found")
+                    bruce_profile.append("verified email identity")
                 if 'male_pronouns' in entities_found:
-                    bruce_info.append("male pronouns used")
+                    bruce_profile.append("male gender indicated")
                 if 'professional_info' in entities_found:
-                    bruce_info.append("professional context")
-                entity_hints.append(f"• PERSON: {' - '.join(bruce_info)}")
+                    bruce_profile.append("professional context present")
+                    
+                entity_insights.append(f"• PRIMARY PERSON: {' | '.join(bruce_profile)}")
             
-            # Demographic inferences
-            demographic_info = []
+            # Enhanced demographic inference analysis
+            demographic_analysis = []
             if 'age_info_found' in entities_found:
-                demographic_info.append("age information available")
+                demographic_analysis.append("age information explicitly available")
+            
+            gender_confidence = "unknown"
             if 'male_pronouns' in entities_found and 'female_pronouns' not in entities_found:
-                demographic_info.append("likely male")
+                gender_confidence = "high confidence male"
             elif 'female_pronouns' in entities_found and 'male_pronouns' not in entities_found:
-                demographic_info.append("likely female")
+                gender_confidence = "high confidence female"
+            elif 'male_pronouns' in entities_found and 'female_pronouns' in entities_found:
+                gender_confidence = "mixed gender references"
+            
+            if gender_confidence != "unknown":
+                demographic_analysis.append(f"gender: {gender_confidence}")
+                
             if 'interests_hobbies' in entities_found:
-                demographic_info.append("interests/hobbies mentioned")
+                demographic_analysis.append("personal interests documented")
+            if 'professional_info' in entities_found:
+                demographic_analysis.append("professional life documented")
             
-            if demographic_info:
-                entity_hints.append(f"• DEMOGRAPHICS: {', '.join(demographic_info)}")
+            if demographic_analysis:
+                entity_insights.append(f"• DEMOGRAPHIC PROFILE: {' | '.join(demographic_analysis)}")
             
-            context_parts.extend(entity_hints)
+            # Behavioral pattern analysis
+            if behavioral_indicators:
+                context_parts.append("\n=== BEHAVIORAL PATTERN ANALYSIS ===")
+                context_parts.extend([f"• {indicator}" for indicator in behavioral_indicators[:10]])
+            
+            # Temporal pattern analysis
+            if temporal_patterns:
+                context_parts.append("\n=== TEMPORAL PATTERN ANALYSIS ===")
+                context_parts.extend([f"• {pattern}" for pattern in temporal_patterns[:5]])
+            
+            context_parts.extend(entity_insights)
         
-        final_context = "\n\n".join(context_parts)
-        logger.debug(f"Context Building - Enhanced context: {len(context_parts)} sections, {len(final_context)} total characters, {len(entities_found)} entities detected")
+        # Data source summary for comprehensive understanding
+        namespaces = set(item.get('namespace', 'Unknown') for item in all_items)
+        context_parts.append(f"\n=== DATA SOURCE SUMMARY ===")
+        context_parts.append(f"• Total data items analyzed: {len(all_items)}")
+        context_parts.append(f"• Data sources: {', '.join(sorted(namespaces))}")
+        context_parts.append(f"• Entity types detected: {len(entities_found)}")
+        context_parts.append(f"• Behavioral indicators found: {len(behavioral_indicators)}")
+        
+        final_context = "\n".join(context_parts)
+        logger.debug(f"Context Building - Comprehensive context: {len(context_parts)} sections, {len(final_context)} total characters, {len(entities_found)} entities detected")
         return final_context
     
     def get_chat_history(self, limit: int = 20) -> List[Dict[str, Any]]:
