@@ -13,6 +13,7 @@ import numpy as np
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
+from core.ner_service import NERService
 from llm.factory import create_llm_provider
 from llm.base import LLMResponse, LLMError
 from config.models import AppConfig
@@ -26,6 +27,8 @@ class ChatContext:
     vector_results: List[Dict[str, Any]]
     sql_results: List[Dict[str, Any]]
     total_results: int
+    search_mode: str = "hybrid"  # hybrid, sql_only, sql_favored
+    embedding_count: int = 0
 
 
 class ChatService:
@@ -37,10 +40,11 @@ class ChatService:
         self.database = database
         self.vector_store = vector_store
         self.embeddings = embeddings
+        self.ner_service = NERService()
         self.llm_provider = None
         
     async def initialize(self):
-        """Initialize LLM provider and embedding service"""
+        """Initialize LLM provider, embedding service, and NER service"""
         try:
             logger.info("Starting service initialization...")
             
@@ -49,6 +53,11 @@ class ChatService:
                 logger.info("Initializing embedding service...")
                 await self.embeddings.initialize()
                 logger.info("Embedding service initialized successfully")
+            
+            # Initialize NER service
+            logger.info("Initializing NER service...")
+            await self.ner_service.initialize()
+            logger.info("NER service initialized successfully")
             
             # Create LLM provider factory (synchronous call)
             llm_factory = create_llm_provider(self.config.llm_provider)
@@ -133,28 +142,59 @@ class ChatService:
             return error_msg
     
     async def _get_chat_context(self, query: str, max_results: int = 10) -> ChatContext:
-        """Get relevant context using hybrid approach (vector + SQL)"""
+        """Get relevant context using hybrid approach with intelligent fallback"""
         logger.info(f"Chat Debug - Starting context retrieval for query: '{query}'")
-        logger.info(f"Chat Debug - Search parameters: max_results={max_results}, vector_limit={max_results // 2}, sql_limit={max_results // 2}")
         
         vector_results = []
         sql_results = []
+        search_mode = "hybrid"  # hybrid, vector_only, sql_only
         
-        try:
-            # Vector search for semantic similarity
-            if self.vector_store and self.embeddings:
+        # Check if vector search is available and has any embeddings
+        vector_available = False
+        embedding_count = 0
+        
+        if self.vector_store and self.embeddings:
+            try:
+                embedding_count = len(self.vector_store.vectors)
+                vector_available = embedding_count > 0
+                logger.info(f"Chat Debug - Vector store status: {embedding_count} embeddings available")
+            except Exception as e:
+                logger.warning(f"Error checking vector store: {e}")
+        
+        if not vector_available:
+            # No embeddings available - use SQL search only with more results
+            search_mode = "sql_only"
+            logger.info("Chat Debug - Using SQL-only search (no embeddings available)")
+            sql_limit = max_results
+            vector_limit = 0
+        elif embedding_count < 100:
+            # Limited embeddings - favor SQL search but still try vector
+            search_mode = "sql_favored"
+            logger.info(f"Chat Debug - Using SQL-favored search ({embedding_count} embeddings available)")
+            sql_limit = int(max_results * 0.7)
+            vector_limit = max_results - sql_limit
+        else:
+            # Full embeddings available - balanced approach
+            search_mode = "hybrid"
+            logger.info(f"Chat Debug - Using balanced hybrid search ({embedding_count} embeddings available)")
+            sql_limit = max_results // 2
+            vector_limit = max_results // 2
+        
+        logger.info(f"Chat Debug - Search mode: {search_mode}, vector_limit: {vector_limit}, sql_limit: {sql_limit}")
+        
+        # Perform vector search if available
+        if vector_limit > 0:
+            try:
                 logger.info("Chat Debug - Performing vector search...")
-                vector_results = await self._vector_search(query, max_results // 2)
+                vector_results = await self._vector_search(query, vector_limit)
                 logger.info(f"Chat Debug - Vector search returned {len(vector_results)} results")
-            else:
-                logger.warning("Chat Debug - Vector search skipped: vector_store or embeddings not available")
-        except Exception as e:
-            logger.warning(f"Vector search failed: {e}")
+            except Exception as e:
+                logger.warning(f"Vector search failed: {e}")
         
+        # Always perform SQL search (fallback or primary)
         try:
-            # SQL search for keyword matching
             logger.info("Chat Debug - Performing SQL search...")
-            sql_results = await self._sql_search(query, max_results // 2)
+            sql_results = await self._sql_search(query, sql_limit)
             logger.info(f"Chat Debug - SQL search returned {len(sql_results)} results")
         except Exception as e:
             logger.warning(f"SQL search failed: {e}")
@@ -165,7 +205,9 @@ class ChatService:
         return ChatContext(
             vector_results=vector_results,
             sql_results=sql_results,
-            total_results=total_results
+            total_results=total_results,
+            search_mode=search_mode,
+            embedding_count=embedding_count
         )
     
     async def _vector_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
@@ -250,20 +292,33 @@ class ChatService:
         return []
     
     async def _sql_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
-        """Perform SQL-based keyword search"""
+        """Perform SQL-based keyword search across content and enhanced preprocessing fields"""
         try:
             search_pattern = f"%{query}%"
             logger.debug(f"Chat Debug - SQL search pattern: '{search_pattern}', limit: {max_results}")
             
-            # Simple keyword search in content
+            # Enhanced search across content, summary_content, and named_entities
             with self.database.get_connection() as conn:
                 cursor = conn.execute("""
-                    SELECT id, namespace, source_id, content, metadata, created_at, updated_at
+                    SELECT id, namespace, source_id, content, metadata, 
+                           summary_content, named_entities, content_classification,
+                           created_at, updated_at
                     FROM data_items 
                     WHERE content LIKE ? 
-                    ORDER BY updated_at DESC
+                       OR summary_content LIKE ?
+                       OR named_entities LIKE ?
+                       OR content_classification LIKE ?
+                    ORDER BY 
+                        CASE 
+                            WHEN named_entities LIKE ? THEN 1
+                            WHEN summary_content LIKE ? THEN 2  
+                            WHEN content_classification LIKE ? THEN 3
+                            ELSE 4
+                        END,
+                        updated_at DESC
                     LIMIT ?
-                """, (search_pattern, max_results))
+                """, (search_pattern, search_pattern, search_pattern, search_pattern,
+                      search_pattern, search_pattern, search_pattern, max_results))
                 
                 results = []
                 for row in cursor.fetchall():
@@ -276,26 +331,59 @@ class ChatService:
                             item['metadata'] = None
                     results.append(item)
                 
-                logger.info(f"Chat Debug - SQL search found {len(results)} matching items")
+                logger.info(f"Chat Debug - Enhanced SQL search found {len(results)} matching items")
                 
-                # Analyze SQL results
+                # Analyze SQL results with field match analysis
                 if results:
                     sql_namespaces = {item.get('namespace') for item in results}
                     sql_content_lengths = [len(item.get('content', '')) for item in results]
+                    
+                    # Analyze which fields had matches for debugging
+                    field_matches = {'content': 0, 'summary_content': 0, 'named_entities': 0, 'content_classification': 0}
+                    for item in results:
+                        if search_pattern.replace('%', '').lower() in (item.get('content', '') or '').lower():
+                            field_matches['content'] += 1
+                        if search_pattern.replace('%', '').lower() in (item.get('summary_content', '') or '').lower():
+                            field_matches['summary_content'] += 1
+                        if search_pattern.replace('%', '').lower() in (item.get('named_entities', '') or '').lower():
+                            field_matches['named_entities'] += 1
+                        if search_pattern.replace('%', '').lower() in (item.get('content_classification', '') or '').lower():
+                            field_matches['content_classification'] += 1
+                    
                     logger.info(f"Chat Debug - SQL result analysis: namespaces={sorted(sql_namespaces)}, content_lengths={sql_content_lengths}")
+                    logger.info(f"Chat Debug - Field matches: {field_matches}")
                     
                     # Log detailed SQL SEARCH RESULTS (truncated to 10 records for brevity)
-                    logger.info("=== SQL SEARCH RESULTS (truncated to 10 records for brevity) ===")
+                    logger.info("=== ENHANCED SQL SEARCH RESULTS (truncated to 10 records for brevity) ===")
                     for i, item in enumerate(results[:10]):
                         content = item.get('content', '')
                         content_preview = content[:150] + '...' if len(content) > 150 else content
                         metadata = item.get('metadata', {})
+                        summary_content = item.get('summary_content', '')
+                        named_entities = item.get('named_entities', '')
+                        
+                        # Determine which field(s) matched
+                        matched_fields = []
+                        search_term = search_pattern.replace('%', '').lower()
+                        if search_term in content.lower():
+                            matched_fields.append('content')
+                        if search_term in (summary_content or '').lower():
+                            matched_fields.append('summary_content')
+                        if search_term in (named_entities or '').lower():
+                            matched_fields.append('named_entities')
                         
                         logger.info(f"SQL Result {i+1}:")
                         logger.info(f"  ID: {item.get('id')}")
                         logger.info(f"  Namespace: {item.get('namespace')} | Source: {item.get('source_id')}")
+                        logger.info(f"  Matched Fields: {', '.join(matched_fields) if matched_fields else 'Unknown'}")
                         logger.info(f"  Content Length: {len(content)} chars")
                         logger.info(f"  Content Preview: '{content_preview}'")
+                        if summary_content:
+                            summary_preview = summary_content[:100] + '...' if len(summary_content) > 100 else summary_content
+                            logger.info(f"  Summary Content: '{summary_preview}'")
+                        if named_entities:
+                            entities_preview = named_entities[:100] + '...' if len(named_entities) > 100 else named_entities
+                            logger.info(f"  Named Entities: '{entities_preview}'")
                         if metadata:
                             logger.debug(f"  Metadata: {metadata}")
                         logger.info(f"  Created: {item.get('created_at')} | Updated: {item.get('updated_at')}")
@@ -304,7 +392,7 @@ class ChatService:
                     if len(results) > 10:
                         logger.info(f"... and {len(results) - 10} more SQL results")
                 else:
-                    logger.info(f"Chat Debug - SQL search with pattern '%{query}%' returned no results")
+                    logger.info(f"Chat Debug - Enhanced SQL search with pattern '%{query}%' returned no results")
                 
                 return results
                 
@@ -322,6 +410,7 @@ class ChatService:
         context_text = self._build_context_text(context)
         logger.info(f"Chat Debug - Context text length: {len(context_text)} characters")
         logger.info(f"Chat Debug - Context contains {context.total_results} total results (vector: {len(context.vector_results)}, sql: {len(context.sql_results)})")
+        logger.info(f"Chat Debug - Search mode: {context.search_mode}, embedding count: {context.embedding_count}")
         
         # Log detailed CONTEXT BUILDING RESULTS
         logger.info("=== CONTEXT BUILDING RESULTS ===")
@@ -405,6 +494,12 @@ Analyze the provided personal data context thoroughly and provide a comprehensiv
         logger.info(f"Chat Debug - LLM response received, length: {len(response.content) if response.content else 0} characters")
         logger.debug(f"Chat Debug - LLM response content: '{response.content}'")
         
+        # Add search mode notification to response if not using full vector search
+        if context.search_mode == "sql_only":
+            response.content += f"\n\n*Note: Found information using keyword search. Full semantic search will be available when background embedding processing completes ({context.embedding_count} of your data items are currently searchable).*"
+        elif context.search_mode == "sql_favored":
+            response.content += f"\n\n*Note: Used enhanced keyword search with limited semantic search. Full semantic search capabilities will improve as background embedding processing continues ({context.embedding_count} items currently embedded).*"
+        
         return response
     
     def _build_context_text(self, context: ChatContext) -> str:
@@ -452,129 +547,109 @@ Analyze the provided personal data context thoroughly and provide a comprehensiv
             namespace = item.get('namespace', 'Unknown')
             source_id = item.get('source_id', 'Unknown')
             
+            # Enhanced preprocessing data extraction
+            summary_content = item.get('summary_content', '')
+            named_entities = item.get('named_entities', '')
+            content_classification = item.get('content_classification', '')
+            
             # Use full content for comprehensive analysis - increased limit
             full_content = content[:2000]  # Increased from 1500 to 2000 characters
             
+            # Combine content with enhanced preprocessing data for richer analysis
+            analysis_text = content
+            if summary_content:
+                analysis_text += f" [SUMMARY: {summary_content}]"
+            if named_entities:
+                analysis_text += f" [ENTITIES: {named_entities}]"
+            if content_classification:
+                analysis_text += f" [CLASSIFICATION: {content_classification}]"
+            
             # Categorize by content type and source
             content_lower = content.lower()
+            analysis_text_lower = analysis_text.lower()  # Use enhanced text for analysis
             
-            # Enhanced entity extraction and relationship mapping
+            # Use NER service for intelligent entity extraction and relationship mapping
+            if self.ner_service.is_available():
+                try:
+                    ner_analysis = self.ner_service.analyze_content_for_context(analysis_text)
+                    
+                    # Merge NER results with our tracking structures
+                    if ner_analysis:
+                        entities_found.update(ner_analysis.get('entities_found', set()))
+                        
+                        # Merge entity attributes
+                        for key, attrs in ner_analysis.get('entity_attributes', {}).items():
+                            if key not in entity_attributes:
+                                entity_attributes[key] = {'mentions': [], 'contexts': [], 'attributes': []}
+                            entity_attributes[key]['mentions'].extend(attrs.get('mentions', []))
+                            entity_attributes[key]['contexts'].append(namespace)
+                            entity_attributes[key]['attributes'].extend(attrs.get('attributes', []))
+                        
+                        # Add relationships
+                        for rel in ner_analysis.get('relationships', []):
+                            relationships.append(rel)
+                        
+                        # Add behavioral indicators
+                        behavioral_indicators.extend(ner_analysis.get('behavioral_indicators', []))
+                        
+                        logger.debug(f"NER analysis found {len(ner_analysis.get('entities_found', set()))} entity types in item {item.get('id', 'unknown')}")
+                    
+                except Exception as e:
+                    logger.warning(f"NER analysis failed for item {item.get('id', 'unknown')}: {e}")
+            
+            # Additional temporal pattern detection (simple keyword-based)
             import re
-            
-            # Comprehensive pet/animal entity detection with attributes
-            pet_indicators = ['dog', 'pet', 'puppy', 'canine', 'pup', 'animal', 'doggy']
-            if any(pet_word in content_lower for pet_word in pet_indicators):
-                entities_found.add('pets_mentioned')
-                
-                # Enhanced pet name detection patterns
-                pet_name_patterns = [
-                    r'\b([A-Z][a-z]+)\s+(?:is|was|the)\s+(?:dog|puppy|pet)',
-                    r'(?:dog|pet|puppy)\s+(?:named|called)\s+([A-Z][a-z]+)',
-                    r'([A-Z][a-z]+)(?:\s+the)?\s+(?:dog|puppy|pet)',
-                    r'my\s+(?:dog|pet|puppy)\s+([A-Z][a-z]+)',
-                    r'([A-Z][a-z]+)\s*[,.]?\s*(?:my|our)\s+(?:dog|pet)',
-                ]
-                for pattern in pet_name_patterns:
-                    matches = re.findall(pattern, content, re.IGNORECASE)
-                    for match in matches:
-                        if match.lower() not in ['the', 'my', 'his', 'her', 'their', 'our', 'this', 'that']:
-                            pet_key = f'pet_name_{match.lower()}'
-                            entities_found.add(pet_key)
-                            if pet_key not in entity_attributes:
-                                entity_attributes[pet_key] = {'mentions': [], 'contexts': []}
-                            entity_attributes[pet_key]['mentions'].append(content[:200])
-                            entity_attributes[pet_key]['contexts'].append(namespace)
-            
-            # Enhanced person name detection with relationship mapping
-            person_indicators = ['bruce', 'bookman']
-            if any(name in content_lower for name in person_indicators):
-                entities_found.add('bruce_mentioned')
-                if 'bruce' not in entity_attributes:
-                    entity_attributes['bruce'] = {'mentions': [], 'contexts': [], 'attributes': []}
-                entity_attributes['bruce']['mentions'].append(content[:200])
-                entity_attributes['bruce']['contexts'].append(namespace)
-                
-            # Email detection with identity linking
-            email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
-            emails = re.findall(email_pattern, content)
-            for email in emails:
-                if 'bruce' in email.lower() or 'bookman' in email.lower():
-                    entities_found.add('bruce_email_found')
-                    if 'bruce' in entity_attributes:
-                        entity_attributes['bruce']['attributes'].append(f'email: {email}')
-            
-            # Enhanced demographic and behavioral indicators
-            age_patterns = [
-                r'(\d{1,2})\s+years?\s+old',
-                r'age\s+(\d{1,2})',
-                r'born\s+(?:in\s+)?(\d{4})',
-            ]
-            for pattern in age_patterns:
-                matches = re.findall(pattern, content, re.IGNORECASE)
-                if matches:
-                    entities_found.add('age_info_found')
-                    if 'bruce' in entity_attributes:
-                        entity_attributes['bruce']['attributes'].append(f'age_reference: {matches[0]}')
-            
-            # Gender indicators with confidence tracking
-            male_patterns = ['he ', 'his ', 'him ', 'himself', 'mr.', 'man ', 'guy ', 'male']
-            female_patterns = ['she ', 'her ', 'herself', 'ms.', 'mrs.', 'woman ', 'lady ', 'female']
-            
-            male_count = sum(1 for pattern in male_patterns if pattern in content_lower)
-            female_count = sum(1 for pattern in female_patterns if pattern in content_lower)
-            
-            if male_count > 0:
-                entities_found.add('male_pronouns')
-                behavioral_indicators.append(f'male_references: {male_count} occurrences')
-            if female_count > 0:
-                entities_found.add('female_pronouns')
-                behavioral_indicators.append(f'female_references: {female_count} occurrences')
-                
-            # Professional context with detailed extraction
-            professional_indicators = ['work', 'job', 'career', 'project', 'meeting', 'client', 'business', 'office', 'company', 'team']
-            prof_matches = [word for word in professional_indicators if word in content_lower]
-            if prof_matches:
-                entities_found.add('professional_info')
-                behavioral_indicators.append(f'professional_context: {", ".join(prof_matches)}')
-                
-            # Interest and hobby indicators with categorization
-            hobby_indicators = ['hobby', 'interest', 'enjoy', 'like', 'love', 'play', 'watch', 'listen', 'read', 'gaming']
-            hobby_matches = [word for word in hobby_indicators if word in content_lower]
-            if hobby_matches:
-                entities_found.add('interests_hobbies')
-                behavioral_indicators.append(f'interests: {", ".join(hobby_matches)}')
-                
-            # Temporal pattern detection
             time_indicators = ['today', 'yesterday', 'tomorrow', 'morning', 'afternoon', 'evening', 'night', 'weekend']
-            time_matches = [word for word in time_indicators if word in content_lower]
+            time_matches = [word for word in time_indicators if word in analysis_text_lower]
             if time_matches:
                 temporal_patterns.append(f'{timestamp}: {", ".join(time_matches)}')
+            
+            # Email detection (supplementary to NER)
+            email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
+            emails = re.findall(email_pattern, analysis_text)
+            for email in emails:
+                # Check if email belongs to any detected person
+                for person_name in [name for name in entity_attributes.keys() if not name.startswith('pet_name_')]:
+                    if any(part in email.lower() for part in person_name.split('_')):
+                        if person_name not in entity_attributes:
+                            entity_attributes[person_name] = {'mentions': [], 'contexts': [], 'attributes': []}
+                        entity_attributes[person_name]['attributes'].append(f'email: {email}')
+                        entities_found.add(f'{person_name}_email_found')
                 
-            # Enhanced content categorization with metadata integration
-            if (metadata and 'speaker' in metadata) or 'conversation' in content_lower or 'said' in content_lower:
+            # Enhanced content categorization with metadata integration - use enhanced analysis text
+            if (metadata and 'speaker' in metadata) or 'conversation' in analysis_text_lower or 'said' in analysis_text_lower:
                 conversations.append({
                     'content': full_content,
+                    'enhanced_content': analysis_text[:500],  # Include enhanced data preview
                     'timestamp': timestamp,
                     'metadata': metadata,
                     'namespace': namespace,
                     'source_id': source_id,
-                    'speakers': metadata.get('speaker', 'Unknown')
+                    'speakers': metadata.get('speaker', 'Unknown'),
+                    'named_entities': named_entities,
+                    'summary_content': summary_content
                 })
-            elif any(activity_word in content_lower for activity_word in ['went', 'visited', 'did', 'activity', 'meeting', 'traveled', 'walked']):
+            elif any(activity_word in analysis_text_lower for activity_word in ['went', 'visited', 'did', 'activity', 'meeting', 'traveled', 'walked']):
                 activities.append({
                     'content': full_content,
+                    'enhanced_content': analysis_text[:500],
                     'timestamp': timestamp,
                     'metadata': metadata,
                     'namespace': namespace,
-                    'source_id': source_id
+                    'source_id': source_id,
+                    'named_entities': named_entities,
+                    'summary_content': summary_content
                 })
             else:
                 facts.append({
                     'content': full_content,
+                    'enhanced_content': analysis_text[:500],
                     'timestamp': timestamp,
                     'metadata': metadata,
                     'namespace': namespace,
-                    'source_id': source_id
+                    'source_id': source_id,
+                    'named_entities': named_entities,
+                    'summary_content': summary_content
                 })
         
         # Build comprehensive structured sections for advanced AI analysis
@@ -583,26 +658,32 @@ Analyze the provided personal data context thoroughly and provide a comprehensiv
             for i, conv in enumerate(conversations[:7], 1):  # Increased from 5 to 7
                 speaker_info = f" [Speaker: {conv['speakers']}]" if conv['speakers'] != 'Unknown' else ""
                 source_info = f" [Source: {conv['namespace']}]"
-                context_parts.append(f"{i}. {conv['content']}{speaker_info}{source_info}")
+                entities_info = f" [Entities: {conv['named_entities']}]" if conv.get('named_entities') else ""
+                summary_info = f" [Summary: {conv['summary_content'][:100]}...]" if conv.get('summary_content') else ""
+                context_parts.append(f"{i}. {conv['content']}{speaker_info}{source_info}{entities_info}{summary_info}")
                 
         if activities:
             context_parts.append("\n=== ACTIVITY DATA ===")
             for i, activity in enumerate(activities[:5], 1):  # Increased from 3 to 5
                 source_info = f" [Source: {activity['namespace']}]"
-                context_parts.append(f"{i}. {activity['content']}{source_info}")
+                entities_info = f" [Entities: {activity['named_entities']}]" if activity.get('named_entities') else ""
+                summary_info = f" [Summary: {activity['summary_content'][:100]}...]" if activity.get('summary_content') else ""
+                context_parts.append(f"{i}. {activity['content']}{source_info}{entities_info}{summary_info}")
                 
         if facts:
             context_parts.append("\n=== FACTUAL DATA ===")
             for i, fact in enumerate(facts[:5], 1):  # Increased from 3 to 5
                 source_info = f" [Source: {fact['namespace']}]"
-                context_parts.append(f"{i}. {fact['content']}{source_info}")
+                entities_info = f" [Entities: {fact['named_entities']}]" if fact.get('named_entities') else ""
+                summary_info = f" [Summary: {fact['summary_content'][:100]}...]" if fact.get('summary_content') else ""
+                context_parts.append(f"{i}. {fact['content']}{source_info}{entities_info}{summary_info}")
         
         # Comprehensive entity relationship mapping for advanced AI inference
         if entities_found:
             context_parts.append("\n=== ENTITY ANALYSIS & RELATIONSHIP MAP ===")
             entity_insights = []
             
-            # Enhanced pet relationship analysis
+            # Pet relationship analysis using NER results
             if 'pets_mentioned' in entities_found:
                 pet_names = [e for e in entities_found if e.startswith('pet_name_')]
                 if pet_names:
@@ -611,54 +692,56 @@ Analyze the provided personal data context thoroughly and provide a comprehensiv
                         name = pet_key.replace('pet_name_', '').title()
                         if pet_key in entity_attributes:
                             contexts = set(entity_attributes[pet_key]['contexts'])
-                            pet_details.append(f"{name} (mentioned in: {', '.join(contexts)})")
+                            attributes = entity_attributes[pet_key].get('attributes', [])
+                            detail = f"{name} (contexts: {', '.join(contexts)}"
+                            if attributes:
+                                detail += f", {', '.join(attributes)}"
+                            detail += ")"
+                            pet_details.append(detail)
                         else:
                             pet_details.append(name)
                     entity_insights.append(f"• PETS IDENTIFIED: {', '.join(pet_details)}")
                 else:
                     entity_insights.append("• PET REFERENCES: Unnamed pets/dogs mentioned")
             
-            # Enhanced person analysis with comprehensive attributes
-            if 'bruce_mentioned' in entities_found:
-                bruce_profile = ["Bruce Bookman (primary entity)"]
-                if 'bruce' in entity_attributes:
-                    contexts = set(entity_attributes['bruce']['contexts'])
-                    bruce_profile.append(f"mentioned across {len(contexts)} data sources: {', '.join(contexts)}")
-                    if entity_attributes['bruce']['attributes']:
-                        bruce_profile.append(f"attributes: {', '.join(entity_attributes['bruce']['attributes'])}")
-                
-                if 'bruce_email_found' in entities_found:
-                    bruce_profile.append("verified email identity")
-                if 'male_pronouns' in entities_found:
-                    bruce_profile.append("male gender indicated")
-                if 'professional_info' in entities_found:
-                    bruce_profile.append("professional context present")
+            # Person analysis using NER results - generalized for any detected people
+            people_entities = [e for e in entities_found if e.endswith('_mentioned') and e not in ['pets_mentioned']]
+            for person_entity in people_entities:
+                person_name = person_entity.replace('_mentioned', '')
+                if person_name in entity_attributes:
+                    person_profile = [f"{person_name.title()} (detected person)"]
+                    contexts = set(entity_attributes[person_name]['contexts'])
+                    person_profile.append(f"mentioned across {len(contexts)} data sources: {', '.join(contexts)}")
                     
-                entity_insights.append(f"• PRIMARY PERSON: {' | '.join(bruce_profile)}")
+                    attributes = entity_attributes[person_name].get('attributes', [])
+                    if attributes:
+                        person_profile.append(f"attributes: {', '.join(attributes)}")
+                    
+                    entity_insights.append(f"• PERSON: {' | '.join(person_profile)}")
             
-            # Enhanced demographic inference analysis
-            demographic_analysis = []
-            if 'age_info_found' in entities_found:
-                demographic_analysis.append("age information explicitly available")
+            # Relationship analysis using NER detected relationships
+            if relationships:
+                context_parts.append("\n=== DETECTED RELATIONSHIPS ===")
+                for i, rel in enumerate(relationships[:5], 1):
+                    if isinstance(rel, dict):
+                        rel_type = rel.get('type', 'unknown')
+                        if rel_type == 'pet_ownership':
+                            owner = rel.get('owner', 'Unknown')
+                            pet = rel.get('pet', 'Unknown')
+                            confidence = rel.get('confidence', 0.0)
+                            context_parts.append(f"• Relationship {i}: {owner} owns pet {pet} (confidence: {confidence:.2f})")
+                    else:
+                        # Handle Relationship dataclass objects
+                        context_parts.append(f"• Relationship {i}: {rel.subject.text} {rel.predicate} {rel.object.text} (confidence: {rel.confidence:.2f})")
             
-            gender_confidence = "unknown"
-            if 'male_pronouns' in entities_found and 'female_pronouns' not in entities_found:
-                gender_confidence = "high confidence male"
-            elif 'female_pronouns' in entities_found and 'male_pronouns' not in entities_found:
-                gender_confidence = "high confidence female"
-            elif 'male_pronouns' in entities_found and 'female_pronouns' in entities_found:
-                gender_confidence = "mixed gender references"
+            # Location and organization analysis
+            location_entities = [e for e in entities_found if e == 'location_mentioned']
+            if location_entities:
+                entity_insights.append("• LOCATIONS: Geographic references detected")
             
-            if gender_confidence != "unknown":
-                demographic_analysis.append(f"gender: {gender_confidence}")
-                
-            if 'interests_hobbies' in entities_found:
-                demographic_analysis.append("personal interests documented")
-            if 'professional_info' in entities_found:
-                demographic_analysis.append("professional life documented")
-            
-            if demographic_analysis:
-                entity_insights.append(f"• DEMOGRAPHIC PROFILE: {' | '.join(demographic_analysis)}")
+            org_entities = [e for e in entities_found if e == 'organization_mentioned']  
+            if org_entities:
+                entity_insights.append("• ORGANIZATIONS: Business/organization references detected")
             
             # Behavioral pattern analysis
             if behavioral_indicators:

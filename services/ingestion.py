@@ -138,21 +138,10 @@ class IngestionService:
         finally:
             result.end_time = datetime.now(timezone.utc)
             
-            # Automatically process embeddings for newly ingested items
+            # Note: Embedding processing is now handled by a separate scheduler
+            # This allows for faster data ingestion and flexible embedding processing
             if result.items_stored > 0:
-                try:
-                    logger.info(f"Auto-processing embeddings for {result.items_stored} newly ingested items...")
-                    embedding_result = await self.process_pending_embeddings(batch_size=32)
-                    result.embeddings_generated = embedding_result.get("successful", 0)
-                    logger.info(f"Auto-embedding processing completed: {result.embeddings_generated} embeddings generated")
-                    
-                    if embedding_result.get("errors"):
-                        result.errors.extend(embedding_result["errors"])
-                        
-                except Exception as e:
-                    error_msg = f"Auto-embedding processing failed: {str(e)}"
-                    logger.error(error_msg)
-                    result.errors.append(error_msg)
+                logger.info(f"Stored {result.items_stored} new items. Embeddings will be processed by the embedding scheduler.")
             
             logger.info(f"Ingestion completed for {namespace}: {result.to_dict()}")
         
@@ -321,7 +310,7 @@ class IngestionService:
             for task, embedding in zip(tasks, embeddings):
                 try:
                     # Use the task ID for vector storage
-                    task_id = task['id']
+                    task_id = task.get('id', task.get('item_id', 'unknown'))
                     success = self.vector_store.add_vector(task_id, embedding)
                     
                     if success:
@@ -331,7 +320,7 @@ class IngestionService:
                         result["successful"] += 1
                         
                         # Track chunking stats
-                        if task.get('is_chunk', False):
+                        if task.get('type') == 'chunk':
                             result["chunking_stats"]["chunk_embeddings_created"] += 1
                         
                         logger.debug(f"Generated embedding for task: {task_id}")
@@ -342,10 +331,10 @@ class IngestionService:
                         result["errors"].append(f"Failed to add vector for task {task_id}")
                 
                 except Exception as e:
-                    original_id = task.get('original_id', task.get('id', 'unknown'))
+                    original_id = task.get('original_id', task.get('item_id', task_id))
                     self.database.update_embedding_status(original_id, 'failed')
                     result["failed"] += 1
-                    result["errors"].append(f"Error processing task {task.get('id', 'unknown')}: {str(e)}")
+                    result["errors"].append(f"Error processing task {task_id}: {str(e)}")
                 
                 result["processed"] += 1
         
@@ -356,7 +345,7 @@ class IngestionService:
             
             # Mark all original items in batch as failed
             for task in batch_tasks:
-                original_id = task.get('original_id', task.get('id', 'unknown'))
+                original_id = task.get('original_id', task.get('item_id', 'unknown'))
                 self.database.update_embedding_status(original_id, 'failed')
                 result["failed"] += 1
                 result["processed"] += 1
@@ -390,17 +379,8 @@ class IngestionService:
         if result.errors:
             raise Exception(f"Failed to ingest item: {result.errors[0]}")
         
-        # Auto-process embeddings for the manually ingested item
-        if result.items_stored > 0:
-            try:
-                embedding_result = await self.process_pending_embeddings(batch_size=1)
-                result.embeddings_generated = embedding_result.get("successful", 0)
-                logger.info(f"Auto-generated embedding for manually ingested item")
-            except Exception as e:
-                logger.warning(f"Auto-embedding failed for manually ingested item: {e}")
-        
         namespaced_id = NamespacedIDManager.create_id(namespace, source_id)
-        logger.info(f"Manually ingested item: {namespaced_id}")
+        logger.info(f"Manually ingested item: {namespaced_id} (embedding will be processed by scheduler)")
         
         return namespaced_id
     
@@ -424,15 +404,10 @@ class IngestionService:
                 error_result.errors.append(str(e))
                 results[namespace] = error_result
         
-        # Process any remaining pending embeddings after all syncs
+        # Note: Embeddings are now processed by a separate scheduler
         total_items = sum(result.items_stored for result in results.values() if hasattr(result, 'items_stored'))
         if total_items > 0:
-            try:
-                logger.info(f"Processing any remaining pending embeddings after full sync...")
-                final_embedding_result = await self.process_pending_embeddings(batch_size=64)
-                logger.info(f"Final embedding processing: {final_embedding_result.get('successful', 0)} embeddings generated")
-            except Exception as e:
-                logger.warning(f"Final embedding processing failed: {e}")
+            logger.info(f"Full sync completed: {total_items} items stored. Embeddings will be processed by the embedding scheduler.")
         
         return results
     
@@ -456,15 +431,10 @@ class IngestionService:
                 error_result.errors.append(str(e))
                 results[namespace] = error_result
         
-        # Process any remaining pending embeddings after all syncs
+        # Note: Embeddings are now processed by a separate scheduler
         total_items = sum(result.items_stored for result in results.values() if hasattr(result, 'items_stored'))
         if total_items > 0:
-            try:
-                logger.info(f"Processing any remaining pending embeddings after incremental sync...")
-                final_embedding_result = await self.process_pending_embeddings(batch_size=64)
-                logger.info(f"Final embedding processing: {final_embedding_result.get('successful', 0)} embeddings generated")
-            except Exception as e:
-                logger.warning(f"Final embedding processing failed: {e}")
+            logger.info(f"Incremental sync completed: {total_items} items stored. Embeddings will be processed by the embedding scheduler.")
         
         return results
     

@@ -129,3 +129,9 @@ The project is currently in planning phase with comprehensive documentation for 
 ## Memory Management Guidelines
 - Updates to the development log are intentional and made by the human
 - Purge cache of the development log and only read the file that exists and not any kind of memory or cache
+
+## Development Best Practices
+- Do not hard code, ever
+
+## Development Guidelines
+- Use industry standard libraries as solutions

@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 from .models import (
-    AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
+    AppConfig, DatabaseConfig, EmbeddingConfig, EmbeddingProcessingConfig, VectorStoreConfig,
     LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
     LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
 )
@@ -82,6 +82,14 @@ def create_production_config() -> AppConfig:
             model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
             device=os.getenv("EMBEDDING_DEVICE", "cpu"),
             batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
+        ),
+        embedding_processing=EmbeddingProcessingConfig(
+            enabled=os.getenv("EMBEDDING_PROCESSING_ENABLED", "true").lower() == "true",
+            interval_hours=int(os.getenv("EMBEDDING_PROCESSING_INTERVAL_HOURS", "6")),
+            batch_size=int(os.getenv("EMBEDDING_PROCESSING_BATCH_SIZE", "100")),
+            max_concurrent_jobs=int(os.getenv("EMBEDDING_PROCESSING_MAX_CONCURRENT_JOBS", "1")),
+            startup_processing=os.getenv("EMBEDDING_PROCESSING_STARTUP", "false").lower() == "true",
+            startup_limit=int(os.getenv("EMBEDDING_PROCESSING_STARTUP_LIMIT", "50"))
         ),
         vector_store=VectorStoreConfig(
             index_path=os.getenv("VECTOR_INDEX_PATH", "vector_index.faiss"),

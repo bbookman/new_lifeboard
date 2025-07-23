@@ -94,14 +94,82 @@ class DatabaseService:
     
     def store_data_item(self, id: str, namespace: str, source_id: str, 
                        content: str, metadata: Dict = None):
-        """Store data item with namespaced ID"""
+        """Store data item with namespaced ID and extract preprocessed data"""
+        if metadata is None:
+            metadata = {}
+        
+        # Extract preprocessed data from metadata for dedicated columns
+        summary_content = None
+        named_entities = None
+        content_classification = None
+        temporal_context = None
+        conversation_turns = None
+        content_quality_score = None
+        semantic_density = None
+        preprocessing_status = 'pending'
+        
+        if metadata:
+            # Extract summary content - use the cleaned content which is stored in the content field after processing
+            processing_history = metadata.get('processing_history', [])
+            has_advanced_cleaning = any(p.get('processor') == 'AdvancedCleaningProcessor' for p in processing_history)
+            
+            if has_advanced_cleaning and content:
+                # The content has already been cleaned by AdvancedCleaningProcessor
+                summary_content = content[:2000]  # Limit length
+            
+            # Extract named entities
+            named_entities_data = metadata.get('named_entities', {})
+            if named_entities_data:
+                named_entities = json.dumps(named_entities_data)
+            
+            # Extract content classification
+            content_classification_data = metadata.get('content_classification', {})
+            if content_classification_data:
+                content_classification = json.dumps(content_classification_data)
+            
+            # Extract temporal context
+            temporal_context_data = metadata.get('temporal_context', {})
+            if temporal_context_data:
+                temporal_context = json.dumps(temporal_context_data)
+            
+            # Extract conversation turns from segmentation
+            segmentation_data = metadata.get('segmentation', {})
+            if segmentation_data:
+                conversation_turns = json.dumps(segmentation_data)
+            
+            # Calculate content quality score based on available processing
+            processing_history = metadata.get('processing_history', [])
+            if processing_history:
+                # Score based on number of successful processing steps
+                max_processors = 7  # Advanced cleaning, entities, classification, temporal, etc.
+                actual_processors = len(processing_history)
+                content_quality_score = min(1.0, actual_processors / max_processors)
+                preprocessing_status = 'completed'
+            
+            # Calculate semantic density based on content stats
+            content_stats = metadata.get('content_stats', {})
+            if content_stats:
+                word_count = content_stats.get('word_count', 0)
+                char_count = content_stats.get('character_count', 0)
+                if word_count > 0 and char_count > 0:
+                    # Simple metric: average word length and paragraph density
+                    avg_word_length = char_count / word_count
+                    paragraph_count = content_stats.get('paragraph_count', 1)
+                    semantic_density = min(1.0, (avg_word_length * paragraph_count) / 100)
+        
         with self.get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO data_items 
-                (id, namespace, source_id, content, metadata, updated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (id, namespace, source_id, content, metadata, 
+                 summary_content, named_entities, content_classification, 
+                 temporal_context, conversation_turns, content_quality_score, 
+                 semantic_density, preprocessing_status, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (id, namespace, source_id, content, 
-                  json.dumps(metadata) if metadata else None))
+                  json.dumps(metadata),
+                  summary_content, named_entities, content_classification,
+                  temporal_context, conversation_turns, content_quality_score,
+                  semantic_density, preprocessing_status))
             conn.commit()
     
     def get_data_items_by_ids(self, ids: List[str]) -> List[Dict]:

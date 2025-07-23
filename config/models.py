@@ -39,6 +39,30 @@ class EmbeddingConfig(BaseModel):
         )
 
 
+class EmbeddingProcessingConfig(BaseModel):
+    """Configuration for separate embedding processing scheduler"""
+    enabled: bool = True
+    interval_hours: int = 6
+    batch_size: int = 100
+    max_concurrent_jobs: int = 1
+    startup_processing: bool = False  # Process some embeddings immediately on startup
+    startup_limit: int = 50  # Number of embeddings to process on startup if enabled
+    
+    @field_validator('interval_hours')
+    @classmethod
+    def validate_interval(cls, v):
+        if v < 1 or v > 168:  # 1 hour to 1 week
+            raise ValueError("Interval must be between 1 and 168 hours")
+        return v
+    
+    @field_validator('batch_size')
+    @classmethod
+    def validate_batch_size(cls, v):
+        if v < 1 or v > 1000:
+            raise ValueError("Batch size must be between 1 and 1000")
+        return v
+
+
 class VectorStoreConfig(BaseModel):
     """Vector store configuration"""
     index_path: str = "vector_index.faiss"
@@ -291,6 +315,7 @@ class AppConfig(BaseModel):
     """Main application configuration"""
     database: DatabaseConfig = DatabaseConfig()
     embeddings: EmbeddingConfig = EmbeddingConfig()
+    embedding_processing: EmbeddingProcessingConfig = EmbeddingProcessingConfig()
     vector_store: VectorStoreConfig = VectorStoreConfig()
     limitless: LimitlessConfig = LimitlessConfig()
     search: SearchConfig = SearchConfig()

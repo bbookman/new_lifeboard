@@ -316,11 +316,14 @@ class ChunkingEmbeddingIntegrator:
             
             if not chunking_processor:
                 # No chunking processor found, treat as single item
+                task_id = f"{item.namespace}:{item.source_id}"
                 embedding_tasks.append({
                     'type': 'original_item',
                     'item': item,
                     'content': item.content,
-                    'item_id': f"{item.namespace}:{item.source_id}",
+                    'id': task_id,
+                    'item_id': task_id,
+                    'original_id': task_id,
                     'metadata': item.metadata
                 })
                 continue
@@ -331,11 +334,15 @@ class ChunkingEmbeddingIntegrator:
                 chunks_data = chunking_processor.get_chunks_for_embedding(item)
                 
                 for chunk_data in chunks_data:
+                    chunk_task_id = f"{item.namespace}:{chunk_data['chunk_id']}"
+                    original_task_id = f"{item.namespace}:{item.source_id}"
                     embedding_tasks.append({
                         'type': 'chunk',
                         'item': item,
                         'content': chunk_data['content'],
-                        'item_id': f"{item.namespace}:{chunk_data['chunk_id']}",
+                        'id': chunk_task_id,
+                        'item_id': chunk_task_id,
+                        'original_id': original_task_id,
                         'chunk_metadata': chunk_data,
                         'metadata': {
                             **item.metadata,
@@ -344,11 +351,14 @@ class ChunkingEmbeddingIntegrator:
                     })
                 
                 # Also add original item with chunking context
+                original_task_id = f"{item.namespace}:{item.source_id}"
                 embedding_tasks.append({
                     'type': 'original_with_chunks',
                     'item': item,
                     'content': item.content,
-                    'item_id': f"{item.namespace}:{item.source_id}",
+                    'id': original_task_id,
+                    'item_id': original_task_id,
+                    'original_id': original_task_id,
                     'metadata': {
                         **item.metadata,
                         'has_chunks': True,
@@ -357,11 +367,14 @@ class ChunkingEmbeddingIntegrator:
                 })
             else:
                 # Embed as single item
+                task_id = f"{item.namespace}:{item.source_id}"
                 embedding_tasks.append({
                     'type': 'original_item',
                     'item': item,
                     'content': item.content,
-                    'item_id': f"{item.namespace}:{item.source_id}",
+                    'id': task_id,
+                    'item_id': task_id,
+                    'original_id': task_id,
                     'metadata': item.metadata
                 })
         
