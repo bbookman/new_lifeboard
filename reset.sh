@@ -52,13 +52,23 @@ echo "Removing SQLite temporary files..."
 find . -name "*.db-wal" -type f -delete
 find . -name "*.db-shm" -type f -delete
 
-# Remove vector store files
+# Remove vector store files and directories
 echo "Removing vector store files..."
 find . -name "*.faiss" -type f -delete
 find . -name "*.index" -type f -delete
 find . -name "*.pkl" -type f -delete
 
-# Remove vector store directories
+# Remove specific vector store directories and files
+if [ -d "data/vectors" ]; then
+    echo "Removing data/vectors directory..."
+    rm -rf data/vectors/*
+fi
+
+if [ -d "data/index" ]; then
+    echo "Removing data/index directory..."
+    rm -rf data/index/*
+fi
+
 if [ -d "vector_store" ]; then
     echo "Removing vector_store directory..."
     rm -rf vector_store
@@ -68,6 +78,36 @@ if [ -d "embeddings" ]; then
     echo "Removing embeddings directory..."
     rm -rf embeddings
 fi
+
+# Remove data directory completely for clean state
+if [ -d "data" ]; then
+    echo "Removing data directory for clean state..."
+    rm -rf data
+fi
+
+# Remove any cache directories
+if [ -d "__pycache__" ]; then
+    echo "Removing Python cache directories..."
+    find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+fi
+
+if [ -d ".pytest_cache" ]; then
+    echo "Removing pytest cache..."
+    rm -rf .pytest_cache
+fi
+
+# Remove any temporary or backup files
+echo "Removing temporary and backup files..."
+find . -name "*.tmp" -type f -delete 2>/dev/null || true
+find . -name "*.temp" -type f -delete 2>/dev/null || true
+find . -name "*.bak" -type f -delete 2>/dev/null || true
+find . -name "*~" -type f -delete 2>/dev/null || true
+
+# Remove any .env.local or test environment files (preserve .env)
+echo "Removing local environment files..."
+find . -name ".env.local" -type f -delete 2>/dev/null || true
+find . -name ".env.test" -type f -delete 2>/dev/null || true
+find . -name ".env.development" -type f -delete 2>/dev/null || true
 
 echo "Cleanup complete."
 

@@ -7,6 +7,7 @@ from sources.base import DataItem, BaseSource
 from sources.limitless import LimitlessSource
 from sources.sync_manager import LimitlessSyncManager
 from sources.limitless_processor import LimitlessProcessor
+from sources.chunking_processor import ChunkingEmbeddingIntegrator
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
@@ -60,8 +61,16 @@ class IngestionService:
         self.embedding_service = embedding_service
         self.config = config
         
-        # Initialize processor
-        self.processor = LimitlessProcessor(enable_segmentation=True)
+        # Initialize processor with chunking support
+        chunking_config = getattr(config, 'chunking', {})
+        self.processor = LimitlessProcessor(
+            enable_segmentation=True,
+            enable_intelligent_chunking=True,
+            chunking_config=chunking_config
+        )
+        
+        # Initialize chunking integrator for embedding generation
+        self.chunking_integrator = ChunkingEmbeddingIntegrator()
         
         # Track registered sources
         self.sources: Dict[str, BaseSource] = {}
@@ -181,12 +190,17 @@ class IngestionService:
             result.errors.append(error_msg)
     
     async def process_pending_embeddings(self, batch_size: int = 32) -> Dict[str, Any]:
-        """Process items that need embeddings"""
+        """Process items that need embeddings with intelligent chunking support"""
         result = {
             "processed": 0,
             "successful": 0,
             "failed": 0,
-            "errors": []
+            "errors": [],
+            "chunking_stats": {
+                "items_chunked": 0,
+                "total_chunks_created": 0,
+                "chunk_embeddings_created": 0
+            }
         }
         
         try:
@@ -199,10 +213,32 @@ class IngestionService:
             
             logger.info(f"Processing {len(pending_items)} pending embeddings")
             
-            # Process in batches
-            for i in range(0, len(pending_items), batch_size):
-                batch = pending_items[i:i + batch_size]
-                await self._process_embedding_batch(batch, result)
+            # Convert to DataItems for chunking analysis
+            data_items = []
+            for item in pending_items:
+                data_item = DataItem(
+                    namespace=item.get('namespace', ''),
+                    source_id=item.get('id', '').split(':', 1)[-1] if ':' in item.get('id', '') else item.get('id', ''),
+                    content=item.get('content', ''),
+                    metadata=item.get('metadata', {}),
+                    created_at=None,
+                    updated_at=None
+                )
+                data_items.append(data_item)
+            
+            # Prepare embedding tasks with chunking support
+            embedding_tasks = self.chunking_integrator.prepare_items_for_embedding(data_items)
+            
+            logger.info(f"Prepared {len(embedding_tasks)} embedding tasks from {len(data_items)} items")
+            
+            # Get chunking statistics
+            chunking_stats = self.chunking_integrator.get_embedding_stats(embedding_tasks)
+            result["chunking_stats"].update(chunking_stats)
+            
+            # Process embedding tasks in batches
+            for i in range(0, len(embedding_tasks), batch_size):
+                batch_tasks = embedding_tasks[i:i + batch_size]
+                await self._process_chunking_embedding_batch(batch_tasks, result)
         
         except Exception as e:
             error_msg = f"Error processing embeddings: {str(e)}"
@@ -260,6 +296,68 @@ class IngestionService:
             # Mark all items in batch as failed
             for item in batch:
                 self.database.update_embedding_status(item['id'], 'failed')
+                result["failed"] += 1
+                result["processed"] += 1
+
+    async def _process_chunking_embedding_batch(self, batch_tasks: List[Dict], result: Dict[str, Any]):
+        """Process a batch of chunking-aware embedding tasks"""
+        try:
+            # Prepare content for embedding
+            texts = []
+            tasks = []
+            
+            for task in batch_tasks:
+                if task.get('content'):  # Only embed tasks with content
+                    texts.append(task['content'])
+                    tasks.append(task)
+            
+            if not texts:
+                return
+            
+            # Generate embeddings
+            embeddings = await self.embedding_service.embed_texts(texts)
+            
+            # Store embeddings and update status
+            for task, embedding in zip(tasks, embeddings):
+                try:
+                    # Use the task ID for vector storage
+                    task_id = task['id']
+                    success = self.vector_store.add_vector(task_id, embedding)
+                    
+                    if success:
+                        # Update embedding status for original item
+                        original_id = task.get('original_id', task_id)
+                        self.database.update_embedding_status(original_id, 'completed')
+                        result["successful"] += 1
+                        
+                        # Track chunking stats
+                        if task.get('is_chunk', False):
+                            result["chunking_stats"]["chunk_embeddings_created"] += 1
+                        
+                        logger.debug(f"Generated embedding for task: {task_id}")
+                    else:
+                        original_id = task.get('original_id', task_id)
+                        self.database.update_embedding_status(original_id, 'failed')
+                        result["failed"] += 1
+                        result["errors"].append(f"Failed to add vector for task {task_id}")
+                
+                except Exception as e:
+                    original_id = task.get('original_id', task.get('id', 'unknown'))
+                    self.database.update_embedding_status(original_id, 'failed')
+                    result["failed"] += 1
+                    result["errors"].append(f"Error processing task {task.get('id', 'unknown')}: {str(e)}")
+                
+                result["processed"] += 1
+        
+        except Exception as e:
+            error_msg = f"Chunking batch embedding failed: {str(e)}"
+            logger.error(error_msg)
+            result["errors"].append(error_msg)
+            
+            # Mark all original items in batch as failed
+            for task in batch_tasks:
+                original_id = task.get('original_id', task.get('id', 'unknown'))
+                self.database.update_embedding_status(original_id, 'failed')
                 result["failed"] += 1
                 result["processed"] += 1
     

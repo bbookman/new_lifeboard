@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import unicodedata
 
 from sources.base import DataItem
+from sources.chunking_processor import ChunkingProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -978,7 +979,9 @@ class LimitlessProcessor:
     
     def __init__(self,
                  enable_segmentation: bool = True,
-                 enable_advanced_processing: bool = True):
+                 enable_advanced_processing: bool = True,
+                 enable_intelligent_chunking: bool = True,
+                 chunking_config: Dict[str, Any] = None):
         self.processors: List[BaseProcessor] = []
         
         if enable_advanced_processing:
@@ -996,6 +999,17 @@ class LimitlessProcessor:
         # Optional processors
         if enable_segmentation:
             self.processors.append(ConversationSegmentProcessor())
+            
+        # Intelligent chunking processor (replaces basic segmentation for embedding)
+        if enable_intelligent_chunking:
+            chunking_config = chunking_config or {}
+            chunking_processor = ChunkingProcessor(
+                enable_chunking=True,
+                min_chunk_size=chunking_config.get('min_chunk_size', 50),
+                max_chunk_size=chunking_config.get('max_chunk_size', 1000),
+                target_chunk_size=chunking_config.get('target_chunk_size', 300)
+            )
+            self.processors.append(chunking_processor)
         
         # Always include deduplication
         self.processors.append(DeduplicationProcessor())
