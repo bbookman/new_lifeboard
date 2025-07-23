@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LimitlessConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
+    LimitlessConfig, NewsConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
     LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
 )
 
@@ -64,6 +64,19 @@ def create_test_config(temp_dir: str = None) -> AppConfig:
             console_logging=True,
             include_correlation_ids=False
         ),
+        news=NewsConfig(
+            api_key="test-rapid-api-key",
+            language="en",
+            enabled=False,  # Disabled for tests by default
+            country="US",
+            unique_items_per_day=2,
+            endpoint="real-time-news-data.p.rapidapi.com",
+            items_to_retrieve=5,
+            max_retries=2,
+            retry_delay=0.1,
+            request_timeout=5.0,
+            sync_interval_hours=24
+        ),
         debug=True
     )
 
@@ -96,6 +109,19 @@ def create_production_config() -> AppConfig:
             retry_delay=float(os.getenv("LIMITLESS_RETRY_DELAY", "1.0")),
             request_timeout=float(os.getenv("LIMITLESS_REQUEST_TIMEOUT", "30.0")),
             sync_interval_hours=int(os.getenv("LIMITLESS_SYNC_INTERVAL_HOURS", "6"))
+        ),
+        news=NewsConfig(
+            api_key=os.getenv("RAPID_API_KEY"),
+            language=os.getenv("USERS_LANGUAGE", "en"),
+            enabled=os.getenv("TURN_ON_NEWS", "true").lower() == "true",
+            country=os.getenv("NEWS_COUNTRY", "US"),
+            unique_items_per_day=int(os.getenv("UNIQUE_NEWS_ITEMS_PER_DAY", "5")),
+            endpoint=os.getenv("NEWS_ENDPOINT", "real-time-news-data.p.rapidapi.com"),
+            items_to_retrieve=int(os.getenv("NEWS_ITEMS_TO_RETRIEVE", "20")),
+            max_retries=int(os.getenv("NEWS_MAX_RETRIES", "3")),
+            retry_delay=float(os.getenv("NEWS_RETRY_DELAY", "1.0")),
+            request_timeout=float(os.getenv("NEWS_REQUEST_TIMEOUT", "30.0")),
+            sync_interval_hours=int(os.getenv("NEWS_SYNC_INTERVAL_HOURS", "24"))
         ),
         search=SearchConfig(
             default_limit=int(os.getenv("SEARCH_DEFAULT_LIMIT", "20")),
