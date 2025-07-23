@@ -1,6 +1,4 @@
 """
-Chat service for Phase 7: Minimal Web UI
-
 Provides hybrid data access (vector search + SQL queries) and LLM integration
 for the minimal chat interface.
 """
@@ -48,6 +46,17 @@ class ChatService:
         try:
             logger.info("Starting service initialization...")
             
+            # DIAGNOSTIC: Log LLM configuration details
+            logger.info("=== LLM CONFIGURATION DIAGNOSTIC ===")
+            logger.info(f"LLM Provider: {self.config.llm_provider.provider}")
+            logger.info(f"Ollama Base URL: {self.config.llm_provider.ollama.base_url}")
+            logger.info(f"Ollama Model: {self.config.llm_provider.ollama.model}")
+            logger.info(f"Ollama Timeout: {self.config.llm_provider.ollama.timeout}")
+            logger.info(f"Ollama Max Retries: {self.config.llm_provider.ollama.max_retries}")
+            logger.info(f"Ollama Is Configured: {self.config.llm_provider.ollama.is_configured()}")
+            logger.info(f"Active Provider Configured: {self.config.llm_provider.is_active_provider_configured()}")
+            logger.info("=== END LLM CONFIGURATION DIAGNOSTIC ===")
+            
             # Initialize embedding service first
             if self.embeddings:
                 logger.info("Initializing embedding service...")
@@ -60,23 +69,76 @@ class ChatService:
             logger.info("NER service initialized successfully")
             
             # Create LLM provider factory (synchronous call)
+            logger.info("Creating LLM provider factory...")
             llm_factory = create_llm_provider(self.config.llm_provider)
+            logger.info(f"LLM factory created for provider: {self.config.llm_provider.provider}")
             
             # Get the active provider instance (async call)
+            logger.info("Getting active LLM provider instance...")
             self.llm_provider = await llm_factory.get_active_provider()
+            logger.info(f"Active LLM provider obtained: {self.llm_provider.provider_name if self.llm_provider else 'None'}")
             
-            # Check availability
+            # DIAGNOSTIC: Test Ollama connectivity before availability check
+            if self.llm_provider and self.llm_provider.provider_name == "ollama":
+                logger.info("=== OLLAMA CONNECTIVITY DIAGNOSTIC ===")
+                try:
+                    import httpx
+                    client = httpx.AsyncClient(timeout=10.0)
+                    logger.info(f"Testing direct connection to: {self.config.llm_provider.ollama.base_url}/api/tags")
+                    response = await client.get(f"{self.config.llm_provider.ollama.base_url}/api/tags")
+                    logger.info(f"Direct connectivity test - Status: {response.status_code}")
+                    if response.status_code == 200:
+                        data = response.json()
+                        models = [model.get("name", "") for model in data.get("models", [])]
+                        logger.info(f"Available models: {models}")
+                        target_model = self.config.llm_provider.ollama.model
+                        model_available = target_model in models
+                        logger.info(f"Target model '{target_model}' available: {model_available}")
+                    else:
+                        logger.warning(f"Ollama API returned status {response.status_code}: {response.text}")
+                    await client.aclose()
+                except Exception as conn_e:
+                    logger.error(f"Direct Ollama connectivity test failed: {conn_e}")
+                logger.info("=== END OLLAMA CONNECTIVITY DIAGNOSTIC ===")
+            
+            # Check availability using the provider's method
+            logger.info("Checking LLM provider availability...")
             if not await self.llm_provider.is_available():
-                logger.warning("LLM provider is not available")
+                logger.error("LLM provider availability check FAILED")
+                
+                # Additional diagnostic for Ollama
+                if self.llm_provider.provider_name == "ollama":
+                    logger.error("=== OLLAMA AVAILABILITY FAILURE DETAILS ===")
+                    logger.error(f"Provider name: {self.llm_provider.provider_name}")
+                    logger.error(f"Config base_url: {self.llm_provider.config.base_url}")
+                    logger.error(f"Config model: {self.llm_provider.config.model}")
+                    logger.error(f"Config is_configured(): {self.llm_provider.config.is_configured()}")
+                    logger.error("=== END OLLAMA AVAILABILITY FAILURE DETAILS ===")
             else:
                 logger.info("LLM provider initialized and available")
                 
         except Exception as e:
             logger.error(f"Failed to initialize services: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             
     async def process_chat_message(self, user_message: str) -> str:
         """Process a chat message and return assistant response"""
         try:
+            logger.info(f"🎯 CHAT START: Processing message: '{user_message}'")
+            logger.info(f"🔧 CHAT INIT: Services initialized - Vector: {self.vector_store is not None}, Embeddings: {self.embeddings is not None}, LLM: {self.llm_provider is not None}, Database: {self.database is not None}")
+            
+            # Test our enhanced methods are available
+            if hasattr(self, '_extract_search_keywords'):
+                logger.info(f"✅ ENHANCED METHODS: _extract_search_keywords available")
+            else:
+                logger.error(f"❌ ENHANCED METHODS: _extract_search_keywords NOT available")
+            
+            if hasattr(self, '_build_execution_sequence_summary'):
+                logger.info(f"✅ ENHANCED METHODS: _build_execution_sequence_summary available")
+            else:
+                logger.error(f"❌ ENHANCED METHODS: _build_execution_sequence_summary NOT available")
+                
             logger.info(f"Chat Debug - Processing message: '{user_message}'")
             
             # Log database and data source statistics first
@@ -127,23 +189,46 @@ class ChatService:
             # Step 3: Store chat exchange
             self.database.store_chat_message(user_message, response.content)
             
+            # Final logging of complete chat transaction
+            logger.info("🏁 CHAT TRANSACTION COMPLETED:")
+            logger.info(f"   Query: '{user_message}'")
+            logger.info(f"   Response length: {len(response.content)} characters")
+            final_preview = response.content[:150] + "..." if len(response.content) > 150 else response.content
+            logger.info(f"   Response preview: '{final_preview}'")
+            
             return response.content
             
         except Exception as e:
-            logger.error(f"Error processing chat message: {e}")
+            # Enhanced error logging for debugging
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"❌ CHAT ERROR: Failed to process message: '{user_message}'")
+            logger.error(f"❌ CHAT ERROR: Exception type: {type(e).__name__}")
+            logger.error(f"❌ CHAT ERROR: Exception message: {str(e)}")
+            logger.error(f"❌ CHAT ERROR: Full traceback:\n{error_details}")
+            
+            # Check service states for debugging
+            logger.error(f"🔍 DEBUG STATE: Vector store available: {self.vector_store is not None}")
+            logger.error(f"🔍 DEBUG STATE: Embeddings available: {self.embeddings is not None}")
+            logger.error(f"🔍 DEBUG STATE: Database available: {self.database is not None}")
+            logger.error(f"🔍 DEBUG STATE: LLM provider available: {self.llm_provider is not None}")
+            logger.error(f"🔍 DEBUG STATE: NER service available: {hasattr(self, 'ner_service') and self.ner_service is not None}")
+            
             error_msg = "I'm sorry, I encountered an error processing your message. Please try again."
             
             # Store error exchange for debugging
             try:
                 self.database.store_chat_message(user_message, error_msg)
-            except Exception:
-                pass  # Don't let storage errors compound the issue
+            except Exception as storage_e:
+                logger.error(f"❌ STORAGE ERROR: Could not store error message: {storage_e}")
                 
             return error_msg
     
     async def _get_chat_context(self, query: str, max_results: int = 10) -> ChatContext:
         """Get relevant context using hybrid approach with intelligent fallback"""
-        logger.info(f"Chat Debug - Starting context retrieval for query: '{query}'")
+        logger.info(f"=== CONTEXT RETRIEVAL START ===")
+        logger.info(f"Query: '{query}'")
+        logger.info(f"Max results requested: {max_results}")
         
         vector_results = []
         sql_results = []
@@ -152,55 +237,85 @@ class ChatService:
         # Check if vector search is available and has any embeddings
         vector_available = False
         embedding_count = 0
+        total_vectors_in_store = 0
         
         if self.vector_store and self.embeddings:
             try:
-                embedding_count = len(self.vector_store.vectors)
+                total_vectors_in_store = len(self.vector_store.vectors)
+                embedding_count = total_vectors_in_store
                 vector_available = embedding_count > 0
-                logger.info(f"Chat Debug - Vector store status: {embedding_count} embeddings available")
+                logger.info(f"📊 TOTAL VECTORS AVAILABLE: {total_vectors_in_store}")
+                logger.info(f"📊 Vector store service available: {self.vector_store is not None}")
+                logger.info(f"📊 Embedding service available: {self.embeddings is not None}")
+                logger.info(f"📊 Vector search enabled: {vector_available}")
             except Exception as e:
-                logger.warning(f"Error checking vector store: {e}")
+                logger.warning(f"❌ Error checking vector store: {e}")
+                logger.info(f"📊 TOTAL VECTORS AVAILABLE: 0 (error accessing vector store)")
+        else:
+            logger.info(f"📊 TOTAL VECTORS AVAILABLE: 0 (services not initialized)")
+            logger.info(f"📊 Vector store service available: {self.vector_store is not None}")
+            logger.info(f"📊 Embedding service available: {self.embeddings is not None}")
         
+        # Determine search strategy based on available vectors
         if not vector_available:
             # No embeddings available - use SQL search only with more results
             search_mode = "sql_only"
-            logger.info("Chat Debug - Using SQL-only search (no embeddings available)")
+            logger.info(f"🔄 SEARCH STRATEGY: SQL-only (no vectors available)")
             sql_limit = max_results
             vector_limit = 0
         elif embedding_count < 100:
             # Limited embeddings - favor SQL search but still try vector
             search_mode = "sql_favored"
-            logger.info(f"Chat Debug - Using SQL-favored search ({embedding_count} embeddings available)")
+            logger.info(f"🔄 SEARCH STRATEGY: SQL-favored ({embedding_count} vectors available, below 100 threshold)")
             sql_limit = int(max_results * 0.7)
             vector_limit = max_results - sql_limit
         else:
             # Full embeddings available - balanced approach
             search_mode = "hybrid"
-            logger.info(f"Chat Debug - Using balanced hybrid search ({embedding_count} embeddings available)")
+            logger.info(f"🔄 SEARCH STRATEGY: Balanced hybrid ({embedding_count} vectors available)")
             sql_limit = max_results // 2
             vector_limit = max_results // 2
         
-        logger.info(f"Chat Debug - Search mode: {search_mode}, vector_limit: {vector_limit}, sql_limit: {sql_limit}")
+        logger.info(f"📋 Search allocation: vector_limit={vector_limit}, sql_limit={sql_limit}")
         
         # Perform vector search if available
+        vector_search_attempted = False
+        vector_search_successful = False
         if vector_limit > 0:
             try:
-                logger.info("Chat Debug - Performing vector search...")
+                vector_search_attempted = True
+                logger.info(f"🔍 VECTOR SEARCH: Starting (requesting {vector_limit} results)...")
                 vector_results = await self._vector_search(query, vector_limit)
-                logger.info(f"Chat Debug - Vector search returned {len(vector_results)} results")
+                vector_search_successful = True
+                logger.info(f"✅ VECTOR SEARCH: Completed successfully - {len(vector_results)} results returned")
             except Exception as e:
-                logger.warning(f"Vector search failed: {e}")
+                logger.warning(f"❌ VECTOR SEARCH: Failed with error: {e}")
+                vector_results = []
+        else:
+            logger.info(f"⏭️  VECTOR SEARCH: Skipped (vector_limit=0)")
         
         # Always perform SQL search (fallback or primary)
+        sql_search_attempted = False
+        sql_search_successful = False
         try:
-            logger.info("Chat Debug - Performing SQL search...")
+            sql_search_attempted = True
+            logger.info(f"🔍 SQL SEARCH: Starting (requesting {sql_limit} results)...")
             sql_results = await self._sql_search(query, sql_limit)
-            logger.info(f"Chat Debug - SQL search returned {len(sql_results)} results")
+            sql_search_successful = True
+            logger.info(f"✅ SQL SEARCH: Completed successfully - {len(sql_results)} results returned")
         except Exception as e:
-            logger.warning(f"SQL search failed: {e}")
+            logger.warning(f"❌ SQL SEARCH: Failed with error: {e}")
+            sql_results = []
             
+        # Final result summary
         total_results = len(vector_results) + len(sql_results)
-        logger.info(f"Chat Debug - Total search results: {total_results} (vector: {len(vector_results)}, sql: {len(sql_results)})")
+        vector_contribution = len(vector_results)
+        sql_contribution = len(sql_results)
+        
+        logger.info(f"📊 VECTORS IDENTIFIED FOR THIS CHAT QUERY: {vector_contribution}")
+        logger.info(f"📊 SQL RESULTS FOR THIS CHAT QUERY: {sql_contribution}")
+        logger.info(f"📊 TOTAL CONTEXT ITEMS: {total_results}")
+        logger.info(f"=== CONTEXT RETRIEVAL COMPLETE ===")
         
         return ChatContext(
             vector_results=vector_results,
@@ -213,10 +328,12 @@ class ChatService:
     async def _vector_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         """Perform vector similarity search"""
         try:
-            logger.info(f"Chat Debug - Generating embedding for query: '{query}'")
+            logger.info(f"🔗 VECTOR SEARCH DETAIL: Generating embedding for query: '{query}'")
+            
             # Generate embedding for query
             query_embedding = await self.embeddings.embed_text(query)
-            logger.info(f"Chat Debug - Query embedding generated, dimension: {len(query_embedding) if query_embedding is not None else 'None'}")
+            embedding_dimension = len(query_embedding) if query_embedding is not None else 0
+            logger.info(f"✅ VECTOR SEARCH DETAIL: Query embedding generated - dimension: {embedding_dimension}")
             
             # Log embedding details for debugging
             if query_embedding is not None and len(query_embedding) > 0:
@@ -228,20 +345,28 @@ class ChatService:
                     'mean': float(np.mean(query_embedding)),
                     'std': float(np.std(query_embedding))
                 }
-                logger.debug(f"Chat Debug - Embedding statistics: {embedding_stats}")
+                logger.debug(f"📊 VECTOR SEARCH DETAIL: Embedding statistics: {embedding_stats}")
             
-            # Search vector store
-            logger.info(f"Chat Debug - Searching vector store with k={max_results}")
+            # Analyze vector store contents
+            total_vectors_in_store = len(self.vector_store.vectors)
+            logger.info(f"📦 VECTOR STORE STATUS: Total vectors in store: {total_vectors_in_store}")
+            logger.info(f"🎯 VECTOR SEARCH REQUEST: Searching for top {max_results} similar vectors")
             
             # Log what namespaces are available in vector store
             available_namespaces = set()
+            namespace_counts = {}
             for vector_id in self.vector_store.vectors.keys():
                 namespace = vector_id.split(':', 1)[0] if ':' in vector_id else 'unknown'
                 available_namespaces.add(namespace)
-            logger.info(f"Chat Debug - Available namespaces in vector store: {sorted(available_namespaces)}")
+                namespace_counts[namespace] = namespace_counts.get(namespace, 0) + 1
             
+            logger.info(f"📂 VECTOR NAMESPACES: Available namespaces: {sorted(available_namespaces)}")
+            logger.info(f"📊 VECTOR DISTRIBUTION: {dict(sorted(namespace_counts.items()))}")
+            
+            # Perform the actual vector search
             similar_ids = self.vector_store.search(query_embedding, k=max_results)
-            logger.info(f"Chat Debug - Vector store returned {len(similar_ids) if similar_ids else 0} similar items")
+            found_count = len(similar_ids) if similar_ids else 0
+            logger.info(f"🎯 VECTOR SEARCH RESULT: Found {found_count} similar vectors out of {total_vectors_in_store} total")
             
             if similar_ids:
                 # Log similarity scores for debugging
@@ -291,23 +416,106 @@ class ChatService:
             
         return []
     
+    def _extract_search_keywords(self, query: str) -> List[str]:
+        """Extract meaningful keywords from user query for SQL search"""
+        try:
+            # Use NER service to extract entities if available
+            if hasattr(self, 'ner_service') and self.ner_service:
+                ner_result = self.ner_service.extract_entities(query)
+                keywords = []
+                
+                # Add person names
+                keywords.extend(ner_result.person_names)
+                
+                # Add pet names
+                keywords.extend(ner_result.pet_names)
+                
+                # Add other significant entities
+                for entity in ner_result.entities:
+                    if entity.label in ['PERSON', 'PET', 'ANIMAL', 'ORG', 'GPE', 'PRODUCT']:
+                        keywords.append(entity.text)
+                
+                # If we found entities, return them
+                if keywords:
+                    # Remove duplicates while preserving order
+                    seen = set()
+                    unique_keywords = []
+                    for keyword in keywords:
+                        if keyword.lower() not in seen:
+                            unique_keywords.append(keyword)
+                            seen.add(keyword.lower())
+                    return unique_keywords
+            
+            # Fallback: extract meaningful keywords using simple patterns
+            import re
+            
+            # Common question words to skip
+            stop_words = {'do', 'i', 'have', 'a', 'an', 'the', 'is', 'are', 'was', 'were', 
+                         'can', 'could', 'would', 'should', 'what', 'when', 'where', 'who', 
+                         'how', 'why', 'my', 'me', 'you', 'your', 'his', 'her', 'their', 'our'}
+            
+            # Split into words and filter
+            words = re.findall(r'\b\w+\b', query.lower())
+            keywords = [word for word in words if word not in stop_words and len(word) > 2]
+            
+            # If no good keywords found, return the original query minus common words
+            if not keywords:
+                # Try to find any capitalized words (potential names)
+                capitalized = re.findall(r'\b[A-Z][a-z]+\b', query)
+                if capitalized:
+                    return capitalized
+                # Last resort: use original query
+                return [query.strip()]
+            
+            return keywords
+            
+        except Exception as e:
+            logger.debug(f"Error extracting keywords: {e}")
+            return [query.strip()]
+
     async def _sql_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         """Perform SQL-based keyword search across content and enhanced preprocessing fields"""
         try:
-            search_pattern = f"%{query}%"
-            logger.debug(f"Chat Debug - SQL search pattern: '{search_pattern}', limit: {max_results}")
+            # MARKER: Enhanced SQL search with keyword extraction (not old hardcoded version)
+            logger.info(f"🔍 ENHANCED SQL SEARCH: Starting enhanced keyword-based search for query: '{query}'")
+            
+            # Extract meaningful keywords from the query instead of using exact phrase
+            keywords = self._extract_search_keywords(query)
+            logger.info(f"🔍 SQL SEARCH DETAIL: Keyword extraction from query '{query}'")
+            logger.info(f"🔍 SQL SEARCH DETAIL: Extracted keywords: {keywords}")
+            
+            # If no good keywords found, fall back to original query
+            if not keywords:
+                keywords = [query]
+                logger.info(f"🔍 SQL SEARCH DETAIL: No keywords extracted, using original query as fallback")
+            
+            # Build OR conditions for multiple keywords
+            search_conditions = []
+            search_params = []
+            
+            for keyword in keywords:
+                search_pattern = f"%{keyword}%"
+                search_conditions.append("""
+                    (content LIKE ? 
+                     OR summary_content LIKE ?
+                     OR named_entities LIKE ?
+                     OR content_classification LIKE ?)
+                """)
+                search_params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+            
+            # Combine conditions with OR
+            where_clause = " OR ".join(search_conditions)
+            
+            logger.debug(f"Chat Debug - SQL search with {len(keywords)} keywords, {len(search_params)} parameters")
             
             # Enhanced search across content, summary_content, and named_entities
             with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+                sql_query = f"""
                     SELECT id, namespace, source_id, content, metadata, 
                            summary_content, named_entities, content_classification,
                            created_at, updated_at
                     FROM data_items 
-                    WHERE content LIKE ? 
-                       OR summary_content LIKE ?
-                       OR named_entities LIKE ?
-                       OR content_classification LIKE ?
+                    WHERE {where_clause}
                     ORDER BY 
                         CASE 
                             WHEN named_entities LIKE ? THEN 1
@@ -317,8 +525,13 @@ class ChatService:
                         END,
                         updated_at DESC
                     LIMIT ?
-                """, (search_pattern, search_pattern, search_pattern, search_pattern,
-                      search_pattern, search_pattern, search_pattern, max_results))
+                """
+                
+                # Add priority search pattern (use first keyword for ordering)
+                priority_pattern = f"%{keywords[0]}%"
+                all_params = search_params + [priority_pattern, priority_pattern, priority_pattern, max_results]
+                
+                cursor = conn.execute(sql_query, all_params)
                 
                 results = []
                 for row in cursor.fetchall():
@@ -341,14 +554,16 @@ class ChatService:
                     # Analyze which fields had matches for debugging
                     field_matches = {'content': 0, 'summary_content': 0, 'named_entities': 0, 'content_classification': 0}
                     for item in results:
-                        if search_pattern.replace('%', '').lower() in (item.get('content', '') or '').lower():
-                            field_matches['content'] += 1
-                        if search_pattern.replace('%', '').lower() in (item.get('summary_content', '') or '').lower():
-                            field_matches['summary_content'] += 1
-                        if search_pattern.replace('%', '').lower() in (item.get('named_entities', '') or '').lower():
-                            field_matches['named_entities'] += 1
-                        if search_pattern.replace('%', '').lower() in (item.get('content_classification', '') or '').lower():
-                            field_matches['content_classification'] += 1
+                        for keyword in keywords:
+                            keyword_lower = keyword.lower()
+                            if keyword_lower in (item.get('content', '') or '').lower():
+                                field_matches['content'] += 1
+                            if keyword_lower in (item.get('summary_content', '') or '').lower():
+                                field_matches['summary_content'] += 1
+                            if keyword_lower in (item.get('named_entities', '') or '').lower():
+                                field_matches['named_entities'] += 1
+                            if keyword_lower in (item.get('content_classification', '') or '').lower():
+                                field_matches['content_classification'] += 1
                     
                     logger.info(f"Chat Debug - SQL result analysis: namespaces={sorted(sql_namespaces)}, content_lengths={sql_content_lengths}")
                     logger.info(f"Chat Debug - Field matches: {field_matches}")
@@ -364,13 +579,14 @@ class ChatService:
                         
                         # Determine which field(s) matched
                         matched_fields = []
-                        search_term = search_pattern.replace('%', '').lower()
-                        if search_term in content.lower():
-                            matched_fields.append('content')
-                        if search_term in (summary_content or '').lower():
-                            matched_fields.append('summary_content')
-                        if search_term in (named_entities or '').lower():
-                            matched_fields.append('named_entities')
+                        for keyword in keywords:
+                            keyword_lower = keyword.lower()
+                            if keyword_lower in content.lower():
+                                matched_fields.append(f'content({keyword})')
+                            if keyword_lower in (summary_content or '').lower():
+                                matched_fields.append(f'summary_content({keyword})')
+                            if keyword_lower in (named_entities or '').lower():
+                                matched_fields.append(f'named_entities({keyword})')
                         
                         logger.info(f"SQL Result {i+1}:")
                         logger.info(f"  ID: {item.get('id')}")
@@ -392,7 +608,7 @@ class ChatService:
                     if len(results) > 10:
                         logger.info(f"... and {len(results) - 10} more SQL results")
                 else:
-                    logger.info(f"Chat Debug - Enhanced SQL search with pattern '%{query}%' returned no results")
+                    logger.info(f"Chat Debug - Enhanced SQL search with keywords {keywords} returned no results")
                 
                 return results
                 
@@ -403,6 +619,30 @@ class ChatService:
     
     async def _generate_response(self, user_message: str, context: ChatContext) -> LLMResponse:
         """Generate LLM response with context"""
+        
+        # Generate execution sequence summary before calling LLM
+        execution_sequence = self._build_execution_sequence_summary(context)
+        logger.info("🔄 EXECUTION SEQUENCE SUMMARY:")
+        for step in execution_sequence:
+            logger.info(f"   {step}")
+        
+        # DIAGNOSTIC: Log LLM provider state at response generation time
+        logger.info("=== LLM RESPONSE GENERATION DIAGNOSTIC ===")
+        logger.info(f"LLM Provider Object: {self.llm_provider}")
+        logger.info(f"LLM Provider Type: {type(self.llm_provider)}")
+        if self.llm_provider:
+            logger.info(f"Provider Name: {self.llm_provider.provider_name}")
+            logger.info(f"Provider Config: {self.llm_provider.config}")
+            # Test availability at response time
+            try:
+                is_available = await self.llm_provider.is_available()
+                logger.info(f"Provider Available at Response Time: {is_available}")
+            except Exception as avail_e:
+                logger.error(f"Availability check failed at response time: {avail_e}")
+        else:
+            logger.error("LLM Provider is None - this is the root cause!")
+        logger.info("=== END LLM RESPONSE GENERATION DIAGNOSTIC ===")
+        
         if not self.llm_provider:
             raise LLMError("LLM provider not available", "chat_service")
         
@@ -491,16 +731,93 @@ Analyze the provided personal data context thoroughly and provide a comprehensiv
             temperature=0.7
         )
         
-        logger.info(f"Chat Debug - LLM response received, length: {len(response.content) if response.content else 0} characters")
-        logger.debug(f"Chat Debug - LLM response content: '{response.content}'")
+        # Log final execution sequence completion and response details
+        logger.info("🎯 FINAL EXECUTION SEQUENCE COMPLETED:")
+        logger.info("   8️⃣  LLM response generation completed successfully")
+        
+        response_length = len(response.content) if response.content else 0
+        logger.info(f"📄 LLM RESPONSE METRICS:")
+        logger.info(f"   Response length: {response_length} characters")
+        logger.info(f"   Response available: {response.content is not None}")
+        logger.info(f"   Response non-empty: {response_length > 0}")
+        
+        # Preview the response content (first 200 chars)
+        if response.content:
+            preview = response.content[:200] + "..." if len(response.content) > 200 else response.content
+            logger.info(f"📝 LLM response preview: '{preview}'")
+        else:
+            logger.warning("⚠️  LLM response is empty!")
+            
+        logger.debug(f"🔍 LLM response content (full): '{response.content}'")
         
         # Add search mode notification to response if not using full vector search
         if context.search_mode == "sql_only":
-            response.content += f"\n\n*Note: Found information using keyword search. Full semantic search will be available when background embedding processing completes ({context.embedding_count} of your data items are currently searchable).*"
+            total_items = context.total_results + context.embedding_count  # Approximate total items
+            if context.embedding_count == 0:
+                response.content += f"\n\n---\n**🔄 SYSTEM STATUS:** Currently using keyword search only. Semantic search is being prepared in the background to enable AI-powered understanding of your content. Your data is being processed and will enable more intelligent responses soon.\n---"
+            else:
+                response.content += f"\n\n---\n**🔄 SYSTEM STATUS:** Using keyword search. {context.embedding_count} items ready for semantic search, more being processed in background for enhanced AI understanding.\n---"
         elif context.search_mode == "sql_favored":
-            response.content += f"\n\n*Note: Used enhanced keyword search with limited semantic search. Full semantic search capabilities will improve as background embedding processing continues ({context.embedding_count} items currently embedded).*"
+            response.content += f"\n\n---\n**🔄 SYSTEM STATUS:** Using enhanced hybrid search ({context.embedding_count} items available for semantic search). Full AI-powered search capabilities improving as background processing continues.\n---"
         
         return response
+    
+    def _build_execution_sequence_summary(self, context: ChatContext) -> List[str]:
+        """Build a step-by-step summary of the execution sequence"""
+        sequence = []
+        
+        # Step 1: Query analysis
+        sequence.append("1️⃣  Query received and analyzed")
+        
+        # Step 2: Vector store assessment  
+        if context.embedding_count > 0:
+            sequence.append(f"2️⃣  Vector store assessed: {context.embedding_count} embeddings available")
+        else:
+            sequence.append("2️⃣  Vector store assessed: NO embeddings available")
+        
+        # Step 3: Search strategy determination
+        if context.search_mode == "sql_only":
+            sequence.append("3️⃣  Search strategy: SQL-ONLY (no vectors → fallback mode)")
+        elif context.search_mode == "sql_favored": 
+            sequence.append(f"3️⃣  Search strategy: SQL-FAVORED (limited vectors: {context.embedding_count} < 100)")
+        elif context.search_mode == "hybrid":
+            sequence.append(f"3️⃣  Search strategy: BALANCED HYBRID (sufficient vectors: {context.embedding_count} ≥ 100)")
+        else:
+            sequence.append(f"3️⃣  Search strategy: {context.search_mode.upper()}")
+        
+        # Step 4: Vector search execution
+        vector_count = len(context.vector_results)
+        if vector_count > 0:
+            sequence.append(f"4️⃣  Vector search executed: {vector_count} semantic matches found")
+        elif context.search_mode == "sql_only":
+            sequence.append("4️⃣  Vector search skipped: not available")
+        else:
+            sequence.append("4️⃣  Vector search executed: 0 semantic matches found")
+        
+        # Step 5: SQL search execution
+        sql_count = len(context.sql_results)
+        if sql_count > 0:
+            sequence.append(f"5️⃣  SQL search executed: {sql_count} keyword matches found")
+        else:
+            sequence.append("5️⃣  SQL search executed: 0 keyword matches found")
+        
+        # Step 6: Context building
+        total_context = context.total_results
+        if total_context > 0:
+            sequence.append(f"6️⃣  Context built: {total_context} total items combined")
+        else:
+            sequence.append("6️⃣  Context built: NO relevant information found")
+        
+        # Step 7: Fallback indicator if applicable
+        if context.search_mode == "sql_only" and context.embedding_count == 0:
+            sequence.append("⚠️  FALLBACK: Using SQL search only due to no embeddings")
+        elif context.search_mode == "sql_favored":
+            sequence.append("⚠️  FALLBACK: Favoring SQL search due to limited embeddings")
+        
+        # Step 8: LLM generation
+        sequence.append("7️⃣  LLM response generation initiated")
+        
+        return sequence
     
     def _build_context_text(self, context: ChatContext) -> str:
         """

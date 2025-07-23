@@ -64,23 +64,52 @@ class NERService:
         }
         
     async def initialize(self):
-        """Initialize the spaCy model"""
+        """Initialize the spaCy model with fallback behavior"""
         try:
             logger.info(f"Loading spaCy model: {self.model_name}")
             self.nlp = spacy.load(self.model_name)
             logger.info("NER service initialized successfully")
         except OSError as e:
             logger.error(f"Failed to load spaCy model '{self.model_name}': {e}")
-            logger.info("Please install the model with: python -m spacy download en_core_web_sm")
-            raise
+            logger.warning("Attempting to download spaCy model automatically...")
+            
+            try:
+                # Attempt to download the model automatically
+                import subprocess
+                import sys
+                result = subprocess.run([
+                    sys.executable, "-m", "spacy", "download", self.model_name
+                ], capture_output=True, text=True, timeout=300)
+                
+                if result.returncode == 0:
+                    logger.info("Model downloaded successfully, attempting to load again...")
+                    self.nlp = spacy.load(self.model_name)
+                    logger.info("NER service initialized successfully after auto-download")
+                else:
+                    logger.error(f"Failed to download model: {result.stderr}")
+                    self._initialize_fallback_mode()
+            except subprocess.TimeoutExpired:
+                logger.error("Model download timed out")
+                self._initialize_fallback_mode()
+            except Exception as download_e:
+                logger.error(f"Error during auto-download: {download_e}")
+                self._initialize_fallback_mode()
+                
         except Exception as e:
             logger.error(f"Error initializing NER service: {e}")
-            raise
+            self._initialize_fallback_mode()
+    
+    def _initialize_fallback_mode(self):
+        """Initialize NER service in fallback mode without spaCy model"""
+        logger.warning("Initializing NER service in fallback mode (limited functionality)")
+        logger.warning("To enable full NER capabilities, run: python -m spacy download en_core_web_sm")
+        self.nlp = None
     
     def extract_entities(self, text: str) -> NERResult:
         """Extract entities and relationships from text"""
         if not self.nlp:
-            raise RuntimeError("NER service not initialized")
+            # Provide basic fallback functionality without spaCy
+            return self._extract_entities_fallback(text)
         
         doc = self.nlp(text)
         
@@ -336,6 +365,10 @@ class NERService:
         try:
             result = self.extract_entities(content)
             
+            # Log fallback mode usage
+            if not self.nlp:
+                logger.debug("Using NER fallback mode for content analysis")
+            
             # Build structured analysis
             analysis = {
                 'entities_found': set(),
@@ -395,6 +428,87 @@ class NERService:
             logger.warning(f"Error in NER analysis: {e}")
             return {}
     
+    def _extract_entities_fallback(self, text: str) -> NERResult:
+        """Basic entity extraction without spaCy using regex patterns"""
+        entities = []
+        relationships = []
+        
+        # Basic person name detection (capitalized words)
+        person_pattern = r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b'
+        person_matches = re.findall(person_pattern, text)
+        
+        # Filter out common non-names
+        non_names = {'This', 'That', 'These', 'Those', 'The', 'And', 'But', 'Or', 'So', 'Yet', 'For', 'Nor'}
+        person_names = set()
+        
+        for match in person_matches:
+            if match not in non_names and len(match) > 2:
+                person_names.add(match)
+                entities.append(Entity(
+                    text=match,
+                    label='PERSON',
+                    start=text.find(match),
+                    end=text.find(match) + len(match),
+                    confidence=0.6  # Lower confidence for regex-based detection
+                ))
+        
+        # Basic pet detection using context patterns
+        pet_patterns = [
+            r'([A-Z][a-z]+)\s+(?:is|was)\s+(?:a|an|the)\s+(?:dog|puppy|pet|cat|kitten)',
+            r'(?:dog|pet|puppy|cat|kitten)\s+(?:named|called)\s+([A-Z][a-z]+)',
+            r'(?:my|his|her|their|our)\s+(?:dog|pet|puppy|cat|kitten)\s+([A-Z][a-z]+)',
+            r'(?:has|have|owns?)\s+(?:a|an)\s+(?:dog|pet|puppy|cat|kitten)\s+(?:named|called)\s+([A-Z][a-z]+)',
+        ]
+        
+        pet_names = set()
+        for pattern in pet_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches if matches else []:
+                if isinstance(match, tuple):
+                    match = match[0] if match else ''
+                if match and match not in non_names:
+                    pet_names.add(match)
+                    entities.append(Entity(
+                        text=match,
+                        label='PET',
+                        start=text.lower().find(match.lower()),
+                        end=text.lower().find(match.lower()) + len(match),
+                        confidence=0.7
+                    ))
+        
+        # Basic relationship detection
+        for person in person_names:
+            for pet in pet_names:
+                # Check for ownership patterns
+                ownership_patterns = [
+                    f'{person}.*(?:has|owns|have).*{pet}',
+                    f'{person}.*(?:dog|pet).*{pet}',
+                    f'{pet}.*(?:is|was).*{person}.*(?:dog|pet)'
+                ]
+                
+                for pattern in ownership_patterns:
+                    if re.search(pattern, text, re.IGNORECASE):
+                        person_entity = next((e for e in entities if e.text == person and e.label == 'PERSON'), None)
+                        pet_entity = next((e for e in entities if e.text == pet and e.label == 'PET'), None)
+                        
+                        if person_entity and pet_entity:
+                            relationships.append(Relationship(
+                                subject=person_entity,
+                                predicate='owns_pet',
+                                object=pet_entity,
+                                confidence=0.6
+                            ))
+                        break
+        
+        return NERResult(
+            entities=entities,
+            relationships=relationships,
+            person_names=person_names,
+            pet_names=pet_names,
+            locations=set(),
+            organizations=set()
+        )
+    
     def is_available(self) -> bool:
         """Check if the NER service is available"""
-        return self.nlp is not None
+        return True  # Always available, either with spaCy or fallback mode

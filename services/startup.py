@@ -76,6 +76,9 @@ class StartupService:
                 if self.config.auto_sync.startup_sync_enabled:
                     await self._perform_startup_sync(startup_result)
             
+            # 5.5. Initialize embedding processing scheduler
+            await self._initialize_embedding_scheduler(startup_result)
+            
             # 6. Perform startup health check
             health_status = await self._perform_startup_health_check()
             startup_result["health_check"] = health_status
@@ -382,6 +385,79 @@ class StartupService:
             health_status["health_check_error"] = str(e)
         
         return health_status
+    
+    async def _initialize_embedding_scheduler(self, startup_result: Dict[str, Any]):
+        """Initialize embedding processing scheduler"""
+        try:
+            logger.info("Initializing embedding processing scheduler...")
+            
+            # Check if embedding processing is enabled
+            if not self.config.embedding_processing.enabled:
+                logger.info("Embedding processing scheduler disabled in config")
+                startup_result["embedding_scheduler_enabled"] = False
+                return
+            
+            # Ensure we have required services
+            if not self.scheduler:
+                logger.warning("No scheduler available - embedding processing will only be available via API")
+                startup_result["embedding_scheduler_enabled"] = False
+                return
+                
+            if not self.ingestion_service:
+                logger.warning("No ingestion service available - cannot schedule embedding processing")
+                startup_result["embedding_scheduler_enabled"] = False
+                return
+            
+            # Create embedding processing job
+            async def embedding_processing_job():
+                """Background job for processing pending embeddings"""
+                try:
+                    logger.info("🔄 EMBEDDING SCHEDULER: Starting scheduled embedding processing")
+                    
+                    result = await self.ingestion_service.process_pending_embeddings(
+                        batch_size=self.config.embedding_processing.batch_size,
+                        max_concurrent_jobs=self.config.embedding_processing.max_concurrent_jobs
+                    )
+                    
+                    logger.info(f"🔄 EMBEDDING SCHEDULER: Completed - {result.get('embeddings_processed', 0)} embeddings generated")
+                    return result
+                    
+                except Exception as e:
+                    logger.error(f"❌ EMBEDDING SCHEDULER: Failed with error: {e}")
+                    return {"success": False, "error": str(e)}
+            
+            # Register the job with the scheduler
+            interval_seconds = self.config.embedding_processing.interval_hours * 3600
+            embedding_job_id = self.scheduler.add_job(
+                name="embedding_processing",
+                namespace="system",
+                func=embedding_processing_job,
+                interval_seconds=interval_seconds
+            )
+            
+            logger.info(f"✅ EMBEDDING SCHEDULER: Registered job with {self.config.embedding_processing.interval_hours}h interval (ID: {embedding_job_id})")
+            
+            # Optionally run startup processing for the current backlog
+            if self.config.embedding_processing.startup_processing:
+                logger.info(f"🚀 EMBEDDING SCHEDULER: Running startup processing for up to {self.config.embedding_processing.startup_limit} items")
+                try:
+                    startup_result_embed = await self.ingestion_service.process_pending_embeddings(
+                        batch_size=min(self.config.embedding_processing.startup_limit, self.config.embedding_processing.batch_size)
+                    )
+                    logger.info(f"🚀 EMBEDDING SCHEDULER: Startup processing completed - {startup_result_embed.get('embeddings_processed', 0)} embeddings generated")
+                except Exception as e:
+                    logger.warning(f"⚠️ EMBEDDING SCHEDULER: Startup processing failed: {e}")
+            
+            startup_result["embedding_scheduler_enabled"] = True
+            startup_result["embedding_job_id"] = embedding_job_id
+            startup_result["services_initialized"].append("embedding_scheduler")
+            logger.info("Embedding processing scheduler initialized successfully")
+            
+        except Exception as e:
+            error_msg = f"Failed to initialize embedding scheduler: {str(e)}"
+            logger.error(error_msg)
+            startup_result["errors"].append(error_msg)
+            startup_result["embedding_scheduler_enabled"] = False
     
     async def shutdown_application(self):
         """Gracefully shutdown all services"""

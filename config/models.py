@@ -42,7 +42,7 @@ class EmbeddingConfig(BaseModel):
 class EmbeddingProcessingConfig(BaseModel):
     """Configuration for separate embedding processing scheduler"""
     enabled: bool = True
-    interval_hours: int = 6
+    interval_hours: float = 6.0
     batch_size: int = 100
     max_concurrent_jobs: int = 1
     startup_processing: bool = False  # Process some embeddings immediately on startup
@@ -51,8 +51,8 @@ class EmbeddingProcessingConfig(BaseModel):
     @field_validator('interval_hours')
     @classmethod
     def validate_interval(cls, v):
-        if v < 1 or v > 168:  # 1 hour to 1 week
-            raise ValueError("Interval must be between 1 and 168 hours")
+        if v < 0.01 or v > 168:  # 0.01 hours (36 seconds) to 1 week
+            raise ValueError("Interval must be between 0.01 and 168 hours")
         return v
     
     @field_validator('batch_size')

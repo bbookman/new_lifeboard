@@ -85,7 +85,7 @@ def create_production_config() -> AppConfig:
         ),
         embedding_processing=EmbeddingProcessingConfig(
             enabled=os.getenv("EMBEDDING_PROCESSING_ENABLED", "true").lower() == "true",
-            interval_hours=int(os.getenv("EMBEDDING_PROCESSING_INTERVAL_HOURS", "6")),
+            interval_hours=float(os.getenv("EMBEDDING_PROCESSING_INTERVAL_HOURS", "6")),
             batch_size=int(os.getenv("EMBEDDING_PROCESSING_BATCH_SIZE", "100")),
             max_concurrent_jobs=int(os.getenv("EMBEDDING_PROCESSING_MAX_CONCURRENT_JOBS", "1")),
             startup_processing=os.getenv("EMBEDDING_PROCESSING_STARTUP", "false").lower() == "true",

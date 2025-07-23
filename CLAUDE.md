@@ -132,6 +132,4 @@ The project is currently in planning phase with comprehensive documentation for 
 
 ## Development Best Practices
 - Do not hard code, ever
-
-## Development Guidelines
-- Use industry standard libraries as solutions
+- Assume settings are in .env unless you prove otherwise. If you prove otherwise, report the finding and provide options to the user

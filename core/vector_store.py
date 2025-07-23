@@ -89,6 +89,57 @@ class VectorStoreService:
         except Exception as e:
             logger.error(f"Could not save index: {e}")
     
+    def _should_rebuild_for_new_dimension(self, new_dimension: int) -> bool:
+        """Determine if vector store should be rebuilt for new dimension"""
+        # Always allow rebuild if configured dimension matches
+        if hasattr(self.config, 'dimension') and new_dimension == self.config.dimension:
+            logger.info(f"Dimension {new_dimension} matches config - allowing rebuild")
+            return True
+        
+        # Allow rebuild if store is empty or has very few vectors
+        if len(self.vectors) <= 5:
+            logger.info(f"Vector store has {len(self.vectors)} vectors - allowing rebuild")
+            return True
+            
+        # Check if auto-migration is enabled
+        if hasattr(self.config, 'allow_dimension_migration') and self.config.allow_dimension_migration:
+            logger.info("Auto-migration enabled in config - allowing rebuild")
+            return True
+            
+        logger.warning("Dimension rebuild not allowed - store has data and migration disabled")
+        return False
+    
+    def _rebuild_for_new_dimension(self, new_dimension: int):
+        """Rebuild vector store for new embedding dimension"""
+        logger.info(f"Starting vector store rebuild: {self.dimension}D → {new_dimension}D")
+        
+        # Backup existing files if they exist
+        if os.path.exists(self.config.index_path):
+            backup_path = f"{self.config.index_path}.backup"
+            try:
+                os.rename(self.config.index_path, backup_path)
+                logger.info(f"Backed up vector index to {backup_path}")
+            except Exception as e:
+                logger.warning(f"Could not backup vector index: {e}")
+        
+        if os.path.exists(self.config.id_map_path):
+            backup_path = f"{self.config.id_map_path}.backup"
+            try:
+                os.rename(self.config.id_map_path, backup_path)
+                logger.info(f"Backed up ID map to {backup_path}")
+            except Exception as e:
+                logger.warning(f"Could not backup ID map: {e}")
+        
+        # Clear current state
+        old_count = len(self.vectors)
+        self.vectors.clear()
+        self.id_to_index.clear()
+        self.index_to_id.clear()
+        self.next_index = 0
+        self.dimension = new_dimension
+        
+        logger.info(f"Vector store rebuilt - cleared {old_count} vectors, ready for {new_dimension}D embeddings")
+    
     def add_vector(self, vector_id: str, vector: np.ndarray) -> bool:
         """Add a vector to the store"""
         try:
@@ -97,9 +148,17 @@ class VectorStoreService:
             # Set dimension on first vector
             if self.dimension is None:
                 self.dimension = vector.shape[0]
+                logger.info(f"Vector store initialized with dimension {self.dimension}")
             elif vector.shape[0] != self.dimension:
-                logger.error(f"Vector dimension {vector.shape[0]} doesn't match expected {self.dimension}")
-                return False
+                logger.warning(f"Vector dimension mismatch: {vector.shape[0]} vs expected {self.dimension}")
+                
+                # Check if we should rebuild for new dimension
+                if self._should_rebuild_for_new_dimension(vector.shape[0]):
+                    logger.info(f"Auto-rebuilding vector store for new dimension {vector.shape[0]}")
+                    self._rebuild_for_new_dimension(vector.shape[0])
+                else:
+                    logger.error(f"Cannot add vector - dimension mismatch not allowed")
+                    return False
             
             # Add or update vector
             if vector_id not in self.id_to_index:
