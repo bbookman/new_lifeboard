@@ -9,6 +9,7 @@ from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
 from sources.limitless import LimitlessSource
 from sources.news import NewsSource
+from sources.twitter import TwitterSource
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
@@ -241,6 +242,24 @@ class StartupService:
                 else:
                     logger.info("News API key not configured, skipping source registration")
             
+            # Register Twitter source if enabled and path is provided
+            if self.config.twitter.is_configured():
+                try:
+                    logger.info("Registering Twitter source...")
+                    twitter_source = TwitterSource(
+                        namespace='twitter',
+                        data_path=self.config.twitter.data_path
+                    )
+                    self.ingestion_service.register_source(twitter_source)
+                    startup_result["sources_registered"].append("twitter")
+                    logger.info("Twitter source registered successfully")
+                except Exception as e:
+                    error_msg = f"Failed to register Twitter source: {str(e)}"
+                    logger.warning(error_msg)
+                    startup_result["errors"].append(error_msg)
+            else:
+                logger.info("Twitter source not configured, skipping source registration")
+
             # Future: Add other source registrations here
             # if self.config.notion.api_key:
             #     notion_source = NotionSource(self.config.notion)
