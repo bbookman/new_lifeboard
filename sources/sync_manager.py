@@ -176,7 +176,11 @@ class LimitlessSyncManager:
         try:
             # Check if API key is configured before attempting sync
             if not self.config.is_api_key_configured():
+                logger.warning("================================================")
+                logger.warning("================================================")
                 logger.warning("LIMITLESS_API_KEY not configured. Incremental sync skipped. Please set a valid API key in .env file.")
+                logger.warning("================================================")
+                logger.warning("================================================")
                 result.end_time = datetime.now(timezone.utc)
                 await self.store_sync_result(result)
                 return

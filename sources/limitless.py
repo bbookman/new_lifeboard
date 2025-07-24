@@ -48,7 +48,11 @@ class LimitlessSource(BaseSource):
     async def test_connection(self) -> bool:
         """Test API connectivity"""
         if not self._api_key_configured:
+            logger.warning("================================================")
+            logger.warning("================================================")
             logger.warning("LIMITLESS_API_KEY is not configured in .env file. Connection test skipped.")
+            logger.warning("================================================")
+            logger.warning("================================================")
             return False
         
         try:
