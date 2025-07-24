@@ -415,8 +415,7 @@ class StartupService:
                     logger.info("🔄 EMBEDDING SCHEDULER: Starting scheduled embedding processing")
                     
                     result = await self.ingestion_service.process_pending_embeddings(
-                        batch_size=self.config.embedding_processing.batch_size,
-                        max_concurrent_jobs=self.config.embedding_processing.max_concurrent_jobs
+                        batch_size=self.config.embedding_processing.batch_size
                     )
                     
                     logger.info(f"🔄 EMBEDDING SCHEDULER: Completed - {result.get('embeddings_processed', 0)} embeddings generated")

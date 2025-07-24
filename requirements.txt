@@ -18,6 +18,9 @@ tokenizers>=0.13.0
 # Natural Language Processing
 spacy>=3.7.0
 
+# HTTP Requests for ConceptNet5 API
+requests>=2.31.0
+
 # LLM Integration
 openai>=1.0.0
 anthropic>=0.25.0

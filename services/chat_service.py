@@ -13,6 +13,7 @@ from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from core.ner_service import NERService
+from core.emotional_concepts import EmotionalConceptEngine
 from llm.factory import create_llm_provider
 from llm.base import LLMResponse, LLMError
 from config.models import AppConfig
@@ -40,6 +41,7 @@ class ChatService:
         self.vector_store = vector_store
         self.embeddings = embeddings
         self.ner_service = NERService()
+        self.emotional_engine = EmotionalConceptEngine(use_spacy_fallback=True)
         self.llm_provider = None
         
     async def initialize(self):
@@ -167,9 +169,9 @@ class ChatService:
                                 try:
                                     import json
                                     metadata = json.loads(source['metadata'])
-                                    logger.debug(f"  Metadata: {metadata}")
+                                    #logger.debug(f"  Metadata: {metadata}")
                                 except:
-                                    logger.debug(f"  Raw Metadata: {source['metadata']}")
+                                    logger.debug(f"  Raw Metadata: {source['metadata'][:100]}")
                             logger.info("  " + "-" * 60)
                     else:
                         logger.warning("No data sources found in database")
@@ -192,7 +194,7 @@ class ChatService:
             
             # Final logging of complete chat transaction
             logger.info("🏁 CHAT TRANSACTION COMPLETED:")
-            logger.info(f"   Query: '{user_message}'")
+            logger.info(f"   Query: '{user_message[:100]}'")
             logger.info(f"   Response length: {len(response.content)} characters")
             final_preview = response.content[:150] + "..." if len(response.content) > 150 else response.content
             logger.info(f"   Response preview: '{final_preview}'")
@@ -228,7 +230,7 @@ class ChatService:
     async def _get_chat_context(self, query: str, max_results: int = 10) -> ChatContext:
         """Get relevant context using hybrid approach with intelligent fallback"""
         logger.info(f"=== CONTEXT RETRIEVAL START ===")
-        logger.info(f"Query: '{query}'")
+        logger.info(f"Query: '{query}[:100]'")
         logger.info(f"Max results requested: {max_results}")
         
         vector_results = []
@@ -242,16 +244,34 @@ class ChatService:
         
         if self.vector_store and self.embeddings:
             try:
-                total_vectors_in_store = len(self.vector_store.vectors)
+                # Use the official get_stats method for more reliable count
+                vector_stats = self.vector_store.get_stats()
+                total_vectors_in_store = vector_stats.get('total_vectors', 0)
                 embedding_count = total_vectors_in_store
                 vector_available = embedding_count > 0
+                
+                logger.info(f"📊 VECTOR STORE STATS: {vector_stats}")
                 logger.info(f"📊 TOTAL VECTORS AVAILABLE: {total_vectors_in_store}")
                 logger.info(f"📊 Vector store service available: {self.vector_store is not None}")
                 logger.info(f"📊 Embedding service available: {self.embeddings is not None}")
                 logger.info(f"📊 Vector search enabled: {vector_available}")
+                
+                # Additional debugging: check database embedding status
+                db_stats = self.database.get_database_stats()
+                embedding_status = db_stats.get('embedding_status', {})
+                logger.info(f"📊 DATABASE EMBEDDING STATUS: {embedding_status}")
+                
             except Exception as e:
                 logger.warning(f"❌ Error checking vector store: {e}")
                 logger.info(f"📊 TOTAL VECTORS AVAILABLE: 0 (error accessing vector store)")
+                
+                # Try to get database stats even if vector store fails
+                try:
+                    db_stats = self.database.get_database_stats()
+                    embedding_status = db_stats.get('embedding_status', {})
+                    logger.info(f"📊 DATABASE EMBEDDING STATUS (fallback): {embedding_status}")
+                except Exception as db_e:
+                    logger.warning(f"❌ Error checking database stats: {db_e}")
         else:
             logger.info(f"📊 TOTAL VECTORS AVAILABLE: 0 (services not initialized)")
             logger.info(f"📊 Vector store service available: {self.vector_store is not None}")
@@ -417,60 +437,25 @@ class ChatService:
             
         return []
     
-    def _get_emotional_concept_map(self) -> Dict[str, List[str]]:
-        """Get mapping of emotional concepts to related terms for better similarity search"""
-        return {
-            # Core emotions and their manifestations
-            'fear': ['anxiety', 'worry', 'concern', 'scared', 'afraid', 'nervous', 'apprehensive', 'dread', 'panic', 'stress', 'tension'],
-            'anxiety': ['fear', 'worry', 'concern', 'nervous', 'stress', 'apprehensive', 'uneasy', 'restless', 'tense', 'overwhelmed'],
-            'worry': ['fear', 'anxiety', 'concern', 'stress', 'nervous', 'troubled', 'bothered', 'preoccupied', 'distressed'],
-            'concern': ['worry', 'anxiety', 'fear', 'care', 'troubled', 'bothered', 'issue', 'problem', 'matter'],
-            
-            # Health-related emotional indicators
-            'health': ['medical', 'doctor', 'symptoms', 'illness', 'sick', 'pain', 'appointment', 'treatment', 'wellness', 'physical'],
-            'medical': ['health', 'doctor', 'physician', 'clinic', 'hospital', 'symptoms', 'diagnosis', 'treatment', 'medication'],
-            'symptoms': ['health', 'medical', 'sick', 'illness', 'pain', 'discomfort', 'issues', 'problems', 'condition'],
-            
-            # Social and relationship fears
-            'social': ['people', 'friends', 'family', 'relationships', 'interaction', 'gathering', 'party', 'meeting', 'conversation'],
-            'relationship': ['social', 'people', 'friends', 'family', 'partner', 'connection', 'interaction', 'communication'],
-            'meeting': ['social', 'work', 'professional', 'gathering', 'appointment', 'discussion', 'conversation'],
-            
-            # Professional and work-related stress
-            'work': ['professional', 'job', 'career', 'business', 'meeting', 'project', 'deadline', 'responsibility', 'pressure'],
-            'professional': ['work', 'job', 'career', 'business', 'meeting', 'responsibility', 'performance', 'success'],
-            
-            # Physical manifestations of stress/anxiety
-            'sleep': ['tired', 'exhausted', 'rest', 'fatigue', 'sleepiness', 'insomnia', 'dreams', 'nightmares'],
-            'tired': ['sleep', 'exhausted', 'fatigue', 'sleepiness', 'rest', 'energy', 'drained'],
-            'pain': ['discomfort', 'ache', 'hurt', 'symptoms', 'physical', 'body', 'health', 'medical'],
-            
-            # Temporal and uncertainty indicators
-            'future': ['uncertainty', 'unknown', 'planning', 'outcome', 'result', 'consequence', 'expectation'],
-            'uncertainty': ['future', 'unknown', 'unclear', 'unsure', 'doubt', 'question', 'concern', 'worry'],
-            
-            # Age and life transition fears
-            'age': ['aging', 'old', 'young', 'time', 'years', 'birthday', 'generation', 'life', 'health'],
-            'aging': ['age', 'old', 'older', 'time', 'years', 'health', 'body', 'changes', 'life']
-        }
-    
     def _expand_emotional_keywords(self, keywords: List[str]) -> List[str]:
-        """Expand keywords with emotional concept relationships"""
-        emotional_map = self._get_emotional_concept_map()
-        expanded = set(keywords)  # Start with original keywords
-        
-        for keyword in keywords:
-            keyword_lower = keyword.lower()
-            # Add related emotional concepts
-            if keyword_lower in emotional_map:
-                expanded.update(emotional_map[keyword_lower])
+        """Expand keywords with emotional concept relationships using ConceptNet5 and ontology"""
+        try:
+            # Use the new EmotionalConceptEngine for sophisticated concept expansion
+            expanded_concepts = self.emotional_engine.expand_emotional_concepts(
+                concepts=keywords,
+                max_expansions=15,
+                similarity_threshold=0.6
+            )
             
-            # Check if keyword contains emotional concepts
-            for concept, related_terms in emotional_map.items():
-                if concept in keyword_lower or keyword_lower in concept:
-                    expanded.update(related_terms)
-        
-        return list(expanded)
+            # Combine original keywords with expanded concepts
+            all_keywords = list(set(keywords + expanded_concepts))
+            
+            logger.info(f"🧠 EMOTIONAL EXPANSION (Library-based): {keywords} → {expanded_concepts}")
+            return all_keywords
+            
+        except Exception as e:
+            logger.warning(f"EmotionalConceptEngine failed, using original keywords: {e}")
+            return keywords
 
     def _extract_search_keywords(self, query: str) -> List[str]:
         """Extract meaningful keywords from user query for SQL search with emotional intelligence"""
@@ -1070,8 +1055,29 @@ Analyze the provided personal data with enhanced emotional intelligence and prov
             'recurring_themes': []
         }
         
-        # Emotional concept mapping for pattern detection
-        emotional_concepts = self._get_emotional_concept_map()
+        # Get emotional concepts using the new engine for each category
+        try:
+            anxiety_concepts = self.emotional_engine.expand_emotional_concepts(['fear', 'anxiety', 'worry'], max_expansions=10)
+            health_concepts = self.emotional_engine.expand_emotional_concepts(['health', 'medical', 'symptoms'], max_expansions=10)
+            social_concepts = self.emotional_engine.expand_emotional_concepts(['social', 'meeting', 'people'], max_expansions=10)
+            work_concepts = self.emotional_engine.expand_emotional_concepts(['work', 'professional', 'job'], max_expansions=10)
+            
+            # Create a comprehensive emotional concept mapping
+            emotional_concepts = {
+                'anxiety_indicators': set(anxiety_concepts),
+                'health_concerns': set(health_concepts),
+                'social_stressors': set(social_concepts),
+                'work_pressures': set(work_concepts)
+            }
+        except Exception as e:
+            logger.warning(f"EmotionalConceptEngine failed for pattern extraction, using basic fallback: {e}")
+            # Basic fallback
+            emotional_concepts = {
+                'anxiety_indicators': {'fear', 'anxiety', 'worry', 'concern', 'stress', 'nervous'},
+                'health_concerns': {'health', 'medical', 'doctor', 'symptoms', 'pain', 'illness'},
+                'social_stressors': {'social', 'meeting', 'party', 'people', 'gathering'},
+                'work_pressures': {'work', 'professional', 'job', 'career', 'business'}
+            }
         
         for item in results:
             content = item.get('content', '') or ''
@@ -1080,37 +1086,34 @@ Analyze the provided personal data with enhanced emotional intelligence and prov
             # Extract timestamp for temporal analysis
             timestamp = item.get('created_at', '') or item.get('updated_at', '')
             
-            # Analyze content for emotional indicators
-            for concept, related_terms in emotional_concepts.items():
-                if concept in content_lower or any(term in content_lower for term in related_terms):
-                    if concept in ['fear', 'anxiety', 'worry', 'concern']:
-                        emotional_analysis['anxiety_indicators'].append({
-                            'content_snippet': content[:200] + '...' if len(content) > 200 else content,
-                            'concept': concept,
-                            'timestamp': timestamp,
-                            'item_id': item.get('id', '')
-                        })
-                    elif concept in ['health', 'medical', 'symptoms', 'pain']:
-                        emotional_analysis['health_concerns'].append({
-                            'content_snippet': content[:200] + '...' if len(content) > 200 else content,
-                            'concern_type': concept,
-                            'timestamp': timestamp,
-                            'item_id': item.get('id', '')
-                        })
-                    elif concept in ['social', 'meeting', 'party', 'people']:
-                        emotional_analysis['social_stressors'].append({
-                            'content_snippet': content[:200] + '...' if len(content) > 200 else content,
-                            'social_context': concept,
-                            'timestamp': timestamp,
-                            'item_id': item.get('id', '')
-                        })
-                    elif concept in ['work', 'professional', 'job']:
-                        emotional_analysis['work_pressures'].append({
-                            'content_snippet': content[:200] + '...' if len(content) > 200 else content,
-                            'work_context': concept,
-                            'timestamp': timestamp,
-                            'item_id': item.get('id', '')
-                        })
+            # Analyze content for emotional indicators using the new structure
+            for category, concept_set in emotional_concepts.items():
+                matched_concepts = []
+                for concept in concept_set:
+                    if concept.lower() in content_lower:
+                        matched_concepts.append(concept)
+                
+                if matched_concepts:
+                    # Create analysis entry based on category
+                    analysis_entry = {
+                        'content_snippet': content[:200] + '...' if len(content) > 200 else content,
+                        'matched_concepts': matched_concepts,
+                        'timestamp': timestamp,
+                        'item_id': item.get('id', '')
+                    }
+                    
+                    if category == 'anxiety_indicators':
+                        analysis_entry['concept'] = matched_concepts[0]  # Primary concept
+                        emotional_analysis['anxiety_indicators'].append(analysis_entry)
+                    elif category == 'health_concerns':
+                        analysis_entry['concern_type'] = matched_concepts[0]
+                        emotional_analysis['health_concerns'].append(analysis_entry)
+                    elif category == 'social_stressors':
+                        analysis_entry['social_context'] = matched_concepts[0]
+                        emotional_analysis['social_stressors'].append(analysis_entry)
+                    elif category == 'work_pressures':
+                        analysis_entry['work_context'] = matched_concepts[0]
+                        emotional_analysis['work_pressures'].append(analysis_entry)
             
             # Look for emotional intensity markers
             intensity_words = ['very', 'extremely', 'really', 'quite', 'pretty', 'somewhat', 'a bit', 'little']
