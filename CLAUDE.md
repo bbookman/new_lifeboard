@@ -129,3 +129,6 @@ The project is currently in planning phase with comprehensive documentation for 
 ## Memory Management Guidelines
 - Updates to the development log are intentional and made by the human
 - Purge cache of the development log and only read the file that exists and not any kind of memory or cache
+
+## Development Guidelines
+- For every plan, the plan must include a step to create and run tests
