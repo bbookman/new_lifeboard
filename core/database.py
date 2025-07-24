@@ -85,10 +85,27 @@ class DatabaseService:
             """)
             
             # Create indexes for search performance
+            # News articles table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS news (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    link TEXT NOT NULL UNIQUE,
+                    snippet TEXT,
+                    thumbnail_url TEXT,
+                    published_datetime_utc TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Create indexes
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_namespace ON data_items(namespace)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_embedding_status ON data_items(embedding_status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_updated_at ON data_items(updated_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_news_published_datetime ON news(published_datetime_utc)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at)")
             
             # Text search performance indexes
             conn.execute("CREATE INDEX IF NOT EXISTS idx_content_search ON data_items(content)")

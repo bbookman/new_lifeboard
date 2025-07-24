@@ -103,6 +103,62 @@ class LimitlessConfig(BaseModel):
                 self.api_key != "your_api_key_here")
 
 
+class NewsConfig(BaseModel):
+    """News API configuration"""
+    api_key: Optional[str] = None
+    language: str = "en"
+    enabled: bool = True
+    country: str = "US"
+    unique_items_per_day: int = 5
+    endpoint: str = "real-time-news-data.p.rapidapi.com"
+    items_to_retrieve: int = 20
+    max_retries: int = 3
+    retry_delay: float = 1.0
+    request_timeout: float = 30.0
+    sync_interval_hours: int = 24
+    
+    @field_validator('api_key')
+    @classmethod
+    def validate_api_key(cls, v):
+        if v is not None and not isinstance(v, str):
+            raise ValueError("API key must be a string")
+        return v
+    
+    @field_validator('language')
+    @classmethod
+    def validate_language(cls, v):
+        if not v or not isinstance(v, str):
+            raise ValueError("Language must be a non-empty string")
+        return v
+    
+    @field_validator('country')
+    @classmethod
+    def validate_country(cls, v):
+        if not v or not isinstance(v, str):
+            raise ValueError("Country must be a non-empty string")
+        return v
+    
+    @field_validator('unique_items_per_day')
+    @classmethod
+    def validate_unique_items_per_day(cls, v):
+        if v <= 0:
+            raise ValueError("Unique items per day must be positive")
+        return v
+    
+    @field_validator('items_to_retrieve')
+    @classmethod
+    def validate_items_to_retrieve(cls, v):
+        if v <= 0:
+            raise ValueError("Items to retrieve must be positive")
+        return v
+    
+    def is_api_key_configured(self) -> bool:
+        """Check if API key is properly configured"""
+        return (self.api_key is not None and
+                self.api_key.strip() != "" and
+                self.api_key != "your-rapid-api-key-here")
+
+
 class SourceConfig(BaseModel):
     """Data source configuration"""
     namespace: str
@@ -319,6 +375,7 @@ class AppConfig(BaseModel):
     embedding_processing: EmbeddingProcessingConfig = EmbeddingProcessingConfig()
     vector_store: VectorStoreConfig = VectorStoreConfig()
     limitless: LimitlessConfig = LimitlessConfig()
+    news: NewsConfig = NewsConfig()
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     auto_sync: AutoSyncConfig = AutoSyncConfig()

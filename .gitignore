@@ -213,3 +213,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Lifeboard application files
+  vector_ids.json
+  vector_index.faiss*
+  *.faiss
+  *.faiss.*
+  logs/lifeboard.log
+  

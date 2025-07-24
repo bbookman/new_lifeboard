@@ -8,6 +8,7 @@ from services.ingestion import IngestionService
 from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
 from sources.limitless import LimitlessSource
+from sources.news import NewsSource
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
@@ -223,6 +224,25 @@ class StartupService:
                     startup_result["errors"].append(error_msg)
             else:
                 logger.info("Limitless API key not configured, skipping source registration")
+            
+            # Register News source if enabled and API key is available
+            if self.config.news.enabled and self.config.news.api_key:
+                try:
+                    logger.info("Registering News source...")
+                    news_source = NewsSource(self.config.news)
+                    self.ingestion_service.register_source(news_source)
+                    startup_result["sources_registered"].append("news")
+                    logger.info("News source registered successfully")
+                    
+                except Exception as e:
+                    error_msg = f"Failed to register News source: {str(e)}"
+                    logger.warning(error_msg)
+                    startup_result["errors"].append(error_msg)
+            else:
+                if not self.config.news.enabled:
+                    logger.info("News service disabled in configuration, skipping source registration")
+                else:
+                    logger.info("News API key not configured, skipping source registration")
             
             # Future: Add other source registrations here
             # if self.config.notion.api_key:
