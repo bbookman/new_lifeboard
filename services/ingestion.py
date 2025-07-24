@@ -146,13 +146,17 @@ class IngestionService:
                 processed_item.source_id
             )
             
+            # Extract days_date for calendar support
+            days_date = self._extract_days_date(processed_item)
+            
             # Store in database
             self.database.store_data_item(
                 id=namespaced_id,
                 namespace=processed_item.namespace,
                 source_id=processed_item.source_id,
                 content=processed_item.content,
-                metadata=processed_item.metadata
+                metadata=processed_item.metadata,
+                days_date=days_date
             )
             
             result.items_stored += 1
@@ -346,3 +350,48 @@ class IngestionService:
         status["source_stats"] = source_stats
         
         return status
+    
+    def _extract_days_date(self, item: DataItem) -> Optional[str]:
+        """Extract days_date from DataItem for calendar support"""
+        try:
+            # First try to use created_at if available
+            if item.created_at:
+                # Get user timezone from config for this namespace
+                user_timezone = self._get_user_timezone_for_namespace(item.namespace)
+                return self.database.extract_date_from_timestamp(
+                    item.created_at.isoformat(), 
+                    user_timezone
+                )
+            
+            # Fallback to extracting from metadata
+            if item.metadata:
+                # Try different timestamp fields that might be in metadata
+                timestamp_fields = ['start_time', 'startTime', 'published_datetime_utc', 'created_at', 'timestamp']
+                
+                for field in timestamp_fields:
+                    if field in item.metadata and item.metadata[field]:
+                        user_timezone = self._get_user_timezone_for_namespace(item.namespace)
+                        extracted_date = self.database.extract_date_from_timestamp(
+                            str(item.metadata[field]), 
+                            user_timezone
+                        )
+                        if extracted_date:
+                            return extracted_date
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Failed to extract days_date from item {item.source_id}: {e}")
+            return None
+    
+    def _get_user_timezone_for_namespace(self, namespace: str) -> str:
+        """Get user timezone configuration for a specific namespace"""
+        if namespace == "limitless":
+            return self.config.limitless.timezone
+        elif namespace == "news":
+            # News typically uses UTC, but we might want to convert to user's preferred timezone
+            # For now, return UTC since news published times are usually in UTC
+            return "UTC"
+        else:
+            # Default to UTC for unknown namespaces
+            return "UTC"
