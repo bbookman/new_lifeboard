@@ -3,6 +3,8 @@ import json
 import os
 from typing import List, Dict, Optional, Any
 from contextlib import contextmanager
+from datetime import datetime, timezone
+import pytz
 
 
 class DatabaseService:
@@ -53,6 +55,7 @@ class DatabaseService:
                     metadata TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    days_date DATE,
                     embedding_status TEXT DEFAULT 'pending',
                     FOREIGN KEY (namespace) REFERENCES data_sources(namespace)
                 )
@@ -86,6 +89,7 @@ class DatabaseService:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_namespace ON data_items(namespace)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_embedding_status ON data_items(embedding_status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_updated_at ON data_items(updated_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_days_date ON data_items(days_date)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_news_published_datetime ON news(published_datetime_utc)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at)")
@@ -93,15 +97,15 @@ class DatabaseService:
             conn.commit()
     
     def store_data_item(self, id: str, namespace: str, source_id: str, 
-                       content: str, metadata: Dict = None):
+                       content: str, metadata: Dict = None, days_date: str = None):
         """Store data item with namespaced ID"""
         with self.get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO data_items 
-                (id, namespace, source_id, content, metadata, updated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (id, namespace, source_id, content, metadata, days_date, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (id, namespace, source_id, content, 
-                  json.dumps(metadata) if metadata else None))
+                  json.dumps(metadata) if metadata else None, days_date))
             conn.commit()
     
     def get_data_items_by_ids(self, ids: List[str]) -> List[Dict]:
@@ -112,7 +116,7 @@ class DatabaseService:
         placeholders = ','.join('?' * len(ids))
         with self.get_connection() as conn:
             cursor = conn.execute(f"""
-                SELECT id, namespace, source_id, content, metadata, created_at, updated_at
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
                 FROM data_items 
                 WHERE id IN ({placeholders})
                 ORDER BY updated_at DESC
@@ -135,7 +139,7 @@ class DatabaseService:
         """Get data items for a specific namespace"""
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                SELECT id, namespace, source_id, content, metadata, created_at, updated_at
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
                 FROM data_items 
                 WHERE namespace = ?
                 ORDER BY updated_at DESC
@@ -313,3 +317,98 @@ class DatabaseService:
             
             # Return in chronological order (oldest first)
             return list(reversed(messages))
+    
+    def extract_date_from_timestamp(self, timestamp_str: str, user_timezone: str = "UTC") -> Optional[str]:
+        """Extract date string (YYYY-MM-DD) from timestamp with timezone conversion"""
+        if not timestamp_str:
+            return None
+        
+        try:
+            # Parse ISO-8601 timestamp
+            if timestamp_str.endswith('Z'):
+                # UTC timestamp
+                dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            elif '+' in timestamp_str or timestamp_str.endswith(tuple(f"-{i:02d}:00" for i in range(24))):
+                # Already has timezone info
+                dt = datetime.fromisoformat(timestamp_str)
+            else:
+                # Assume UTC if no timezone info
+                dt = datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
+            
+            # Convert to user timezone
+            if user_timezone != "UTC":
+                try:
+                    user_tz = pytz.timezone(user_timezone)
+                    dt = dt.astimezone(user_tz)
+                except Exception:
+                    # Fallback to UTC if timezone conversion fails
+                    pass
+            
+            # Return date in YYYY-MM-DD format
+            return dt.strftime('%Y-%m-%d')
+            
+        except (ValueError, TypeError) as e:
+            return None
+    
+    def get_data_items_by_date_range(self, start_date: str, end_date: str, 
+                                   namespaces: Optional[List[str]] = None,
+                                   limit: int = 100) -> List[Dict]:
+        """Get data items within a date range"""
+        with self.get_connection() as conn:
+            # Base query
+            query = """
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
+                FROM data_items 
+                WHERE days_date >= ? AND days_date <= ?
+            """
+            params = [start_date, end_date]
+            
+            # Add namespace filter if provided
+            if namespaces:
+                placeholders = ','.join('?' * len(namespaces))
+                query += f" AND namespace IN ({placeholders})"
+                params.extend(namespaces)
+            
+            # Add ordering and limit
+            query += " ORDER BY days_date DESC, updated_at DESC LIMIT ?"
+            params.append(limit)
+            
+            cursor = conn.execute(query, params)
+            
+            results = []
+            for row in cursor.fetchall():
+                item = dict(row)
+                # Parse JSON metadata if present
+                if item['metadata']:
+                    try:
+                        item['metadata'] = json.loads(item['metadata'])
+                    except json.JSONDecodeError:
+                        item['metadata'] = None
+                results.append(item)
+            
+            return results
+    
+    def get_data_items_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> List[Dict]:
+        """Get all data items for a specific date"""
+        return self.get_data_items_by_date_range(date, date, namespaces, limit=1000)
+    
+    def get_available_dates(self, namespaces: Optional[List[str]] = None) -> List[str]:
+        """Get list of dates that have data available"""
+        with self.get_connection() as conn:
+            query = """
+                SELECT DISTINCT days_date 
+                FROM data_items 
+                WHERE days_date IS NOT NULL
+            """
+            params = []
+            
+            # Add namespace filter if provided
+            if namespaces:
+                placeholders = ','.join('?' * len(namespaces))
+                query += f" AND namespace IN ({placeholders})"
+                params.extend(namespaces)
+            
+            query += " ORDER BY days_date DESC"
+            
+            cursor = conn.execute(query, params)
+            return [row['days_date'] for row in cursor.fetchall()]

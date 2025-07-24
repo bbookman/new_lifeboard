@@ -215,4 +215,5 @@ __marimo__/
   *.faiss
   *.faiss.*
   logs/lifeboard.log
+  vector_index.faiss.npy
   
