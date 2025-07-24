@@ -5,7 +5,12 @@ __pycache__/
 .env
 .DS_store
 *.db
+# Lifeboard application runtime files
 vector_ids.json
+vector_index.faiss*
+*.faiss
+*.faiss.*
+
 # C extensions
 *.so
 

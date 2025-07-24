@@ -68,6 +68,7 @@ class VectorStoreConfig(BaseModel):
     index_path: str = "vector_index.faiss"
     id_map_path: str = "vector_ids.json"
     dimension: int = 384  # Matches all-MiniLM-L6-v2
+    allow_dimension_migration: bool = True  # Allow automatic dimension changes
     
     @field_validator('index_path', 'id_map_path')
     @classmethod

@@ -84,13 +84,171 @@ class DatabaseService:
                 )
             """)
             
-            # Create indexes
+            # Create indexes for search performance
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_namespace ON data_items(namespace)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_embedding_status ON data_items(embedding_status)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_updated_at ON data_items(updated_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_updated_at ON data_items(updated_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp)")
             
+            # Text search performance indexes
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_content_search ON data_items(content)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_summary_search ON data_items(summary_content)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_entities_search ON data_items(named_entities)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_classification_search ON data_items(content_classification)")
+            
+            # Semantic expansion query optimization
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_content_not_null ON data_items(updated_at DESC) WHERE content IS NOT NULL")
+            
+            # Data sources performance
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_data_sources_item_count ON data_sources(item_count DESC)")
+            
+            # Full-Text Search virtual table for enhanced text search
+            try:
+                # Check if FTS table exists
+                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='data_items_fts'")
+                if not cursor.fetchone():
+                    # Create FTS virtual table
+                    conn.execute("""
+                        CREATE VIRTUAL TABLE data_items_fts USING fts5(
+                            content, 
+                            summary_content, 
+                            named_entities, 
+                            content_classification,
+                            rowid UNINDEXED
+                        )
+                    """)
+                    logger.info("Created FTS virtual table for enhanced text search")
+            except Exception as e:
+                logger.warning(f"Could not create FTS table (FTS may not be available): {e}")
+            
             conn.commit()
+    
+    def _update_fts_table(self, conn, item_id: str, content: str = None, 
+                         summary_content: str = None, named_entities: str = None, 
+                         content_classification: str = None):
+        """Update FTS table when data items are added/updated"""
+        try:
+            # Check if FTS table exists
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='data_items_fts'")
+            if not cursor.fetchone():
+                return  # FTS not available
+                
+            # Get rowid from main table
+            cursor = conn.execute("SELECT rowid FROM data_items WHERE id = ?", (item_id,))
+            row = cursor.fetchone()
+            if not row:
+                return
+                
+            rowid = row[0]
+            
+            # Insert or replace in FTS table
+            conn.execute("""
+                INSERT OR REPLACE INTO data_items_fts(rowid, content, summary_content, named_entities, content_classification)
+                VALUES (?, ?, ?, ?, ?)
+            """, (rowid, content or '', summary_content or '', named_entities or '', content_classification or ''))
+            
+        except Exception as e:
+            logger.debug(f"FTS update failed for {item_id}: {e}")
+    
+    def fts_search(self, query_terms: List[str], max_results: int = 20) -> List[Dict]:
+        """Perform full-text search using FTS if available, fallback to LIKE search"""
+        try:
+            with self.get_connection() as conn:
+                # Check if FTS table exists
+                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='data_items_fts'")
+                if cursor.fetchone():
+                    # Use FTS search
+                    fts_query = ' OR '.join(query_terms)
+                    cursor = conn.execute("""
+                        SELECT di.id, di.namespace, di.source_id, di.content, di.metadata,
+                               di.summary_content, di.named_entities, di.content_classification,
+                               di.created_at, di.updated_at
+                        FROM data_items di
+                        JOIN data_items_fts fts ON di.rowid = fts.rowid
+                        WHERE data_items_fts MATCH ?
+                        ORDER BY rank, di.updated_at DESC
+                        LIMIT ?
+                    """, (fts_query, max_results))
+                    
+                    logger.debug(f"FTS search executed for: {fts_query}")
+                    
+                else:
+                    # Fallback to LIKE search (existing implementation)
+                    return None  # Indicates FTS not available
+                    
+                results = []
+                for row in cursor.fetchall():
+                    item = dict(row)
+                    if item['metadata']:
+                        try:
+                            item['metadata'] = json.loads(item['metadata'])
+                        except json.JSONDecodeError:
+                            item['metadata'] = None
+                    results.append(item)
+                
+                logger.info(f"FTS search returned {len(results)} results")
+                return results
+                
+        except Exception as e:
+            logger.warning(f"FTS search failed: {e}")
+            return None  # Indicates fallback needed
+    
+    def rebuild_fts_table(self):
+        """Rebuild FTS table from existing data"""
+        try:
+            with self.get_connection() as conn:
+                # Check if FTS table exists
+                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='data_items_fts'")
+                if not cursor.fetchone():
+                    logger.info("FTS table not available, skipping rebuild")
+                    return False
+                
+                # Clear existing FTS data
+                conn.execute("DELETE FROM data_items_fts")
+                
+                # Populate from existing data
+                cursor = conn.execute("""
+                    SELECT rowid, id, content, summary_content, named_entities, content_classification
+                    FROM data_items
+                    WHERE content IS NOT NULL
+                """)
+                
+                batch_size = 100
+                batch = []
+                total_processed = 0
+                
+                for row in cursor.fetchall():
+                    batch.append((
+                        row['rowid'],
+                        row['content'] or '',
+                        row['summary_content'] or '', 
+                        row['named_entities'] or '',
+                        row['content_classification'] or ''
+                    ))
+                    
+                    if len(batch) >= batch_size:
+                        conn.executemany("""
+                            INSERT INTO data_items_fts(rowid, content, summary_content, named_entities, content_classification)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, batch)
+                        total_processed += len(batch)
+                        batch = []
+                
+                # Process remaining items
+                if batch:
+                    conn.executemany("""
+                        INSERT INTO data_items_fts(rowid, content, summary_content, named_entities, content_classification)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, batch)
+                    total_processed += len(batch)
+                
+                conn.commit()
+                logger.info(f"FTS table rebuilt with {total_processed} items")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to rebuild FTS table: {e}")
+            return False
     
     def store_data_item(self, id: str, namespace: str, source_id: str, 
                        content: str, metadata: Dict = None):
@@ -170,6 +328,11 @@ class DatabaseService:
                   summary_content, named_entities, content_classification,
                   temporal_context, conversation_turns, content_quality_score,
                   semantic_density, preprocessing_status))
+            
+            # Update FTS table if available
+            self._update_fts_table(conn, id, content, summary_content, 
+                                 named_entities, content_classification)
+            
             conn.commit()
     
     def get_data_items_by_ids(self, ids: List[str]) -> List[Dict]:

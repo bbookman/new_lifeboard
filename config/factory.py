@@ -94,7 +94,8 @@ def create_production_config() -> AppConfig:
         vector_store=VectorStoreConfig(
             index_path=os.getenv("VECTOR_INDEX_PATH", "vector_index.faiss"),
             id_map_path=os.getenv("VECTOR_ID_MAP_PATH", "vector_ids.json"),
-            dimension=int(os.getenv("VECTOR_DIMENSION", "384"))
+            dimension=int(os.getenv("VECTOR_DIMENSION", "384")),
+            allow_dimension_migration=os.getenv("VECTOR_ALLOW_DIMENSION_MIGRATION", "true").lower() == "true"
         ),
         limitless=LimitlessConfig(
             api_key=os.getenv("LIMITLESS_API_KEY"),

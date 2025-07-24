@@ -4,6 +4,7 @@ for the minimal chat interface.
 """
 
 import logging
+import os
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 import numpy as np
@@ -416,78 +417,302 @@ class ChatService:
             
         return []
     
+    def _get_emotional_concept_map(self) -> Dict[str, List[str]]:
+        """Get mapping of emotional concepts to related terms for better similarity search"""
+        return {
+            # Core emotions and their manifestations
+            'fear': ['anxiety', 'worry', 'concern', 'scared', 'afraid', 'nervous', 'apprehensive', 'dread', 'panic', 'stress', 'tension'],
+            'anxiety': ['fear', 'worry', 'concern', 'nervous', 'stress', 'apprehensive', 'uneasy', 'restless', 'tense', 'overwhelmed'],
+            'worry': ['fear', 'anxiety', 'concern', 'stress', 'nervous', 'troubled', 'bothered', 'preoccupied', 'distressed'],
+            'concern': ['worry', 'anxiety', 'fear', 'care', 'troubled', 'bothered', 'issue', 'problem', 'matter'],
+            
+            # Health-related emotional indicators
+            'health': ['medical', 'doctor', 'symptoms', 'illness', 'sick', 'pain', 'appointment', 'treatment', 'wellness', 'physical'],
+            'medical': ['health', 'doctor', 'physician', 'clinic', 'hospital', 'symptoms', 'diagnosis', 'treatment', 'medication'],
+            'symptoms': ['health', 'medical', 'sick', 'illness', 'pain', 'discomfort', 'issues', 'problems', 'condition'],
+            
+            # Social and relationship fears
+            'social': ['people', 'friends', 'family', 'relationships', 'interaction', 'gathering', 'party', 'meeting', 'conversation'],
+            'relationship': ['social', 'people', 'friends', 'family', 'partner', 'connection', 'interaction', 'communication'],
+            'meeting': ['social', 'work', 'professional', 'gathering', 'appointment', 'discussion', 'conversation'],
+            
+            # Professional and work-related stress
+            'work': ['professional', 'job', 'career', 'business', 'meeting', 'project', 'deadline', 'responsibility', 'pressure'],
+            'professional': ['work', 'job', 'career', 'business', 'meeting', 'responsibility', 'performance', 'success'],
+            
+            # Physical manifestations of stress/anxiety
+            'sleep': ['tired', 'exhausted', 'rest', 'fatigue', 'sleepiness', 'insomnia', 'dreams', 'nightmares'],
+            'tired': ['sleep', 'exhausted', 'fatigue', 'sleepiness', 'rest', 'energy', 'drained'],
+            'pain': ['discomfort', 'ache', 'hurt', 'symptoms', 'physical', 'body', 'health', 'medical'],
+            
+            # Temporal and uncertainty indicators
+            'future': ['uncertainty', 'unknown', 'planning', 'outcome', 'result', 'consequence', 'expectation'],
+            'uncertainty': ['future', 'unknown', 'unclear', 'unsure', 'doubt', 'question', 'concern', 'worry'],
+            
+            # Age and life transition fears
+            'age': ['aging', 'old', 'young', 'time', 'years', 'birthday', 'generation', 'life', 'health'],
+            'aging': ['age', 'old', 'older', 'time', 'years', 'health', 'body', 'changes', 'life']
+        }
+    
+    def _expand_emotional_keywords(self, keywords: List[str]) -> List[str]:
+        """Expand keywords with emotional concept relationships"""
+        emotional_map = self._get_emotional_concept_map()
+        expanded = set(keywords)  # Start with original keywords
+        
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+            # Add related emotional concepts
+            if keyword_lower in emotional_map:
+                expanded.update(emotional_map[keyword_lower])
+            
+            # Check if keyword contains emotional concepts
+            for concept, related_terms in emotional_map.items():
+                if concept in keyword_lower or keyword_lower in concept:
+                    expanded.update(related_terms)
+        
+        return list(expanded)
+
     def _extract_search_keywords(self, query: str) -> List[str]:
-        """Extract meaningful keywords from user query for SQL search"""
+        """Extract meaningful keywords from user query for SQL search with emotional intelligence"""
         try:
+            logger.info(f"🔍 KEYWORD EXTRACTION: Processing query: '{query}'")
+            
             # Use NER service to extract entities if available
+            ner_keywords = []
             if hasattr(self, 'ner_service') and self.ner_service:
                 ner_result = self.ner_service.extract_entities(query)
-                keywords = []
                 
                 # Add person names
-                keywords.extend(ner_result.person_names)
+                ner_keywords.extend(ner_result.person_names)
                 
-                # Add pet names
-                keywords.extend(ner_result.pet_names)
+                # Add pet names  
+                ner_keywords.extend(ner_result.pet_names)
                 
                 # Add other significant entities
                 for entity in ner_result.entities:
                     if entity.label in ['PERSON', 'PET', 'ANIMAL', 'ORG', 'GPE', 'PRODUCT']:
-                        keywords.append(entity.text)
-                
-                # If we found entities, return them
-                if keywords:
-                    # Remove duplicates while preserving order
-                    seen = set()
-                    unique_keywords = []
-                    for keyword in keywords:
-                        if keyword.lower() not in seen:
-                            unique_keywords.append(keyword)
-                            seen.add(keyword.lower())
-                    return unique_keywords
+                        ner_keywords.append(entity.text)
             
-            # Fallback: extract meaningful keywords using simple patterns
+            # Enhanced keyword extraction with emotional and psychological concept recognition
             import re
             
-            # Common question words to skip
+            # Extended stop words including question words and common emotional query terms
             stop_words = {'do', 'i', 'have', 'a', 'an', 'the', 'is', 'are', 'was', 'were', 
                          'can', 'could', 'would', 'should', 'what', 'when', 'where', 'who', 
-                         'how', 'why', 'my', 'me', 'you', 'your', 'his', 'her', 'their', 'our'}
+                         'how', 'why', 'my', 'me', 'you', 'your', 'his', 'her', 'their', 'our',
+                         'in', 'at', 'on', 'for', 'with', 'by', 'from', 'to', 'of', 'and', 'or',
+                         'last', 'this', 'that', 'these', 'those', 'were', 'been', 'being'}
             
-            # Split into words and filter
+            # Psychological and emotional priority terms that should always be included
+            priority_psychological_terms = {
+                'fear', 'fears', 'anxiety', 'anxious', 'worry', 'worried', 'concern', 'concerned',
+                'stress', 'stressed', 'nervous', 'panic', 'scared', 'afraid', 'frightened',
+                'health', 'medical', 'doctor', 'symptoms', 'pain', 'sick', 'illness',
+                'sleep', 'tired', 'exhausted', 'fatigue', 'sleepiness',
+                'social', 'meeting', 'party', 'gathering', 'people', 'friends', 'family',
+                'work', 'professional', 'job', 'career', 'business',
+                'age', 'aging', 'old', 'young', 'time', 'future', 'uncertainty'
+            }
+            
+            # Extract all words from query
             words = re.findall(r'\b\w+\b', query.lower())
-            keywords = [word for word in words if word not in stop_words and len(word) > 2]
             
-            # If no good keywords found, return the original query minus common words
-            if not keywords:
+            # Categorize keywords
+            extracted_keywords = []
+            
+            # 1. Always include priority psychological terms
+            for word in words:
+                if word in priority_psychological_terms:
+                    extracted_keywords.append(word)
+            
+            # 2. Include meaningful non-stop words
+            for word in words:
+                if (word not in stop_words and 
+                    len(word) > 2 and 
+                    word not in extracted_keywords):
+                    extracted_keywords.append(word)
+            
+            # 3. Add NER-extracted keywords
+            for keyword in ner_keywords:
+                if keyword.lower() not in [k.lower() for k in extracted_keywords]:
+                    extracted_keywords.append(keyword)
+            
+            # 4. Apply emotional keyword expansion
+            if extracted_keywords:
+                expanded_keywords = self._expand_emotional_keywords(extracted_keywords)
+                logger.info(f"🔍 EMOTIONAL EXPANSION: Original keywords: {extracted_keywords}")
+                logger.info(f"🔍 EMOTIONAL EXPANSION: Expanded to: {expanded_keywords}")
+                extracted_keywords = expanded_keywords
+            
+            # Fallback strategies if no good keywords found
+            if not extracted_keywords:
                 # Try to find any capitalized words (potential names)
                 capitalized = re.findall(r'\b[A-Z][a-z]+\b', query)
                 if capitalized:
+                    logger.info(f"🔍 FALLBACK: Using capitalized words: {capitalized}")
                     return capitalized
+                
                 # Last resort: use original query
+                logger.info(f"🔍 FALLBACK: Using original query as single keyword")
                 return [query.strip()]
             
-            return keywords
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_keywords = []
+            for keyword in extracted_keywords:
+                if keyword.lower() not in seen:
+                    unique_keywords.append(keyword)
+                    seen.add(keyword.lower())
+            
+            logger.info(f"🔍 FINAL KEYWORDS: {unique_keywords}")
+            return unique_keywords
             
         except Exception as e:
             logger.debug(f"Error extracting keywords: {e}")
             return [query.strip()]
 
-    async def _sql_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
-        """Perform SQL-based keyword search across content and enhanced preprocessing fields"""
+    async def _find_similar_terms_in_data(self, query_embedding: np.ndarray, original_keywords: List[str], 
+                                        similarity_threshold: float = 0.6, max_similar_terms: int = 10) -> List[str]:
+        """Find semantically similar terms in existing data to expand keyword search"""
         try:
-            # MARKER: Enhanced SQL search with keyword extraction (not old hardcoded version)
-            logger.info(f"🔍 ENHANCED SQL SEARCH: Starting enhanced keyword-based search for query: '{query}'")
+            if query_embedding is None:
+                logger.debug("No query embedding available for semantic expansion")
+                return []
+            
+            logger.info(f"🔍 SEMANTIC EXPANSION: Finding similar terms for keywords: {original_keywords}")
+            
+            # Get a sample of content from database to find similar terms
+            with self.database.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT content, summary_content, named_entities, content_classification
+                    FROM data_items 
+                    WHERE content IS NOT NULL 
+                    ORDER BY updated_at DESC
+                    LIMIT 100
+                """)
+                
+                # Extract unique terms from existing content
+                all_terms = set()
+                for row in cursor.fetchall():
+                    for field in [row['content'], row['summary_content'], row['named_entities'], row['content_classification']]:
+                        if field:
+                            # Extract meaningful terms (words 3+ characters, not in original keywords)
+                            import re
+                            terms = re.findall(r'\b[a-zA-Z]{3,}\b', field.lower())
+                            all_terms.update(term for term in terms if term not in [k.lower() for k in original_keywords])
+                
+                # Limit to reasonable number for performance
+                sample_terms = list(all_terms)[:200] if len(all_terms) > 200 else list(all_terms)
+                
+                if not sample_terms:
+                    logger.debug("No terms found for semantic expansion")
+                    return []
+                
+                logger.info(f"🔍 SEMANTIC EXPANSION: Evaluating {len(sample_terms)} candidate terms")
+                
+                # Generate embeddings for candidate terms and compare with query
+                similar_terms = []
+                batch_size = min(20, len(sample_terms))  # Process in smaller batches for performance
+                
+                for i in range(0, len(sample_terms), batch_size):
+                    batch_terms = sample_terms[i:i + batch_size]
+                    try:
+                        # Generate embeddings for batch
+                        batch_embeddings = await self.embeddings.embed_texts(batch_terms)
+                        
+                        if batch_embeddings and len(batch_embeddings) > 0:
+                            # Calculate similarities
+                            import numpy as np
+                            query_embedding_2d = query_embedding.reshape(1, -1)
+                            batch_embeddings_2d = np.array(batch_embeddings)
+                            
+                            # Calculate cosine similarity
+                            from sklearn.metrics.pairwise import cosine_similarity
+                            similarities = cosine_similarity(query_embedding_2d, batch_embeddings_2d)[0]
+                            
+                            # Find terms above threshold
+                            for j, similarity in enumerate(similarities):
+                                if similarity >= similarity_threshold:
+                                    similar_terms.append((batch_terms[j], similarity))
+                                    
+                    except Exception as e:
+                        logger.debug(f"Error processing batch {i}: {e}")
+                        continue
+                
+                # Sort by similarity and take top results
+                similar_terms.sort(key=lambda x: x[1], reverse=True)
+                top_similar_terms = [term for term, score in similar_terms[:max_similar_terms]]
+                
+                logger.info(f"🔍 SEMANTIC EXPANSION: Found {len(top_similar_terms)} similar terms: {top_similar_terms}")
+                return top_similar_terms
+                
+        except Exception as e:
+            logger.warning(f"Error in semantic term expansion: {e}")
+            return []
+
+    async def _sql_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+        """Perform SQL-based keyword search with semantic expansion across content and enhanced preprocessing fields"""
+        try:
+            # MARKER: Enhanced SQL search with semantic keyword expansion
+            logger.info(f"🔍 ENHANCED SQL SEARCH: Starting semantic-enhanced keyword search for query: '{query}'")
             
             # Extract meaningful keywords from the query instead of using exact phrase
-            keywords = self._extract_search_keywords(query)
+            original_keywords = self._extract_search_keywords(query)
             logger.info(f"🔍 SQL SEARCH DETAIL: Keyword extraction from query '{query}'")
-            logger.info(f"🔍 SQL SEARCH DETAIL: Extracted keywords: {keywords}")
+            logger.info(f"🔍 SQL SEARCH DETAIL: Extracted keywords: {original_keywords}")
             
             # If no good keywords found, fall back to original query
-            if not keywords:
-                keywords = [query]
+            if not original_keywords:
+                original_keywords = [query]
                 logger.info(f"🔍 SQL SEARCH DETAIL: No keywords extracted, using original query as fallback")
+            
+            # Attempt semantic expansion of keywords (if enabled)
+            expanded_keywords = []
+            semantic_expansion_enabled = os.getenv("SQL_SEARCH_SEMANTIC_EXPANSION", "true").lower() == "true"
+            
+            if semantic_expansion_enabled:
+                try:
+                    # Generate embedding for the query
+                    query_embedding = await self.embeddings.embed_text(query)
+                    if query_embedding is not None:
+                        # Find semantically similar terms in the data
+                        similarity_threshold = float(os.getenv("SQL_SEARCH_SIMILARITY_THRESHOLD", "0.6"))
+                        max_similar_terms = int(os.getenv("SQL_SEARCH_MAX_SIMILAR_TERMS", "8"))
+                        
+                        expanded_keywords = await self._find_similar_terms_in_data(
+                            query_embedding, 
+                            original_keywords,
+                            similarity_threshold=similarity_threshold,
+                            max_similar_terms=max_similar_terms
+                        )
+                        
+                except Exception as e:
+                    logger.debug(f"Semantic expansion failed, proceeding with original keywords: {e}")
+            else:
+                logger.debug("Semantic expansion disabled in configuration")
+            # Combine original and expanded keywords
+            all_keywords = original_keywords + expanded_keywords
+            keywords = all_keywords  # Use expanded set for search
+            
+            logger.info(f"🔍 SEMANTIC EXPANSION RESULT: Using {len(keywords)} total keywords: {keywords}")
+            
+            # Try FTS search first (much faster for text search) if enabled
+            use_fts = os.getenv("SQL_SEARCH_USE_FTS", "true").lower() == "true"
+            if use_fts:
+                try:
+                    fts_results = self.database.fts_search(keywords, max_results)
+                    if fts_results is not None:
+                        logger.info(f"🚀 FTS SEARCH: Successfully used Full-Text Search with {len(fts_results)} results")
+                        return fts_results
+                    else:
+                        logger.debug("🔍 FTS SEARCH: FTS not available, falling back to LIKE search")
+                except Exception as e:
+                    logger.debug(f"🔍 FTS SEARCH: FTS search failed, falling back to LIKE search: {e}")
+            else:
+                logger.debug("🔍 FTS SEARCH: FTS disabled in configuration")
+            
+            # Fallback to LIKE-based search
+            logger.info("🔍 LIKE SEARCH: Using traditional LIKE-based search")
             
             # Build OR conditions for multiple keywords
             search_conditions = []
@@ -691,33 +916,47 @@ class ChatService:
         
         logger.info("=== END CONTEXT BUILDING RESULTS ===")
         
-        # Create comprehensive AI assistant prompt following advanced principles
-        prompt = f"""You are an advanced AI assistant designed to provide comprehensive, contextually-rich responses by fully leveraging all available data and applying logical reasoning. Your core operational principles:
+        # Create comprehensive AI assistant prompt with emotional intelligence and contextual understanding
+        prompt = f"""You are an advanced AI assistant with deep emotional intelligence and contextual understanding, designed to provide comprehensive, empathetic responses by fully leveraging all available personal data. Your enhanced operational principles:
 
-COMPREHENSIVE DATA UTILIZATION: Always access and incorporate every relevant fact, tag, annotation, and data point from your knowledge base. Never ignore or overlook explicitly tagged information or documented relationships between entities.
+COMPREHENSIVE DATA UTILIZATION: Always access and incorporate every relevant fact, emotional indicator, behavioral pattern, and contextual clue from the knowledge base. Never ignore subtle emotional signals, relationship dynamics, or psychological patterns embedded in the data.
 
-LOGICAL INFERENCE APPLICATION: When data supports clear conclusions, state them confidently rather than expressing unnecessary uncertainty. Apply standard reasoning patterns: if an entity is tagged or categorized as something specific, affirm that relationship. Draw logical connections between related data points.
+EMOTIONAL INTELLIGENCE APPLICATION: Recognize that emotions, fears, concerns, and psychological states are expressed through indirect language, contextual situations, and behavioral patterns. When analyzing emotional queries:
+- Look for anxiety indicators: mentions of health concerns, sleep issues, stress signals, avoidance behaviors
+- Identify fear patterns: discussions of future uncertainties, medical appointments, relationship concerns, professional challenges
+- Recognize emotional expressions: worry about outcomes, seeking reassurance, discussing difficult situations
+- Understand emotional context: social situations that cause discomfort, recurring themes of concern, temporal patterns of stress
 
-CONTEXTUAL SYNTHESIS: Combine all available information about entities, people, or topics into rich, multifaceted responses. Instead of providing single-aspect answers, weave together background details, attributes, relationships, activities, and characteristics to create comprehensive profiles and explanations.
+CONTEXTUAL AND TEMPORAL PATTERN RECOGNITION: Analyze data across time periods to identify emotional trajectories, recurring concerns, and evolving psychological states. Connect seemingly unrelated events that may share emotional undertones or represent manifestations of underlying concerns.
 
-INTELLIGENT EXTRAPOLATION: When direct information is incomplete but contextual clues exist, make educated inferences based on available patterns and data. Use demographic indicators, behavioral patterns, communication styles, and associated information to reasonably infer missing details like age ranges, interests, or characteristics.
+PSYCHOLOGICAL INSIGHT SYNTHESIS: For emotional and psychological queries, synthesize patterns from:
+- Health-related discussions and medical concerns
+- Sleep patterns and physical symptoms that may indicate stress
+- Social interactions and relationship dynamics
+- Professional or personal challenges mentioned
+- Recurring themes or topics that may reveal underlying worries
+- Temporal clustering of concerns (e.g., "in the last week")
 
-PROACTIVE INFORMATION ASSEMBLY: For biographical or summary requests, actively gather and synthesize all relevant data points across categories including personal details, professional background, interests, relationships, activities, and any other documented attributes to provide thorough, well-rounded responses.
+EMPATHETIC INFERENCE: When analyzing emotional states like fears, anxieties, or concerns:
+- Recognize that fears are often expressed indirectly through discussions of challenging situations
+- Understand that health anxieties may manifest through symptom discussions or medical appointments
+- Identify social fears through mentions of gatherings, meetings, or interpersonal situations
+- Detect professional fears through work-related stress indicators or challenging conversations
 
-ADAPTIVE REASONING: Replace default responses of uncertainty or data insufficiency with analytical thinking that extracts maximum insight from available information, making reasonable deductions while acknowledging confidence levels when appropriate.
+INTELLIGENT EMOTIONAL EXTRAPOLATION: Use contextual clues to identify emotional patterns even when not explicitly stated. Connect behavioral indicators, situational stressors, and expressed concerns to provide insightful analysis of emotional states.
 
 QUESTION: {user_message}
 
-RESPONSE GUIDELINES:
-- Demonstrate deep understanding of context, relationships, and implications
-- Provide substantive, informative responses that fully utilize the knowledge base
-- When data supports conclusions, state them confidently without unnecessary hedging
-- For biographical questions, create comprehensive profiles combining all available data
-- Make logical inferences from patterns, associations, and contextual clues
-- Synthesize information across multiple data points and categories
-- Only express uncertainty when truly insufficient data exists after thorough analysis
+ENHANCED RESPONSE GUIDELINES:
+- For emotional queries (fears, concerns, worries), analyze indirect emotional indicators rather than seeking literal mentions
+- Identify patterns of stress, anxiety, or concern through situational context and behavioral clues
+- Synthesize emotional insights from health discussions, sleep patterns, social interactions, and professional challenges
+- Provide emotionally intelligent responses that acknowledge the complexity of human psychology
+- When analyzing fears or concerns, look for underlying themes and emotional patterns across different life areas
+- Connect temporal patterns (e.g., "last week") with specific events, discussions, or situations that may have contributed to emotional states
+- Demonstrate understanding that psychological states manifest through various topics and discussions, not just direct emotional expressions
 
-Analyze the provided personal data context thoroughly and provide a comprehensive response that demonstrates the full depth of understanding possible from the available information."""
+Analyze the provided personal data with enhanced emotional intelligence and provide a response that demonstrates deep psychological insight and empathetic understanding of the human experience reflected in the data."""
         
         logger.info(f"Chat Debug - LLM input - Prompt: '{prompt}'")
         logger.info(f"Chat Debug - LLM parameters: max_tokens=800, temperature=0.7")
@@ -819,6 +1058,87 @@ Analyze the provided personal data context thoroughly and provide a comprehensiv
         
         return sequence
     
+    def _extract_emotional_patterns(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Extract emotional patterns and psychological indicators from search results"""
+        emotional_analysis = {
+            'anxiety_indicators': [],
+            'health_concerns': [],
+            'social_stressors': [],
+            'work_pressures': [],
+            'temporal_emotional_patterns': {},
+            'emotional_intensity_markers': [],
+            'recurring_themes': []
+        }
+        
+        # Emotional concept mapping for pattern detection
+        emotional_concepts = self._get_emotional_concept_map()
+        
+        for item in results:
+            content = item.get('content', '') or ''
+            content_lower = content.lower()
+            
+            # Extract timestamp for temporal analysis
+            timestamp = item.get('created_at', '') or item.get('updated_at', '')
+            
+            # Analyze content for emotional indicators
+            for concept, related_terms in emotional_concepts.items():
+                if concept in content_lower or any(term in content_lower for term in related_terms):
+                    if concept in ['fear', 'anxiety', 'worry', 'concern']:
+                        emotional_analysis['anxiety_indicators'].append({
+                            'content_snippet': content[:200] + '...' if len(content) > 200 else content,
+                            'concept': concept,
+                            'timestamp': timestamp,
+                            'item_id': item.get('id', '')
+                        })
+                    elif concept in ['health', 'medical', 'symptoms', 'pain']:
+                        emotional_analysis['health_concerns'].append({
+                            'content_snippet': content[:200] + '...' if len(content) > 200 else content,
+                            'concern_type': concept,
+                            'timestamp': timestamp,
+                            'item_id': item.get('id', '')
+                        })
+                    elif concept in ['social', 'meeting', 'party', 'people']:
+                        emotional_analysis['social_stressors'].append({
+                            'content_snippet': content[:200] + '...' if len(content) > 200 else content,
+                            'social_context': concept,
+                            'timestamp': timestamp,
+                            'item_id': item.get('id', '')
+                        })
+                    elif concept in ['work', 'professional', 'job']:
+                        emotional_analysis['work_pressures'].append({
+                            'content_snippet': content[:200] + '...' if len(content) > 200 else content,
+                            'work_context': concept,
+                            'timestamp': timestamp,
+                            'item_id': item.get('id', '')
+                        })
+            
+            # Look for emotional intensity markers
+            intensity_words = ['very', 'extremely', 'really', 'quite', 'pretty', 'somewhat', 'a bit', 'little']
+            emotional_words = ['worried', 'scared', 'anxious', 'concerned', 'stressed', 'tired', 'exhausted']
+            
+            for intensity in intensity_words:
+                for emotion in emotional_words:
+                    if f"{intensity} {emotion}" in content_lower:
+                        emotional_analysis['emotional_intensity_markers'].append({
+                            'intensity': intensity,
+                            'emotion': emotion,
+                            'context': content[:300] + '...' if len(content) > 300 else content,
+                            'timestamp': timestamp
+                        })
+        
+        # Analyze temporal patterns in emotional content
+        if emotional_analysis['anxiety_indicators']:
+            # Group by time periods (simplified - could be enhanced with actual date parsing)
+            for indicator in emotional_analysis['anxiety_indicators']:
+                if indicator['timestamp']:
+                    # Extract day/time info from timestamp for pattern analysis
+                    time_key = indicator['timestamp'][:10] if len(indicator['timestamp']) >= 10 else 'unknown'
+                    if time_key not in emotional_analysis['temporal_emotional_patterns']:
+                        emotional_analysis['temporal_emotional_patterns'][time_key] = []
+                    emotional_analysis['temporal_emotional_patterns'][time_key].append(indicator['concept'])
+        
+        return emotional_analysis
+
     def _build_context_text(self, context: ChatContext) -> str:
         """
         Build comprehensive context text from search results with enhanced entity relationships,
@@ -856,6 +1176,10 @@ Analyze the provided personal data context thoroughly and provide a comprehensiv
         facts = []
         temporal_patterns = []
         behavioral_indicators = []
+        
+        # Extract emotional patterns for enhanced psychological analysis
+        emotional_patterns = self._extract_emotional_patterns(all_items)
+        logger.info(f"🧠 EMOTIONAL ANALYSIS: Extracted {len(emotional_patterns['anxiety_indicators'])} anxiety indicators, {len(emotional_patterns['health_concerns'])} health concerns, {len(emotional_patterns['social_stressors'])} social stressors")
         
         for item in all_items:
             content = item.get('content', '')
@@ -1059,6 +1383,44 @@ Analyze the provided personal data context thoroughly and provide a comprehensiv
             org_entities = [e for e in entities_found if e == 'organization_mentioned']  
             if org_entities:
                 entity_insights.append("• ORGANIZATIONS: Business/organization references detected")
+            
+            # Emotional and psychological pattern analysis
+            if any(emotional_patterns.values()):
+                context_parts.append("\n=== EMOTIONAL & PSYCHOLOGICAL PATTERN ANALYSIS ===")
+                
+                if emotional_patterns['anxiety_indicators']:
+                    context_parts.append("• ANXIETY/FEAR INDICATORS:")
+                    for indicator in emotional_patterns['anxiety_indicators'][:3]:
+                        context_parts.append(f"  - {indicator['concept'].upper()}: {indicator['content_snippet']} [{indicator['timestamp'][:10] if indicator['timestamp'] else 'unknown date'}]")
+                
+                if emotional_patterns['health_concerns']:
+                    context_parts.append("• HEALTH-RELATED CONCERNS:")
+                    for concern in emotional_patterns['health_concerns'][:3]:
+                        context_parts.append(f"  - {concern['concern_type'].upper()}: {concern['content_snippet']} [{concern['timestamp'][:10] if concern['timestamp'] else 'unknown date'}]")
+                
+                if emotional_patterns['social_stressors']:
+                    context_parts.append("• SOCIAL INTERACTION PATTERNS:")
+                    for stressor in emotional_patterns['social_stressors'][:3]:
+                        context_parts.append(f"  - {stressor['social_context'].upper()}: {stressor['content_snippet']} [{stressor['timestamp'][:10] if stressor['timestamp'] else 'unknown date'}]")
+                
+                if emotional_patterns['work_pressures']:
+                    context_parts.append("• PROFESSIONAL/WORK RELATED CONCERNS:")
+                    for pressure in emotional_patterns['work_pressures'][:3]:
+                        context_parts.append(f"  - {pressure['work_context'].upper()}: {pressure['content_snippet']} [{pressure['timestamp'][:10] if pressure['timestamp'] else 'unknown date'}]")
+                
+                if emotional_patterns['emotional_intensity_markers']:
+                    context_parts.append("• EMOTIONAL INTENSITY MARKERS:")
+                    for marker in emotional_patterns['emotional_intensity_markers'][:3]:
+                        context_parts.append(f"  - {marker['intensity'].upper()} {marker['emotion'].upper()}: {marker['context']} [{marker['timestamp'][:10] if marker['timestamp'] else 'unknown date'}]")
+                
+                if emotional_patterns['temporal_emotional_patterns']:
+                    context_parts.append("• TEMPORAL EMOTIONAL PATTERNS:")
+                    for date, concepts in emotional_patterns['temporal_emotional_patterns'].items():
+                        concept_counts = {}
+                        for concept in concepts:
+                            concept_counts[concept] = concept_counts.get(concept, 0) + 1
+                        pattern_summary = ", ".join([f"{concept}({count})" for concept, count in concept_counts.items()])
+                        context_parts.append(f"  - {date}: {pattern_summary}")
             
             # Behavioral pattern analysis
             if behavioral_indicators:
