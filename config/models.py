@@ -343,6 +343,17 @@ class LLMProviderConfig(BaseModel):
         return active_config.is_configured()
 
 
+class TwitterConfig(BaseModel):
+    """Twitter source configuration"""
+    enabled: bool = True
+    data_path: Optional[str] = None
+    sync_interval_hours: int = 24
+
+    def is_configured(self) -> bool:
+        """Check if Twitter source is properly configured"""
+        return self.enabled and self.data_path is not None and os.path.isdir(self.data_path)
+
+
 class AppConfig(BaseModel):
     """Main application configuration"""
     database: DatabaseConfig = DatabaseConfig()
@@ -350,6 +361,7 @@ class AppConfig(BaseModel):
     vector_store: VectorStoreConfig = VectorStoreConfig()
     limitless: LimitlessConfig = LimitlessConfig()
     news: NewsConfig = NewsConfig()
+    twitter: TwitterConfig = TwitterConfig()
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     auto_sync: AutoSyncConfig = AutoSyncConfig()
