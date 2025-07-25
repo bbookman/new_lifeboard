@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 
 from .base import BaseSource, DataItem
 from config.models import LimitlessConfig
-from core.retry_utils import RetryExecutor, create_api_retry_config, create_api_retry_condition
+from core.retry_utils import (RetryExecutor, create_api_retry_config, create_enhanced_api_retry_condition, 
+                              create_rate_limit_retry_config, RetryConfig, BackoffStrategy)
 
 logger = logging.getLogger(__name__)
 
@@ -279,12 +280,19 @@ class LimitlessSource(BaseSource):
         curl_cmd = self._generate_curl_command(endpoint, params)
         logger.info(f"API Request (curl equivalent): {curl_cmd}")
         
-        # Create retry configuration using the new utility
-        retry_config = create_api_retry_config(
+        # Create enhanced retry configuration with intelligent rate limiting
+        retry_config = RetryConfig(
             max_retries=self.config.max_retries,
-            base_delay=self.config.retry_delay
+            base_delay=self.config.retry_delay,
+            max_delay=60.0,
+            backoff_strategy=BackoffStrategy.EXPONENTIAL,
+            # Rate limiting specific settings
+            rate_limit_base_delay=30.0,
+            rate_limit_max_delay=self.config.rate_limit_max_delay,
+            respect_retry_after=self.config.respect_retry_after,
+            jitter=True
         )
-        retry_condition = create_api_retry_condition()
+        retry_condition = create_enhanced_api_retry_condition()
         retry_executor = RetryExecutor(retry_config, retry_condition)
         
         async def make_request():

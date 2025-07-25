@@ -18,12 +18,84 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+def parse_retry_after_header(response: httpx.Response) -> Optional[int]:
+    """
+    Parse Retry-After header from HTTP response
+    
+    Args:
+        response: HTTP response object
+        
+    Returns:
+        Delay in seconds if header present, None otherwise
+    """
+    retry_after = response.headers.get('retry-after') or response.headers.get('Retry-After')
+    if not retry_after:
+        return None
+        
+    try:
+        # Retry-After can be in seconds (integer) or HTTP date
+        return int(retry_after)
+    except ValueError:
+        # If it's a date, calculate seconds from now
+        try:
+            from email.utils import parsedate_to_datetime
+            retry_time = parsedate_to_datetime(retry_after)
+            delay = (retry_time - datetime.now(timezone.utc)).total_seconds()
+            return max(0, int(delay))
+        except Exception:
+            return None
+
+
+def parse_rate_limit_headers(response: httpx.Response) -> Dict[str, Optional[int]]:
+    """
+    Parse common rate limit headers from HTTP response
+    
+    Args:
+        response: HTTP response object
+        
+    Returns:
+        Dictionary with rate limit information
+    """
+    headers = response.headers
+    rate_limit_info = {
+        'limit': None,           # Total requests allowed
+        'remaining': None,       # Requests remaining in window
+        'reset': None,          # When the window resets (timestamp)
+        'retry_after': None     # Seconds to wait before retry
+    }
+    
+    # Parse X-RateLimit-* headers (common standard)
+    if 'x-ratelimit-limit' in headers:
+        try:
+            rate_limit_info['limit'] = int(headers['x-ratelimit-limit'])
+        except ValueError:
+            pass
+            
+    if 'x-ratelimit-remaining' in headers:
+        try:
+            rate_limit_info['remaining'] = int(headers['x-ratelimit-remaining'])
+        except ValueError:
+            pass
+            
+    if 'x-ratelimit-reset' in headers:
+        try:
+            rate_limit_info['reset'] = int(headers['x-ratelimit-reset'])
+        except ValueError:
+            pass
+    
+    # Parse Retry-After header
+    rate_limit_info['retry_after'] = parse_retry_after_header(response)
+    
+    return rate_limit_info
+
+
 class BackoffStrategy(Enum):
     """Backoff strategy types for retry operations"""
     FIXED = "fixed"           # Fixed delay between retries
     LINEAR = "linear"         # Linearly increasing delay
     EXPONENTIAL = "exponential"  # Exponential backoff (2^attempt)
     CUSTOM_EXPONENTIAL = "custom_exponential"  # Configurable exponential base
+    RATE_LIMIT_BACKOFF = "rate_limit_backoff"  # Specialized backoff for rate limiting
 
 
 @dataclass
@@ -36,6 +108,11 @@ class RetryConfig:
     exponential_base: float = 2.0  # Base for exponential backoff
     jitter: bool = True  # Add random jitter to prevent thundering herd
     timeout: Optional[float] = None  # Optional timeout for individual attempts
+    
+    # Rate limiting specific configuration
+    rate_limit_base_delay: float = 30.0  # Base delay for rate limiting (longer)
+    rate_limit_max_delay: float = 300.0  # Max delay for rate limiting (5 minutes)
+    respect_retry_after: bool = True  # Honor Retry-After header if present
     
     def __post_init__(self):
         """Validate configuration parameters"""
@@ -85,6 +162,80 @@ class HTTPStatusRetryCondition(RetryCondition):
         return False
 
 
+class RateLimitRetryCondition(RetryCondition):
+    """Specialized retry condition for rate limiting with intelligent detection"""
+    
+    def __init__(self, max_rate_limit_delay: int = 300):
+        """
+        Initialize rate limit retry condition
+        
+        Args:
+            max_rate_limit_delay: Maximum delay in seconds to accept for rate limiting
+        """
+        self.max_rate_limit_delay = max_rate_limit_delay
+    
+    def should_retry(self, exception: Exception, attempt: int) -> bool:
+        """
+        Determine if we should retry based on rate limiting indicators
+        
+        Args:
+            exception: The exception that occurred
+            attempt: Current attempt number (0-indexed)
+            
+        Returns:
+            True if we should retry due to rate limiting
+        """
+        # Check for HTTP 429 status code
+        if hasattr(exception, 'response') and hasattr(exception.response, 'status_code'):
+            response = exception.response
+            
+            if response.status_code == 429:
+                # Check if Retry-After header suggests a reasonable delay
+                retry_after = parse_retry_after_header(response)
+                if retry_after is not None:
+                    if retry_after <= self.max_rate_limit_delay:
+                        logger.info(f"Rate limited (429) - Retry-After: {retry_after}s")
+                        return True
+                    else:
+                        logger.warning(f"Rate limited with excessive Retry-After: {retry_after}s (max: {self.max_rate_limit_delay}s)")
+                        return False
+                
+                # If no Retry-After header, still retry with exponential backoff
+                logger.info("Rate limited (429) - no Retry-After header, using exponential backoff")
+                return True
+            
+            # Check for other rate limiting indicators
+            if response.status_code in [503, 502]:  # Service unavailable, bad gateway (could be rate limiting)
+                rate_limit_info = parse_rate_limit_headers(response)
+                if rate_limit_info['remaining'] is not None and rate_limit_info['remaining'] == 0:
+                    logger.info(f"Rate limited ({response.status_code}) - X-RateLimit-Remaining: 0")
+                    return True
+        
+        return False
+    
+    def get_rate_limit_delay(self, exception: Exception, attempt: int) -> Optional[int]:
+        """
+        Get the suggested delay for rate limiting
+        
+        Args:
+            exception: The exception that occurred
+            attempt: Current attempt number (0-indexed)
+            
+        Returns:
+            Suggested delay in seconds, or None if not rate limited
+        """
+        if hasattr(exception, 'response') and hasattr(exception.response, 'status_code'):
+            response = exception.response
+            
+            if response.status_code == 429:
+                # Use Retry-After header if present
+                retry_after = parse_retry_after_header(response)
+                if retry_after is not None and retry_after <= self.max_rate_limit_delay:
+                    return retry_after
+        
+        return None
+
+
 class CompositeRetryCondition(RetryCondition):
     """Combine multiple retry conditions with OR logic"""
     
@@ -114,21 +265,43 @@ class RetryExecutor:
         self.config = config
         self.retry_condition = retry_condition
     
-    def _calculate_delay(self, attempt: int) -> float:
+    def _calculate_delay(self, attempt: int, exception: Exception = None) -> float:
         """Calculate delay for the given attempt based on backoff strategy"""
-        if self.config.backoff_strategy == BackoffStrategy.FIXED:
+        
+        # Check for rate limiting first and honor Retry-After header
+        if exception and isinstance(self.retry_condition, RateLimitRetryCondition):
+            rate_limit_delay = self.retry_condition.get_rate_limit_delay(exception, attempt)
+            if rate_limit_delay is not None and self.config.respect_retry_after:
+                logger.info(f"Using Retry-After header delay: {rate_limit_delay}s")
+                return float(rate_limit_delay)
+        
+        # Use rate limit backoff strategy for rate limiting conditions
+        if (self.config.backoff_strategy == BackoffStrategy.RATE_LIMIT_BACKOFF or 
+            (exception and isinstance(self.retry_condition, RateLimitRetryCondition) and 
+             self.retry_condition.should_retry(exception, attempt))):
+            
+            # Use exponential backoff with rate limit base delay
+            delay = self.config.rate_limit_base_delay * (2 ** attempt)
+            max_delay = self.config.rate_limit_max_delay
+            
+        elif self.config.backoff_strategy == BackoffStrategy.FIXED:
             delay = self.config.base_delay
+            max_delay = self.config.max_delay
         elif self.config.backoff_strategy == BackoffStrategy.LINEAR:
             delay = self.config.base_delay * (attempt + 1)
+            max_delay = self.config.max_delay
         elif self.config.backoff_strategy == BackoffStrategy.EXPONENTIAL:
             delay = self.config.base_delay * (2 ** attempt)
+            max_delay = self.config.max_delay
         elif self.config.backoff_strategy == BackoffStrategy.CUSTOM_EXPONENTIAL:
             delay = self.config.base_delay * (self.config.exponential_base ** attempt)
+            max_delay = self.config.max_delay
         else:
             delay = self.config.base_delay
+            max_delay = self.config.max_delay
         
         # Apply maximum delay cap
-        delay = min(delay, self.config.max_delay)
+        delay = min(delay, max_delay)
         
         # Add jitter if enabled (±10% random variation)
         if self.config.jitter:
@@ -169,11 +342,20 @@ class RetryExecutor:
                 
                 # Check if we should retry
                 if attempt < self.config.max_retries and self.retry_condition.should_retry(e, attempt):
-                    delay = self._calculate_delay(attempt)
-                    logger.warning(
-                        f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. "
-                        f"Retrying in {delay:.2f} seconds..."
-                    )
+                    delay = self._calculate_delay(attempt, e)
+                    
+                    # Enhanced logging for rate limiting
+                    if isinstance(self.retry_condition, RateLimitRetryCondition) and hasattr(e, 'response'):
+                        rate_limit_info = parse_rate_limit_headers(e.response) if hasattr(e, 'response') else {}
+                        logger.warning(
+                            f"Rate limited on attempt {attempt + 1} for {func.__name__}: {str(e)}. "
+                            f"Rate limit info: {rate_limit_info}. Retrying in {delay:.2f} seconds..."
+                        )
+                    else:
+                        logger.warning(
+                            f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. "
+                            f"Retrying in {delay:.2f} seconds..."
+                        )
                     await asyncio.sleep(delay)
                     continue
                 else:
@@ -223,11 +405,20 @@ class RetryExecutor:
                 total_time = time.time() - start_time
                 
                 if attempt < self.config.max_retries and self.retry_condition.should_retry(e, attempt):
-                    delay = self._calculate_delay(attempt)
-                    logger.warning(
-                        f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. "
-                        f"Retrying in {delay:.2f} seconds..."
-                    )
+                    delay = self._calculate_delay(attempt, e)
+                    
+                    # Enhanced logging for rate limiting
+                    if isinstance(self.retry_condition, RateLimitRetryCondition) and hasattr(e, 'response'):
+                        rate_limit_info = parse_rate_limit_headers(e.response) if hasattr(e, 'response') else {}
+                        logger.warning(
+                            f"Rate limited on attempt {attempt + 1} for {func.__name__}: {str(e)}. "
+                            f"Rate limit info: {rate_limit_info}. Retrying in {delay:.2f} seconds..."
+                        )
+                    else:
+                        logger.warning(
+                            f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. "
+                            f"Retrying in {delay:.2f} seconds..."
+                        )
                     time.sleep(delay)
                     continue
                 else:
@@ -319,6 +510,34 @@ def create_api_retry_condition() -> RetryCondition:
     return CompositeRetryCondition([
         NetworkErrorRetryCondition(),
         HTTPStatusRetryCondition([429, 500, 502, 503, 504])
+    ])
+
+
+def create_rate_limit_retry_config(max_retries: int = 5, base_delay: float = 30.0) -> RetryConfig:
+    """Create retry config optimized for rate limiting scenarios"""
+    return RetryConfig(
+        max_retries=max_retries,
+        base_delay=base_delay,
+        max_delay=60.0,  # Standard max for normal operations
+        backoff_strategy=BackoffStrategy.RATE_LIMIT_BACKOFF,
+        rate_limit_base_delay=30.0,  # Start with 30 second delays for rate limits
+        rate_limit_max_delay=300.0,  # Max 5 minutes for rate limits
+        respect_retry_after=True,
+        jitter=True
+    )
+
+
+def create_rate_limit_retry_condition(max_delay: int = 300) -> RateLimitRetryCondition:
+    """Create specialized retry condition for rate limiting"""
+    return RateLimitRetryCondition(max_rate_limit_delay=max_delay)
+
+
+def create_enhanced_api_retry_condition() -> RetryCondition:
+    """Create enhanced retry condition that combines network errors, HTTP errors, and intelligent rate limiting"""
+    return CompositeRetryCondition([
+        NetworkErrorRetryCondition(),
+        HTTPStatusRetryCondition([500, 502, 503, 504]),  # Exclude 429 since we handle it specially
+        RateLimitRetryCondition(max_rate_limit_delay=300)
     ])
 
 

@@ -63,6 +63,9 @@ class LimitlessConfig(BaseModel):
     retry_delay: float = 1.0
     request_timeout: float = 30.0
     sync_interval_hours: int = 6
+    # Rate limiting configuration
+    rate_limit_max_delay: int = 300  # Maximum delay for rate limiting (5 minutes)
+    respect_retry_after: bool = True
     
     @field_validator('api_key')
     @classmethod
@@ -91,6 +94,9 @@ class NewsConfig(BaseModel):
     retry_delay: float = 1.0
     request_timeout: float = 30.0
     sync_interval_hours: int = 24
+    # Rate limiting configuration
+    rate_limit_max_delay: int = 300  # Maximum delay for rate limiting (5 minutes)
+    respect_retry_after: bool = True
     
     @field_validator('api_key')
     @classmethod
