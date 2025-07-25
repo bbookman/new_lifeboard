@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
+from core.base_service import BaseService
 from services.scheduler import AsyncScheduler
 from services.ingestion import IngestionService, IngestionResult
 from sources.base import BaseSource
@@ -12,17 +13,24 @@ from config.models import AppConfig
 logger = logging.getLogger(__name__)
 
 
-class SyncManagerService:
+class SyncManagerService(BaseService):
     """Service that coordinates scheduled syncing of data sources"""
     
     def __init__(self, 
                  scheduler: AsyncScheduler,
                  ingestion_service: IngestionService,
                  config: AppConfig):
+        super().__init__(service_name="SyncManagerService", config=config)
         self.scheduler = scheduler
         self.ingestion_service = ingestion_service
-        self.config = config
         self.source_job_mapping: Dict[str, str] = {}  # namespace -> job_id
+        
+        # Add dependencies and capabilities
+        self.add_dependency("AsyncScheduler")
+        self.add_dependency("IngestionService")
+        self.add_capability("source_scheduling")
+        self.add_capability("auto_sync")
+        self.add_capability("job_management")
         
     async def register_source_for_auto_sync(self, source: BaseSource, force_full_sync: bool = False) -> bool:
         """Register a source for automatic scheduled syncing"""
@@ -244,8 +252,29 @@ class SyncManagerService:
         await self.scheduler.stop()
         logger.info("Auto-sync stopped")
     
-    async def health_check(self) -> Dict[str, Any]:
-        """Perform health check on sync system"""
+    async def _initialize_service(self) -> bool:
+        """Initialize the sync manager service"""
+        try:
+            # Service is ready once all dependencies are injected
+            # No additional initialization needed
+            self.logger.info("SyncManagerService initialized successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to initialize SyncManagerService: {e}")
+            return False
+    
+    async def _shutdown_service(self) -> bool:
+        """Shutdown the sync manager service"""
+        try:
+            await self.stop_auto_sync()
+            self.logger.info("SyncManagerService shutdown successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error during SyncManagerService shutdown: {e}")
+            return False
+    
+    async def _check_service_health(self) -> Dict[str, Any]:
+        """Check service health"""
         health_status = {
             "scheduler_running": self.scheduler.is_running,
             "registered_sources": len(self.source_job_mapping),
@@ -285,3 +314,7 @@ class SyncManagerService:
         
         health_status["healthy"] = len(health_status["issues"]) == 0
         return health_status
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """Perform health check on sync system (legacy method for backwards compatibility)"""
+        return await self._check_service_health()

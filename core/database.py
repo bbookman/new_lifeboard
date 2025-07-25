@@ -6,6 +6,9 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import pytz
 
+from .migrations import MigrationRunner
+from .json_utils import JSONMetadataParser, DatabaseRowParser
+
 
 class DatabaseService:
     def __init__(self, db_path: str = "lifeboard.db"):
@@ -22,79 +25,12 @@ class DatabaseService:
             conn.close()
     
     def _init_database(self):
-        """Initialize database with required tables"""
-        with self.get_connection() as conn:
-            # System settings table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS system_settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Data sources registry
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS data_sources (
-                    namespace TEXT PRIMARY KEY,
-                    source_type TEXT NOT NULL,
-                    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    item_count INTEGER DEFAULT 0,
-                    metadata TEXT,
-                    is_active BOOLEAN DEFAULT TRUE
-                )
-            """)
-            
-            # Unified data storage
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS data_items (
-                    id TEXT PRIMARY KEY,
-                    namespace TEXT NOT NULL,
-                    source_id TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    metadata TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    days_date DATE,
-                    embedding_status TEXT DEFAULT 'pending',
-                    FOREIGN KEY (namespace) REFERENCES data_sources(namespace)
-                )
-            """)
-            
-            # Chat messages table for Phase 7
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS chat_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_message TEXT NOT NULL,
-                    assistant_response TEXT NOT NULL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # News articles table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS news (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT NOT NULL,
-                    link TEXT NOT NULL UNIQUE,
-                    snippet TEXT,
-                    thumbnail_url TEXT,
-                    published_datetime_utc TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Create indexes
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_namespace ON data_items(namespace)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_embedding_status ON data_items(embedding_status)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_updated_at ON data_items(updated_at)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_days_date ON data_items(days_date)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_news_published_datetime ON news(published_datetime_utc)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at)")
-            
-            conn.commit()
+        """Initialize database using migration system"""
+        migration_runner = MigrationRunner(self.db_path)
+        result = migration_runner.run_migrations()
+        
+        if not result["success"]:
+            raise RuntimeError(f"Database initialization failed: {result['errors']}")
     
     def store_data_item(self, id: str, namespace: str, source_id: str, 
                        content: str, metadata: Dict = None, days_date: str = None):
@@ -105,7 +41,7 @@ class DatabaseService:
                 (id, namespace, source_id, content, metadata, days_date, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (id, namespace, source_id, content, 
-                  json.dumps(metadata) if metadata else None, days_date))
+                  JSONMetadataParser.serialize_metadata(metadata), days_date))
             conn.commit()
     
     def get_data_items_by_ids(self, ids: List[str]) -> List[Dict]:
@@ -122,18 +58,9 @@ class DatabaseService:
                 ORDER BY updated_at DESC
             """, ids)
             
-            results = []
-            for row in cursor.fetchall():
-                item = dict(row)
-                # Parse JSON metadata if present
-                if item['metadata']:
-                    try:
-                        item['metadata'] = json.loads(item['metadata'])
-                    except json.JSONDecodeError:
-                        item['metadata'] = None
-                results.append(item)
-            
-            return results
+            return DatabaseRowParser.parse_rows_with_metadata(
+                [dict(row) for row in cursor.fetchall()]
+            )
     
     def get_data_items_by_namespace(self, namespace: str, limit: int = 100) -> List[Dict]:
         """Get data items for a specific namespace"""
@@ -198,10 +125,9 @@ class DatabaseService:
                 "SELECT value FROM system_settings WHERE key = ?", (key,))
             row = cursor.fetchone()
             if row:
-                try:
-                    return json.loads(row['value'])
-                except json.JSONDecodeError:
-                    return row['value']
+                # Try to parse as JSON, fallback to string value
+                parsed = JSONMetadataParser.parse_metadata(row['value'])
+                return parsed if parsed is not None else row['value']
             return default
     
     def set_setting(self, key: str, value: Any):
@@ -210,7 +136,7 @@ class DatabaseService:
             conn.execute("""
                 INSERT OR REPLACE INTO system_settings (key, value, updated_at)
                 VALUES (?, ?, CURRENT_TIMESTAMP)
-            """, (key, json.dumps(value) if not isinstance(value, str) else value))
+            """, (key, JSONMetadataParser.serialize_metadata(value) or value))
             conn.commit()
     
     def register_data_source(self, namespace: str, source_type: str, metadata: Dict = None):
@@ -220,7 +146,7 @@ class DatabaseService:
                 INSERT OR REPLACE INTO data_sources 
                 (namespace, source_type, metadata, first_seen)
                 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            """, (namespace, source_type, json.dumps(metadata) if metadata else None))
+            """, (namespace, source_type, JSONMetadataParser.serialize_metadata(metadata)))
             conn.commit()
     
     def get_active_namespaces(self) -> List[str]:
@@ -375,18 +301,9 @@ class DatabaseService:
             
             cursor = conn.execute(query, params)
             
-            results = []
-            for row in cursor.fetchall():
-                item = dict(row)
-                # Parse JSON metadata if present
-                if item['metadata']:
-                    try:
-                        item['metadata'] = json.loads(item['metadata'])
-                    except json.JSONDecodeError:
-                        item['metadata'] = None
-                results.append(item)
-            
-            return results
+            return DatabaseRowParser.parse_rows_with_metadata(
+                [dict(row) for row in cursor.fetchall()]
+            )
     
     def get_data_items_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> List[Dict]:
         """Get all data items for a specific date"""
@@ -412,3 +329,8 @@ class DatabaseService:
             
             cursor = conn.execute(query, params)
             return [row['days_date'] for row in cursor.fetchall()]
+    
+    def get_migration_status(self) -> Dict[str, Any]:
+        """Get database migration status"""
+        migration_runner = MigrationRunner(self.db_path)
+        return migration_runner.get_migration_status()
