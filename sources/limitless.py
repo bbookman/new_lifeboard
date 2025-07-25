@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from .base import BaseSource, DataItem
 from config.models import LimitlessConfig
+from core.retry_utils import RetryExecutor, create_api_retry_config, create_api_retry_condition
 
 logger = logging.getLogger(__name__)
 
@@ -273,35 +274,38 @@ class LimitlessSource(BaseSource):
         endpoint: str, 
         params: Dict[str, Any]
     ) -> Optional[httpx.Response]:
-        """Make HTTP request with retry logic"""
+        """Make HTTP request with retry logic using unified retry framework"""
         # Log the curl equivalent for debugging
         curl_cmd = self._generate_curl_command(endpoint, params)
         logger.info(f"API Request (curl equivalent): {curl_cmd}")
         
-        last_exception = None
+        # Create retry configuration using the new utility
+        retry_config = create_api_retry_config(
+            max_retries=self.config.max_retries,
+            base_delay=self.config.retry_delay
+        )
+        retry_condition = create_api_retry_condition()
+        retry_executor = RetryExecutor(retry_config, retry_condition)
         
-        for attempt in range(self.config.max_retries):
-            try:
-                response = await client.get(endpoint, params=params)
-                
-                if response.status_code == 200:
-                    return response
-                elif response.status_code == 429:  # Rate limited
-                    wait_time = self.config.retry_delay * (2 ** attempt)
-                    await asyncio.sleep(wait_time)
-                    continue
-                else:
-                    # Non-retriable error
-                    return None
-                    
-            except Exception as e:
-                last_exception = e
-                if attempt < self.config.max_retries - 1:
-                    wait_time = self.config.retry_delay * (2 ** attempt)
-                    await asyncio.sleep(wait_time)
+        async def make_request():
+            response = await client.get(endpoint, params=params)
+            
+            if response.status_code == 200:
+                return response
+            elif response.status_code in [429, 500, 502, 503, 504]:
+                # These status codes will be retried by the retry condition
+                response.raise_for_status()
+            else:
+                # Non-retryable error
+                logger.error(f"API request failed with status {response.status_code}")
+                return None
         
-        # All retries failed
-        return None
+        try:
+            result = await retry_executor.execute_async(make_request)
+            return result.result if result.success else None
+        except Exception as e:
+            logger.error(f"Request failed after all retries: {e}")
+            return None
     
     async def get_sync_metadata(self) -> Dict[str, Any]:
         """Return sync metadata"""

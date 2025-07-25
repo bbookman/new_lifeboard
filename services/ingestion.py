@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional, AsyncIterator
 from datetime import datetime, timezone
 
+from core.base_service import BaseService
 from sources.base import DataItem, BaseSource
 from sources.limitless import LimitlessSource
 from sources.sync_manager import LimitlessSyncManager
@@ -47,7 +48,7 @@ class IngestionResult:
         }
 
 
-class IngestionService:
+class IngestionService(BaseService):
     """Service for ingesting data from various sources into the Lifeboard system"""
     
     def __init__(self,
@@ -55,16 +56,25 @@ class IngestionService:
                  vector_store: VectorStoreService,
                  embedding_service: EmbeddingService,
                  config: AppConfig):
+        super().__init__(service_name="IngestionService", config=config)
         self.database = database
         self.vector_store = vector_store
         self.embedding_service = embedding_service
-        self.config = config
         
         # Initialize processor
         self.processor = LimitlessProcessor(enable_segmentation=True)
         
         # Track registered sources
         self.sources: Dict[str, BaseSource] = {}
+        
+        # Add dependencies and capabilities
+        self.add_dependency("DatabaseService")
+        self.add_dependency("VectorStoreService")
+        self.add_dependency("EmbeddingService")
+        self.add_capability("data_ingestion")
+        self.add_capability("source_management")
+        self.add_capability("embedding_processing")
+        self.add_capability("batch_processing")
     
     def register_source(self, source: BaseSource):
         """Register a data source"""
@@ -327,6 +337,61 @@ class IngestionService:
                 results[namespace] = error_result
         
         return results
+    
+    async def _initialize_service(self) -> bool:
+        """Initialize the ingestion service"""
+        try:
+            # Ensure all dependencies are ready
+            if not self.database or not self.vector_store or not self.embedding_service:
+                self.logger.error("Missing required dependencies for IngestionService")
+                return False
+            
+            self.logger.info("IngestionService initialized successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to initialize IngestionService: {e}")
+            return False
+    
+    async def _shutdown_service(self) -> bool:
+        """Shutdown the ingestion service"""
+        try:
+            # Clean up any pending operations
+            self.sources.clear()
+            self.logger.info("IngestionService shutdown successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error during IngestionService shutdown: {e}")
+            return False
+    
+    async def _check_service_health(self) -> Dict[str, Any]:
+        """Check service health"""
+        health_info = {
+            "registered_sources": len(self.sources),
+            "source_names": list(self.sources.keys()),
+            "processor_available": self.processor is not None,
+            "healthy": True
+        }
+        
+        try:
+            # Check database connectivity
+            db_stats = self.database.get_database_stats()
+            health_info["database_available"] = True
+            health_info["total_items"] = db_stats.get("total_items", 0)
+            
+            # Check vector store
+            vs_stats = self.vector_store.get_stats()
+            health_info["vector_store_available"] = True
+            health_info["total_vectors"] = vs_stats.get("total_vectors", 0)
+            
+            # Check pending embeddings
+            pending = len(self.database.get_pending_embeddings(limit=100))
+            health_info["pending_embeddings"] = pending
+            
+        except Exception as e:
+            health_info["healthy"] = False
+            health_info["error"] = str(e)
+        
+        return health_info
     
     def get_ingestion_status(self) -> Dict[str, Any]:
         """Get current ingestion status"""

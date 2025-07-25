@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional, List, AsyncIterator
 
 from .base import BaseLLMProvider, LLMResponse, LLMError
 from config.models import OpenAIConfig
+from core.retry_utils import RetryExecutor, create_llm_retry_config, NetworkErrorRetryCondition
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -274,20 +275,18 @@ class OpenAIProvider(BaseLLMProvider):
             return {}
     
     async def _make_request_with_retry(self, client: httpx.AsyncClient, endpoint: str, payload: Dict[str, Any]) -> httpx.Response:
-        """Make HTTP request with retry logic"""
-        last_exception = None
+        """Make HTTP request with retry logic using unified retry framework"""
+        # Create retry configuration optimized for LLM calls
+        retry_config = create_llm_retry_config(max_retries=self.config.max_retries)
+        retry_condition = NetworkErrorRetryCondition()
+        retry_executor = RetryExecutor(retry_config, retry_condition)
         
-        for attempt in range(self.config.max_retries):
-            try:
-                response = await client.post(endpoint, json=payload)
-                return response
-                
-            except httpx.RequestError as e:
-                last_exception = e
-                if attempt < self.config.max_retries - 1:
-                    wait_time = 2 ** attempt  # Exponential backoff
-                    await asyncio.sleep(wait_time)
-                    continue
+        async def make_request():
+            return await client.post(endpoint, json=payload)
         
-        # All retries failed
-        raise last_exception
+        result = await retry_executor.execute_async(make_request)
+        
+        if result.success:
+            return result.result
+        else:
+            raise result.exception
