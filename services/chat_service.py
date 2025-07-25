@@ -15,6 +15,7 @@ from core.embeddings import EmbeddingService
 from llm.factory import create_llm_provider
 from llm.base import LLMResponse, LLMError
 from config.models import AppConfig
+from core.exception_handling import handle_service_exceptions, safe_operation
 
 logger = logging.getLogger(__name__)
 
@@ -64,31 +65,28 @@ class ChatService:
         except Exception as e:
             logger.error(f"Failed to initialize services: {e}")
             
+    @handle_service_exceptions(
+        service_name="ChatService",
+        default_return="I'm sorry, I encountered an error processing your message. Please try again."
+    )
     async def process_chat_message(self, user_message: str) -> str:
         """Process a chat message and return assistant response"""
-        try:
-            # Step 1: Get relevant context data
-            context = await self._get_chat_context(user_message)
-            
-            # Step 2: Generate LLM response with context
-            response = await self._generate_response(user_message, context)
-            
-            # Step 3: Store chat exchange
-            self.database.store_chat_message(user_message, response.content)
-            
-            return response.content
-            
-        except Exception as e:
-            logger.error(f"Error processing chat message: {e}")
-            error_msg = "I'm sorry, I encountered an error processing your message. Please try again."
-            
-            # Store error exchange for debugging
-            try:
-                self.database.store_chat_message(user_message, error_msg)
-            except Exception:
-                pass  # Don't let storage errors compound the issue
-                
-            return error_msg
+        # Step 1: Get relevant context data
+        context = await self._get_chat_context(user_message)
+        
+        # Step 2: Generate LLM response with context
+        response = await self._generate_response(user_message, context)
+        
+        # Step 3: Store chat exchange
+        self.database.store_chat_message(user_message, response.content)
+        
+        return response.content
+    
+    async def _store_error_message(self, user_message: str, error_details: str):
+        """Store error message for debugging (fallback action)"""
+        error_msg = "I'm sorry, I encountered an error processing your message. Please try again."
+        with safe_operation("store_error_message", log_errors=False):
+            self.database.store_chat_message(user_message, error_msg)
     
     async def _get_chat_context(self, query: str, max_results: int = 10) -> ChatContext:
         """Get relevant context using hybrid approach (vector + SQL)"""
@@ -114,55 +112,45 @@ class ChatService:
             total_results=len(vector_results) + len(sql_results)
         )
     
+    @handle_service_exceptions(
+        service_name="ChatService-VectorSearch",
+        default_return=[]
+    )
     async def _vector_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         """Perform vector similarity search"""
-        try:
-            # Generate embedding for query
-            query_embedding = await self.embeddings.embed_text(query)
-            
-            # Search vector store
-            similar_ids = self.vector_store.search(query_embedding, k=max_results)
-            
-            # Get full data items from database
-            if similar_ids:
-                ids = [item_id for item_id, _ in similar_ids]
-                return self.database.get_data_items_by_ids(ids)
-            
-        except Exception as e:
-            logger.warning(f"Vector search error: {e}")
-            
+        # Generate embedding for query
+        query_embedding = await self.embeddings.embed_text(query)
+        
+        # Search vector store
+        similar_ids = self.vector_store.search(query_embedding, k=max_results)
+        
+        # Get full data items from database
+        if similar_ids:
+            ids = [item_id for item_id, _ in similar_ids]
+            return self.database.get_data_items_by_ids(ids)
+        
         return []
     
+    @handle_service_exceptions(
+        service_name="ChatService-SQLSearch",
+        default_return=[]
+    )
     async def _sql_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         """Perform SQL-based keyword search"""
-        try:
-            # Simple keyword search in content
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT id, namespace, source_id, content, metadata, created_at, updated_at
-                    FROM data_items 
-                    WHERE content LIKE ? 
-                    ORDER BY updated_at DESC
-                    LIMIT ?
-                """, (f"%{query}%", max_results))
-                
-                results = []
-                for row in cursor.fetchall():
-                    item = dict(row)
-                    if item['metadata']:
-                        try:
-                            import json
-                            item['metadata'] = json.loads(item['metadata'])
-                        except json.JSONDecodeError:
-                            item['metadata'] = None
-                    results.append(item)
-                
-                return results
-                
-        except Exception as e:
-            logger.warning(f"SQL search error: {e}")
+        # Simple keyword search in content
+        with self.database.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT id, namespace, source_id, content, metadata, created_at, updated_at
+                FROM data_items 
+                WHERE content LIKE ? 
+                ORDER BY updated_at DESC
+                LIMIT ?
+            """, (f"%{query}%", max_results))
             
-        return []
+            from core.json_utils import DatabaseRowParser
+            return DatabaseRowParser.parse_rows_with_metadata(
+                [dict(row) for row in cursor.fetchall()]
+            )
     
     async def _generate_response(self, user_message: str, context: ChatContext) -> LLMResponse:
         """Generate LLM response with context"""

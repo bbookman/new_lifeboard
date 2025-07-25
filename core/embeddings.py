@@ -8,10 +8,12 @@ from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer
 import torch
 
+from .base_service import BaseService
+
 logger = logging.getLogger(__name__)
 
 
-class EmbeddingService:
+class EmbeddingService(BaseService):
     """Real embedding service using sentence transformers"""
     
     # Model dimension mapping for common models
@@ -32,37 +34,41 @@ class EmbeddingService:
         Args:
             config: Configuration object with model_name, device, and batch_size
         """
-        self.config = config
+        super().__init__(service_name="EmbeddingService", config=config)
         self.model_name = config.model_name
         self.device = config.device
         self.batch_size = config.batch_size
         self.model: Optional[SentenceTransformer] = None
         self.dimension = self._get_model_dimension()
-        self._initialized = False
+        
+        # Add service capabilities
+        self.add_capability("text_embedding")
+        self.add_capability("batch_processing")
+        self.add_capability("similarity_computation")
     
     @property
-    def is_initialized(self) -> bool:
-        """Check if the service has been initialized"""
-        return self._initialized and self.model is not None
+    def is_model_loaded(self) -> bool:
+        """Check if the model has been loaded"""
+        return self.model is not None
         
     def _get_model_dimension(self) -> int:
         """Get expected dimension for the model"""
         return self.MODEL_DIMENSIONS.get(self.model_name, 384)  # Default to 384
         
-    async def initialize(self):
+    async def _initialize_service(self) -> bool:
         """Initialize the sentence transformer model"""
         try:
-            logger.info(f"Loading embedding model: {self.model_name}")
-            logger.info(f"Model name from config: {self.config.model_name}")
-            logger.info(f"Device: {self.device}")
+            self.logger.info(f"Loading embedding model: {self.model_name}")
+            self.logger.info(f"Model name from config: {self.config.model_name}")
+            self.logger.info(f"Device: {self.device}")
             
             # Load the model on specified device
             self.model = SentenceTransformer(self.model_name, device=self.device)
             
-            logger.info(f"Model loaded: {self.model}")
-            logger.info(f"Model modules after loading: {list(self.model._modules.keys())}")
+            self.logger.info(f"Model loaded: {self.model}")
+            self.logger.info(f"Model modules after loading: {list(self.model._modules.keys())}")
             if hasattr(self.model, '_modules') and '0' in self.model._modules:
-                logger.info(f"Model transformer: {self.model._modules['0']}")
+                self.logger.info(f"Model transformer: {self.model._modules['0']}")
             
             # Update dimension from actual model - use multiple approaches to ensure accuracy
             actual_dimension = None
@@ -70,27 +76,27 @@ class EmbeddingService:
             # Method 1: Try get_sentence_embedding_dimension
             if hasattr(self.model, 'get_sentence_embedding_dimension'):
                 actual_dimension = self.model.get_sentence_embedding_dimension()
-                logger.info(f"Got dimension from get_sentence_embedding_dimension(): {actual_dimension}")
+                self.logger.info(f"Got dimension from get_sentence_embedding_dimension(): {actual_dimension}")
             
             # Method 2: If method 1 failed, encode a test sentence and check shape
             if actual_dimension is None:
                 try:
                     test_embedding = self.model.encode("test", convert_to_numpy=True)
                     actual_dimension = test_embedding.shape[0]
-                    logger.info(f"Got dimension from test encoding: {actual_dimension}")
+                    self.logger.info(f"Got dimension from test encoding: {actual_dimension}")
                 except Exception as e:
-                    logger.warning(f"Failed to get dimension from test encoding: {e}")
+                    self.logger.warning(f"Failed to get dimension from test encoding: {e}")
             
             # Update dimension if we got a valid value
             if actual_dimension is not None and actual_dimension > 0:
                 self.dimension = actual_dimension
             
-            self._initialized = True
-            logger.info(f"Embedding model loaded successfully. Final dimension: {self.dimension}")
+            self.logger.info(f"Embedding model loaded successfully. Final dimension: {self.dimension}")
+            return True
             
         except Exception as e:
-            logger.error(f"Failed to load embedding model {self.model_name}: {e}")
-            raise
+            self.logger.error(f"Failed to load embedding model {self.model_name}: {e}")
+            return False
     
     async def embed_text(self, text: str) -> np.ndarray:
         """
@@ -102,7 +108,7 @@ class EmbeddingService:
         Returns:
             numpy array containing the text embedding
         """
-        if self.model is None:
+        if not self.is_initialized:
             await self.initialize()
             
         if not text or not text.strip():
@@ -134,7 +140,7 @@ class EmbeddingService:
         Returns:
             List of numpy arrays containing the text embeddings
         """
-        if self.model is None:
+        if not self.is_initialized:
             await self.initialize()
             
         if not texts:
@@ -190,7 +196,7 @@ class EmbeddingService:
         Returns:
             List of lists containing the text embeddings
         """
-        if not self.model:
+        if not self.is_initialized:
             await self.initialize()
         
         logger.debug(f"Generating embeddings for {len(texts)} texts")
@@ -296,12 +302,48 @@ class EmbeddingService:
         """
         return cls.MODEL_DIMENSIONS.get(model_name, 384)
     
-    def cleanup(self):
+    async def _shutdown_service(self) -> bool:
         """Clean up resources"""
+        try:
+            if self.model is not None:
+                # Clear CUDA cache if using GPU
+                if torch.cuda.is_available() and 'cuda' in self.device:
+                    torch.cuda.empty_cache()
+                
+                self.model = None
+                self.logger.info("Embedding model resources cleaned up")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
+            return False
+    
+    async def _check_service_health(self) -> Dict[str, Any]:
+        """Check service health"""
+        health_info = {
+            "model_loaded": self.model is not None,
+            "model_name": self.model_name,
+            "device": self.device,
+            "dimension": self.dimension,
+            "healthy": True
+        }
+        
         if self.model is not None:
-            # Clear CUDA cache if using GPU
-            if torch.cuda.is_available() and 'cuda' in self.device:
-                torch.cuda.empty_cache()
-            
-            self.model = None
-            logger.info("Embedding model resources cleaned up")
+            try:
+                # Quick health check by encoding a test string
+                test_embedding = await self.embed_text("health check")
+                health_info["test_embedding_shape"] = test_embedding.shape
+                health_info["test_passed"] = True
+            except Exception as e:
+                health_info["test_passed"] = False
+                health_info["test_error"] = str(e)
+                health_info["healthy"] = False
+        else:
+            health_info["healthy"] = False
+            health_info["reason"] = "Model not loaded"
+        
+        return health_info
+    
+    def cleanup(self):
+        """Clean up resources (legacy method for backwards compatibility)"""
+        import asyncio
+        asyncio.create_task(self._shutdown_service())

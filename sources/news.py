@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from .base import BaseSource, DataItem
 from config.models import NewsConfig
+from core.retry_utils import RetryExecutor, create_api_retry_config, create_api_retry_condition
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +239,7 @@ class NewsSource(BaseSource):
         params: Dict[str, Any]
     ) -> Optional[httpx.Response]:
         """
-        Make HTTP request with retry logic.
+        Make HTTP request with retry logic using the unified retry framework.
         
         Args:
             client: HTTP client instance
@@ -253,33 +254,33 @@ class NewsSource(BaseSource):
         full_url = f"https://{self.config.endpoint}{endpoint}?{query_string}"
         logger.info(f"API Request: {full_url}")
         
-        last_exception = None
+        # Create retry configuration using the new utility
+        retry_config = create_api_retry_config(
+            max_retries=self.config.max_retries,
+            base_delay=self.config.retry_delay
+        )
+        retry_condition = create_api_retry_condition()
+        retry_executor = RetryExecutor(retry_config, retry_condition)
         
-        for attempt in range(self.config.max_retries):
-            try:
-                response = await client.get(endpoint, params=params)
-                
-                if response.status_code == 200:
-                    return response
-                elif response.status_code == 429:  # Rate limited
-                    wait_time = self.config.retry_delay * (2 ** attempt)
-                    logger.warning(f"Rate limited, waiting {wait_time}s before retry {attempt + 1}/{self.config.max_retries}")
-                    await asyncio.sleep(wait_time)
-                    continue
-                else:
-                    logger.error(f"API request failed with status {response.status_code}: {response.text}")
-                    return None
-                    
-            except Exception as e:
-                last_exception = e
-                if attempt < self.config.max_retries - 1:
-                    wait_time = self.config.retry_delay * (2 ** attempt)
-                    logger.warning(f"Request failed ({e}), retrying in {wait_time}s (attempt {attempt + 1}/{self.config.max_retries})")
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.error(f"Request failed after {self.config.max_retries} attempts: {e}")
+        async def make_request():
+            response = await client.get(endpoint, params=params)
+            
+            if response.status_code == 200:
+                return response
+            elif response.status_code in [429, 500, 502, 503, 504]:
+                # These status codes will be retried by the retry condition
+                response.raise_for_status()
+            else:
+                # Non-retryable error (e.g., 400, 401, 404)
+                logger.error(f"API request failed with status {response.status_code}: {response.text}")
+                return None
         
-        return None
+        try:
+            result = await retry_executor.execute_async(make_request)
+            return result.result if result.success else None
+        except Exception as e:
+            logger.error(f"Request failed after all retries: {e}")
+            return None
     
     async def get_sync_metadata(self) -> Dict[str, Any]:
         """
