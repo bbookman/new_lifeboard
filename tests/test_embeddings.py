@@ -203,8 +203,8 @@ class TestEmbeddingService:
             mock_st.side_effect = Exception("Model load failed")
             
             # Test that initialization fails when model loading fails
-            with pytest.raises(Exception):
-                await embedding_service.initialize()
+            success = await embedding_service.initialize()
+            assert success is False
     
     @pytest.mark.asyncio
     async def test_embedding_error_handling(self, embedding_service):
