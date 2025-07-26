@@ -54,7 +54,11 @@ class VectorStoreService:
                 'dimension': self.dimension
             }
             
-            os.makedirs(os.path.dirname(self.config.id_map_path), exist_ok=True)
+            # Create directory if needed (only if path contains a directory)
+            id_map_dir = os.path.dirname(self.config.id_map_path)
+            if id_map_dir:  # Only create directory if path is not just a filename
+                os.makedirs(id_map_dir, exist_ok=True)
+            
             with open(self.config.id_map_path, 'w') as f:
                 json.dump(data, f)
             
@@ -74,7 +78,10 @@ class VectorStoreService:
                 
                 if vectors_list:
                     vectors_array = np.array(vectors_list)
-                    os.makedirs(os.path.dirname(self.config.index_path), exist_ok=True)
+                    # Create directory if needed (only if path contains a directory)
+                    index_dir = os.path.dirname(self.config.index_path)
+                    if index_dir:  # Only create directory if path is not just a filename
+                        os.makedirs(index_dir, exist_ok=True)
                     np.save(self.config.index_path, vectors_array)
                     
         except Exception as e:
