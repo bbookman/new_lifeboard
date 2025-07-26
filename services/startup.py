@@ -82,6 +82,10 @@ class StartupService:
             health_status = await self._perform_startup_health_check()
             startup_result["health_check"] = health_status
             
+            # 7. Perform startup embedding burst for immediate semantic search capability
+            burst_result = await self._perform_startup_embedding_burst()
+            startup_result["embedding_burst"] = burst_result
+            
             self.startup_complete = True
             startup_result["success"] = True
             
@@ -184,11 +188,20 @@ class StartupService:
         try:
             logger.info("Initializing chat service...")
             
+            # Get LimitlessSource if available from ingestion service
+            limitless_source = None
+            if self.ingestion_service and 'limitless' in self.ingestion_service.sources:
+                limitless_source = self.ingestion_service.sources['limitless']
+                logger.info("LimitlessSource found and will be available for search")
+            else:
+                logger.info("LimitlessSource not available - search will use local data only")
+            
             self.chat_service = ChatService(
                 config=self.config,
                 database=self.database,
                 vector_store=self.vector_store,
-                embeddings=self.embedding_service
+                embeddings=self.embedding_service,
+                limitless_source=limitless_source
             )
             
             # Initialize the chat service (sets up LLM provider)
@@ -486,6 +499,58 @@ class StartupService:
             raise Exception("Ingestion service not initialized")
         
         return await self.ingestion_service.process_pending_embeddings(batch_size)
+    
+    async def _perform_startup_embedding_burst(self) -> Dict[str, Any]:
+        """Perform startup embedding burst for immediate semantic search capability"""
+        burst_result = {
+            "enabled": self.config.embeddings.startup_burst_enabled,
+            "processed": 0,
+            "success": False,
+            "duration_seconds": 0,
+            "errors": []
+        }
+        
+        if not self.config.embeddings.startup_burst_enabled:
+            logger.info("Startup embedding burst disabled in configuration")
+            burst_result["success"] = True
+            return burst_result
+        
+        if not self.ingestion_service:
+            error_msg = "Ingestion service not initialized, skipping embedding burst"
+            logger.warning(error_msg)
+            burst_result["errors"].append(error_msg)
+            return burst_result
+        
+        try:
+            import time
+            start_time = time.time()
+            
+            logger.info(f"Starting startup embedding burst (limit: {self.config.embeddings.startup_burst_limit})")
+            
+            # Process pending embeddings with startup burst limit
+            result = await self.ingestion_service.process_pending_embeddings(
+                batch_size=self.config.embeddings.batch_size,
+                limit=self.config.embeddings.startup_burst_limit,
+                most_recent_first=True  # Process most recent items first
+            )
+            
+            burst_result["processed"] = result.get("processed", 0)
+            burst_result["duration_seconds"] = time.time() - start_time
+            burst_result["success"] = True
+            
+            if burst_result["processed"] > 0:
+                logger.info(f"Startup embedding burst completed: {burst_result['processed']} items processed "
+                           f"in {burst_result['duration_seconds']:.2f} seconds")
+            else:
+                logger.info("Startup embedding burst completed: no pending embeddings found")
+                
+        except Exception as e:
+            error_msg = f"Startup embedding burst failed: {str(e)}"
+            logger.error(error_msg)
+            burst_result["errors"].append(error_msg)
+            burst_result["duration_seconds"] = time.time() - start_time if 'start_time' in locals() else 0
+        
+        return burst_result
 
 
 # Global startup service instance

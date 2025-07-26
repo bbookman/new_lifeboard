@@ -20,12 +20,22 @@ class EmbeddingConfig(BaseModel):
     model_name: str = "all-MiniLM-L6-v2"
     device: str = "cpu"
     batch_size: int = 32
+    # Startup embedding burst configuration
+    startup_burst_enabled: bool = True
+    startup_burst_limit: int = 150
     
     @field_validator('device')
     @classmethod
     def validate_device(cls, v):
         if v not in ["cpu", "cuda", "mps"]:
             raise ValueError("Device must be one of: cpu, cuda, mps")
+        return v
+    
+    @field_validator('startup_burst_limit')
+    @classmethod
+    def validate_startup_burst_limit(cls, v):
+        if v <= 0:
+            raise ValueError("Startup burst limit must be positive")
         return v
     
     @classmethod
@@ -66,12 +76,23 @@ class LimitlessConfig(BaseModel):
     # Rate limiting configuration
     rate_limit_max_delay: int = 300  # Maximum delay for rate limiting (5 minutes)
     respect_retry_after: bool = True
+    # Search configuration
+    search_enabled: bool = True
+    search_weight: float = 0.75  # Weight for Limitless search in hybrid search (75% default)
+    hybrid_search_enabled: bool = True
     
     @field_validator('api_key')
     @classmethod
     def validate_api_key(cls, v):
         if v is not None and not isinstance(v, str):
             raise ValueError("API key must be a string")
+        return v
+    
+    @field_validator('search_weight')
+    @classmethod
+    def validate_search_weight(cls, v):
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("Search weight must be between 0.0 and 1.0")
         return v
     
     def is_api_key_configured(self) -> bool:
@@ -381,6 +402,7 @@ class AppConfig(BaseModel):
     
     # Global settings
     debug: bool = False
+    timezone: str = "UTC"
     
     # Backward compatibility - kept for existing code that might use it
     @property

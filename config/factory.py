@@ -94,7 +94,9 @@ def create_production_config() -> AppConfig:
         embeddings=EmbeddingConfig(
             model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
             device=os.getenv("EMBEDDING_DEVICE", "cpu"),
-            batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
+            batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32")),
+            startup_burst_enabled=os.getenv("EMBEDDING_STARTUP_BURST_ENABLED", "true").lower() == "true",
+            startup_burst_limit=int(os.getenv("EMBEDDING_STARTUP_BURST_LIMIT", "150"))
         ),
         vector_store=VectorStoreConfig(
             index_path=os.getenv("VECTOR_INDEX_PATH", "vector_index.faiss"),
@@ -104,7 +106,7 @@ def create_production_config() -> AppConfig:
         limitless=LimitlessConfig(
             api_key=os.getenv("LIMITLESS_API_KEY"),
             base_url=os.getenv("LIMITLESS_BASE_URL", "https://api.limitless.ai"),
-            timezone=os.getenv("LIMITLESS_TIMEZONE", "UTC"),
+            timezone=os.getenv("TIME_ZONE", "UTC"),  # Use global timezone
             max_retries=int(os.getenv("LIMITLESS_MAX_RETRIES", "3")),
             retry_delay=float(os.getenv("LIMITLESS_RETRY_DELAY", "1.0")),
             request_timeout=float(os.getenv("LIMITLESS_REQUEST_TIMEOUT", "30.0")),
@@ -175,17 +177,6 @@ def create_production_config() -> AppConfig:
             context_window=int(os.getenv("CHAT_CONTEXT_WINDOW", "4000")),
             response_timeout=float(os.getenv("CHAT_RESPONSE_TIMEOUT", "30.0"))
         ),
-        insights=InsightsConfig(
-            enabled=os.getenv("INSIGHTS_ENABLED", "true").lower() == "true",
-            schedule=os.getenv("INSIGHTS_SCHEDULE", "daily"),
-            custom_cron=os.getenv("INSIGHTS_CUSTOM_CRON"),
-            max_insights_history=int(os.getenv("INSIGHTS_MAX_HISTORY", "100"))
-        ),
-        enhancement=EnhancementConfig(
-            enabled=os.getenv("ENHANCEMENT_ENABLED", "true").lower() == "true",
-            schedule=os.getenv("ENHANCEMENT_SCHEDULE", "nightly"),
-            batch_size=int(os.getenv("ENHANCEMENT_BATCH_SIZE", "100")),
-            max_concurrent_jobs=int(os.getenv("ENHANCEMENT_MAX_CONCURRENT_JOBS", "2"))
-        ),
-        debug=os.getenv("DEBUG", "false").lower() == "true"
+        debug=os.getenv("DEBUG", "false").lower() == "true",
+        timezone=os.getenv("TIME_ZONE", "UTC")
     )

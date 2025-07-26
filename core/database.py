@@ -95,14 +95,16 @@ class DatabaseService:
             """, (status, id))
             conn.commit()
     
-    def get_pending_embeddings(self, limit: int = 100) -> List[Dict]:
+    def get_pending_embeddings(self, limit: int = 100, most_recent_first: bool = False) -> List[Dict]:
         """Get data items that need embedding"""
+        order_clause = "ORDER BY created_at DESC" if most_recent_first else "ORDER BY created_at ASC"
+        
         with self.get_connection() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(f"""
                 SELECT id, namespace, source_id, content, metadata
                 FROM data_items 
                 WHERE embedding_status = 'pending'
-                ORDER BY created_at ASC
+                {order_clause}
                 LIMIT ?
             """, (limit,))
             
@@ -125,9 +127,13 @@ class DatabaseService:
                 "SELECT value FROM system_settings WHERE key = ?", (key,))
             row = cursor.fetchone()
             if row:
-                # Try to parse as JSON, fallback to string value
-                parsed = JSONMetadataParser.parse_metadata(row['value'])
-                return parsed if parsed is not None else row['value']
+                value = row['value']
+                # Only try JSON parsing if value looks like JSON (starts with { or [)
+                if value and isinstance(value, str) and value.strip().startswith(('{', '[')):
+                    parsed = JSONMetadataParser.parse_metadata(value)
+                    return parsed if parsed is not None else value
+                # Return plain string value directly
+                return value
             return default
     
     def set_setting(self, key: str, value: Any):

@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 class LimitlessSource(BaseSource):
     """Limitless API data source for lifelogs"""
     
+    class _Params:
+        """Container for Limitless API query parameter names to avoid magic strings."""
+        LIMIT = "limit"
+        INCLUDE_MARKDOWN = "includeMarkdown"
+        INCLUDE_HEADINGS = "includeHeadings"
+        TIMEZONE = "timezone"
+        CURSOR = "cursor"
+        START = "start"
+        SEARCH = "search"
+    
     def __init__(self, config: LimitlessConfig):
         super().__init__("limitless")
         self.config = config
@@ -55,7 +65,7 @@ class LimitlessSource(BaseSource):
         
         try:
             client = self._get_client()
-            response = await client.get("/v1/lifelogs", params={"limit": 1})
+            response = await client.get("/v1/lifelogs", params={self._Params.LIMIT: 1})
             return response.status_code == 200
         except Exception:
             return False
@@ -76,18 +86,18 @@ class LimitlessSource(BaseSource):
             
             # Build request parameters
             params = {
-                "limit": remaining,
-                "includeMarkdown": True,
-                "includeHeadings": True,
-                "timezone": self.config.timezone
+                self._Params.LIMIT: remaining,
+                self._Params.INCLUDE_MARKDOWN: True,
+                self._Params.INCLUDE_HEADINGS: True,
+                self._Params.TIMEZONE: self.config.timezone
             }
             
             if cursor:
-                params["cursor"] = cursor
+                params[self._Params.CURSOR] = cursor
             
             if since:
                 # Format datetime for Limitless API
-                params["start"] = since.strftime("%Y-%m-%d %H:%M:%S")
+                params[self._Params.START] = since.strftime("%Y-%m-%d %H:%M:%S")
             
             # Make API request with retries
             response = await self._make_request_with_retry(client, "/v1/lifelogs", params)
@@ -126,8 +136,8 @@ class LimitlessSource(BaseSource):
         try:
             client = self._get_client()
             params = {
-                "includeMarkdown": True,
-                "includeHeadings": True
+                self._Params.INCLUDE_MARKDOWN: True,
+                self._Params.INCLUDE_HEADINGS: True
             }
             
             response = await self._make_request_with_retry(
@@ -147,6 +157,47 @@ class LimitlessSource(BaseSource):
             
         except Exception:
             return None
+    
+    async def search_lifelogs(self, query: str, limit: int = 10) -> List[DataItem]:
+        """Search lifelogs using hybrid search capability"""
+        if not self._api_key_configured:
+            logger.warning("LIMITLESS_API_KEY is not configured in .env file. Skipping search.")
+            return []
+        
+        if not self.config.search_enabled:
+            logger.debug("Limitless search is disabled in configuration")
+            return []
+        
+        try:
+            client = self._get_client()
+            params = {
+                self._Params.SEARCH: query,
+                self._Params.LIMIT: min(limit, 10),  # Limitless API max is 10 per request
+                self._Params.INCLUDE_MARKDOWN: True,
+                self._Params.INCLUDE_HEADINGS: True,
+                self._Params.TIMEZONE: self.config.timezone
+            }
+            
+            response = await self._make_request_with_retry(client, "/v1/lifelogs", params)
+            
+            if not response:
+                return []
+            
+            data = response.json()
+            lifelogs = data.get("data", {}).get("lifelogs", [])
+            
+            # Transform search results to DataItems
+            results = []
+            for lifelog in lifelogs:
+                data_item = self._transform_lifelog(lifelog)
+                results.append(data_item)
+            
+            logger.info(f"Limitless search returned {len(results)} results for query: {query}")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Limitless search failed: {e}")
+            return []
     
     def _transform_lifelog(self, lifelog: Dict[str, Any]) -> DataItem:
         """Transform Limitless lifelog to standardized DataItem"""

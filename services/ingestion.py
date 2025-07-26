@@ -177,7 +177,7 @@ class IngestionService(BaseService):
             logger.error(error_msg)
             result.errors.append(error_msg)
     
-    async def process_pending_embeddings(self, batch_size: int = 32) -> Dict[str, Any]:
+    async def process_pending_embeddings(self, batch_size: int = 32, limit: Optional[int] = None, most_recent_first: bool = False) -> Dict[str, Any]:
         """Process items that need embeddings"""
         result = {
             "processed": 0,
@@ -187,12 +187,19 @@ class IngestionService(BaseService):
         }
         
         try:
+            # Determine fetch limit - for startup burst, limit to specific number
+            fetch_limit = limit if limit is not None else (batch_size * 2)
+            
             # Get items needing embeddings
-            pending_items = self.database.get_pending_embeddings(limit=batch_size * 2)
+            pending_items = self.database.get_pending_embeddings(limit=fetch_limit, most_recent_first=most_recent_first)
             
             if not pending_items:
                 logger.info("No pending embeddings")
                 return result
+            
+            # If we have a limit and got more items than the limit, truncate
+            if limit is not None and len(pending_items) > limit:
+                pending_items = pending_items[:limit]
             
             logger.info(f"Processing {len(pending_items)} pending embeddings")
             
@@ -454,9 +461,8 @@ class IngestionService(BaseService):
         if namespace == "limitless":
             return self.config.limitless.timezone
         elif namespace == "news":
-            # News typically uses UTC, but we might want to convert to user's preferred timezone
-            # For now, return UTC since news published times are usually in UTC
-            return "UTC"
+            # Use global timezone for news to display in user's local time
+            return getattr(self.config, 'timezone', 'UTC')
         else:
-            # Default to UTC for unknown namespaces
-            return "UTC"
+            # Use global timezone as default for unknown namespaces
+            return getattr(self.config, 'timezone', 'UTC')

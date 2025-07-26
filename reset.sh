@@ -94,7 +94,7 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 # Try common startup patterns
 if [ -f "api/server.py" ]; then
     echo "Starting Lifeboard server..."
-    cd "$(dirname "$0")" && python api/server.py &
+    cd "$(dirname "$0")" && python3 -m api.server &
 elif [ -f "main.py" ]; then
     echo "Starting Python application..."
     python main.py &
@@ -120,7 +120,7 @@ echo "The Lifeboard web UI is accessible at:"
 echo "  • http://localhost:8000"
 echo ""
 echo "If you need to use a different port, stop the service"
-echo "and run: python api/server.py --port [PORT_NUMBER]"
+echo "and run: python3 -m api.server --port [PORT_NUMBER]"
 echo ""
 echo "To stop all services, run this script again."
 echo "========================================="

@@ -128,8 +128,12 @@ class LimitlessSyncManager:
             raise ValueError("Empty timestamp string")
         
         try:
-            # First try ISO format parsing (handles timezone-aware strings)
-            return datetime.fromisoformat(timestamp_str)
+            # Try ISO format parsing (handles timezone-aware strings)
+            dt = datetime.fromisoformat(timestamp_str)
+            # If the parsed datetime is naive, assume it's UTC
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except ValueError:
             # If ISO parsing fails, try SQLite format (assumes UTC)
             try:
