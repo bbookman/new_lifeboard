@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lifeboard Calendar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .calendar-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .nav-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .nav-button:hover {
+            background-color: #0056b3;
+        }
+        
+        .month-year {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background-color: #ddd;
+            border: 1px solid #ddd;
+        }
+        
+        .day-header {
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .day-cell {
+            background-color: white;
+            min-height: 40px;
+            padding: 8px;
+            position: relative;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: flex-start;
+        }
+        
+        .day-cell:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .day-number {
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .day-cell.other-month .day-number {
+            color: #ccc;
+        }
+        
+        .day-cell.has-data {
+            background-color: #e3f2fd;
+        }
+        
+        .day-cell.has-data:hover {
+            background-color: #bbdefb;
+        }
+        
+        .data-indicator {
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            width: 8px;
+            height: 8px;
+            background-color: #007bff;
+            border-radius: 50%;
+        }
+        
+        .today {
+            background-color: #fff3cd !important;
+            border: 2px solid #ffc107;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        @media (max-width: 600px) {
+            .calendar-container {
+                margin: 10px;
+                padding: 10px;
+            }
+            
+            .day-cell {
+                min-height: 35px;
+                padding: 4px;
+            }
+            
+            .day-number {
+                font-size: 12px;
+            }
+            
+            .month-year {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="calendar-container">
+        <h1>Lifeboard Calendar</h1>
+        
+        <div id="error-message" class="error" style="display: none;"></div>
+        
+        <div class="calendar-header">
+            <button class="nav-button" id="prev-month">← Previous</button>
+            <div class="month-year" id="month-year">Loading...</div>
+            <button class="nav-button" id="next-month">Next →</button>
+        </div>
+        
+        <div class="calendar-grid" id="calendar-grid">
+            <div class="loading">Loading calendar...</div>
+        </div>
+    </div>
+
+    <script>
+        class Calendar {
+            constructor() {
+                this.currentDate = new Date();
+                this.currentYear = this.currentDate.getFullYear();
+                this.currentMonth = this.currentDate.getMonth(); // 0-based
+                this.daysWithData = [];
+                
+                this.initializeEventListeners();
+                this.loadCalendar();
+            }
+            
+            initializeEventListeners() {
+                document.getElementById('prev-month').addEventListener('click', () => {
+                    this.previousMonth();
+                });
+                
+                document.getElementById('next-month').addEventListener('click', () => {
+                    this.nextMonth();
+                });
+            }
+            
+            async loadCalendar() {
+                try {
+                    // Load days with data for current month
+                    await this.loadDaysWithData();
+                    this.renderCalendar();
+                } catch (error) {
+                    this.showError('Failed to load calendar data');
+                    console.error('Error loading calendar:', error);
+                }
+            }
+            
+            async loadDaysWithData() {
+                try {
+                    const response = await fetch(`/calendar/api/days-with-data?year=${this.currentYear}&month=${this.currentMonth + 1}`);
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch days with data');
+                    }
+                    this.daysWithData = await response.json();
+                } catch (error) {
+                    console.error('Error loading days with data:', error);
+                    this.daysWithData = [];
+                }
+            }
+            
+            renderCalendar() {
+                this.updateHeader();
+                this.renderGrid();
+            }
+            
+            updateHeader() {
+                const monthNames = [
+                    'January', 'February', 'March', 'April', 'May', 'June',
+                    'July', 'August', 'September', 'October', 'November', 'December'
+                ];
+                
+                const monthYear = `${monthNames[this.currentMonth]} ${this.currentYear}`;
+                document.getElementById('month-year').textContent = monthYear;
+            }
+            
+            renderGrid() {
+                const grid = document.getElementById('calendar-grid');
+                grid.innerHTML = '';
+                
+                // Add day headers (Sunday first)
+                const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                dayHeaders.forEach(day => {
+                    const header = document.createElement('div');
+                    header.className = 'day-header';
+                    header.textContent = day;
+                    grid.appendChild(header);
+                });
+                
+                // Get first day of month and number of days
+                const firstDay = new Date(this.currentYear, this.currentMonth, 1);
+                const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0);
+                const daysInMonth = lastDay.getDate();
+                const startingDayOfWeek = firstDay.getDay(); // 0 = Sunday
+                
+                // Add empty cells for days before month starts
+                for (let i = 0; i < startingDayOfWeek; i++) {
+                    const prevMonthDay = new Date(this.currentYear, this.currentMonth, -startingDayOfWeek + i + 1);
+                    this.createDayCell(prevMonthDay, true);
+                }
+                
+                // Add days of current month
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const cellDate = new Date(this.currentYear, this.currentMonth, day);
+                    this.createDayCell(cellDate, false);
+                }
+                
+                // Add empty cells to complete the grid
+                const totalCells = grid.children.length - 7; // Subtract headers
+                const remainingCells = 42 - totalCells; // 6 rows * 7 days - headers
+                for (let i = 1; i <= remainingCells; i++) {
+                    const nextMonthDay = new Date(this.currentYear, this.currentMonth + 1, i);
+                    this.createDayCell(nextMonthDay, true);
+                }
+            }
+            
+            createDayCell(date, isOtherMonth) {
+                const cell = document.createElement('div');
+                cell.className = 'day-cell';
+                
+                if (isOtherMonth) {
+                    cell.classList.add('other-month');
+                }
+                
+                // Check if this date has data
+                const dateString = this.formatDate(date);
+                const hasData = this.daysWithData.includes(dateString);
+                
+                if (hasData && !isOtherMonth) {
+                    cell.classList.add('has-data');
+                    cell.style.cursor = 'pointer';
+                    
+                    // Add click handler for days with data
+                    cell.addEventListener('click', () => {
+                        window.location.href = `/calendar/day/${dateString}`;
+                    });
+                    
+                    // Add data indicator
+                    const indicator = document.createElement('div');
+                    indicator.className = 'data-indicator';
+                    cell.appendChild(indicator);
+                }
+                
+                // Check if this is today using server-provided date
+                const serverCurrentDate = '{{ current_date }}';
+                if (dateString === serverCurrentDate) {
+                    cell.classList.add('today');
+                }
+                
+                // Add day number
+                const dayNumber = document.createElement('div');
+                dayNumber.className = 'day-number';
+                dayNumber.textContent = date.getDate();
+                cell.appendChild(dayNumber);
+                
+                document.getElementById('calendar-grid').appendChild(cell);
+            }
+            
+            formatDate(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+            
+            async previousMonth() {
+                this.currentMonth--;
+                if (this.currentMonth < 0) {
+                    this.currentMonth = 11;
+                    this.currentYear--;
+                }
+                await this.loadCalendar();
+            }
+            
+            async nextMonth() {
+                this.currentMonth++;
+                if (this.currentMonth > 11) {
+                    this.currentMonth = 0;
+                    this.currentYear++;
+                }
+                await this.loadCalendar();
+            }
+            
+            showError(message) {
+                const errorDiv = document.getElementById('error-message');
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+            }
+            
+            hideError() {
+                const errorDiv = document.getElementById('error-message');
+                errorDiv.style.display = 'none';
+            }
+        }
+        
+        // Initialize calendar when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new Calendar();
+        });
+    </script>
+</body>
+</html>

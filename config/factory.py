@@ -102,13 +102,15 @@ def create_production_config() -> AppConfig:
             dimension=int(os.getenv("VECTOR_DIMENSION", "384"))
         ),
         limitless=LimitlessConfig(
-            api_key=os.getenv("LIMITLESS_API_KEY"),
-            base_url=os.getenv("LIMITLESS_BASE_URL", "https://api.limitless.ai"),
-            timezone=os.getenv("LIMITLESS_TIMEZONE", "UTC"),
-            max_retries=int(os.getenv("LIMITLESS_MAX_RETRIES", "3")),
-            retry_delay=float(os.getenv("LIMITLESS_RETRY_DELAY", "1.0")),
-            request_timeout=float(os.getenv("LIMITLESS_REQUEST_TIMEOUT", "30.0")),
-            sync_interval_hours=int(os.getenv("LIMITLESS_SYNC_INTERVAL_HOURS", "6"))
+            api_key=os.getenv("LIMITLESS__API_KEY"),
+            base_url=os.getenv("LIMITLESS__BASE_URL", "https://api.limitless.ai"),
+            timezone=os.getenv("LIMITLESS__TIMEZONE", os.getenv("TIME_ZONE", "UTC")),
+            max_retries=int(os.getenv("LIMITLESS__MAX_RETRIES", "3")),
+            retry_delay=float(os.getenv("LIMITLESS__RETRY_DELAY", "1.0")),
+            request_timeout=float(os.getenv("LIMITLESS__REQUEST_TIMEOUT", "30.0")),
+            sync_interval_hours=int(os.getenv("LIMITLESS__SYNC_INTERVAL_HOURS", "6")),
+            rate_limit_max_delay=int(os.getenv("LIMITLESS__RATE_LIMIT_MAX_DELAY", "300")),
+            respect_retry_after=os.getenv("LIMITLESS__RESPECT_RETRY_AFTER", "true").lower() == "true"
         ),
         news=NewsConfig(
             api_key=os.getenv("RAPID_API_KEY"),

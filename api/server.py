@@ -19,7 +19,7 @@ from services.chat_service import ChatService
 from config.factory import create_production_config
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system
+from api.routes import health, sync, chat, embeddings, system, calendar
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,10 @@ def configure_route_dependencies():
     # Chat routes
     chat.get_chat_service_dependency = get_chat_service
     chat.set_templates(templates)
+    
+    # Calendar routes
+    calendar.get_startup_service_dependency = get_startup_service_dependency
+    calendar.set_templates(templates)
     
     # Embeddings routes
     embeddings.get_startup_service_dependency = get_startup_service_dependency
@@ -116,6 +120,7 @@ configure_route_dependencies()
 app.include_router(health.router)
 app.include_router(sync.router)
 app.include_router(chat.router)
+app.include_router(calendar.router)
 app.include_router(embeddings.router)
 app.include_router(system.router)
 

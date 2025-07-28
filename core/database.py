@@ -334,3 +334,75 @@ class DatabaseService:
         """Get database migration status"""
         migration_runner = MigrationRunner(self.db_path)
         return migration_runner.get_migration_status()
+    
+    def get_days_with_data(self, namespaces: Optional[List[str]] = None) -> List[str]:
+        """Get list of days that have data (for calendar indicators)"""
+        with self.get_connection() as conn:
+            query = """
+                SELECT DISTINCT days_date 
+                FROM data_items 
+                WHERE days_date IS NOT NULL
+            """
+            params = []
+            
+            # Add namespace filter if provided
+            if namespaces:
+                placeholders = ','.join('?' * len(namespaces))
+                query += f" AND namespace IN ({placeholders})"
+                params.extend(namespaces)
+            
+            query += " ORDER BY days_date ASC"
+            
+            cursor = conn.execute(query, params)
+            return [row['days_date'] for row in cursor.fetchall()]
+    
+    def get_markdown_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> str:
+        """Extract and combine markdown content from metadata for a specific date"""
+        data_items = self.get_data_items_by_date(date, namespaces)
+        markdown_parts = []
+        
+        for item in data_items:
+            if item.get('metadata'):
+                metadata = item['metadata']
+                
+                # Extract markdown from different possible locations in metadata
+                markdown_content = None
+                
+                # First, try to get markdown directly
+                if isinstance(metadata, dict):
+                    markdown_content = metadata.get('markdown')
+                    
+                    # If no direct markdown, try to get from original_lifelog
+                    if not markdown_content and 'original_lifelog' in metadata:
+                        original = metadata['original_lifelog']
+                        if isinstance(original, dict):
+                            markdown_content = original.get('markdown')
+                    
+                    # If still no markdown, construct from content
+                    if not markdown_content:
+                        title = metadata.get('title', '')
+                        if title:
+                            markdown_content = f"# {title}\n\n{item.get('content', '')}"
+                        else:
+                            markdown_content = item.get('content', '')
+                
+                # Add timestamp if available
+                if markdown_content:
+                    timestamp_info = ""
+                    if isinstance(metadata, dict):
+                        start_time = metadata.get('start_time')
+                        if start_time:
+                            try:
+                                # Parse and format timestamp
+                                dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                                timestamp_info = f"*{dt.strftime('%I:%M %p')}*\n\n"
+                            except:
+                                pass
+                    
+                    markdown_parts.append(f"{timestamp_info}{markdown_content}")
+        
+        # Combine all markdown with separators
+        if markdown_parts:
+            return "\n\n---\n\n".join(markdown_parts)
+        else:
+            return f"# {date}\n\nNo data available for this date."

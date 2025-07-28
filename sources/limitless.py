@@ -25,6 +25,14 @@ class LimitlessSource(BaseSource):
     def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client"""
         if self.client is None:
+            # Diagnostic logging for authentication debugging
+            logger.debug(f"[AUTH DEBUG] Creating HTTP client with:")
+            logger.debug(f"[AUTH DEBUG] - Base URL: {self.config.base_url}")
+            logger.debug(f"[AUTH DEBUG] - API Key configured: {self.config.api_key is not None}")
+            logger.debug(f"[AUTH DEBUG] - API Key length: {len(self.config.api_key) if self.config.api_key else 0}")
+            logger.debug(f"[AUTH DEBUG] - API Key first 8 chars: {self.config.api_key[:8] if self.config.api_key else 'None'}...")
+            logger.debug(f"[AUTH DEBUG] - is_api_key_configured(): {self._api_key_configured}")
+            
             self.client = httpx.AsyncClient(
                 base_url=self.config.base_url,
                 headers={"X-API-Key": self.config.api_key},
@@ -298,6 +306,16 @@ class LimitlessSource(BaseSource):
         async def make_request():
             response = await client.get(endpoint, params=params)
             
+            # Enhanced diagnostic logging
+            logger.debug(f"[AUTH DEBUG] HTTP response details:")
+            logger.debug(f"[AUTH DEBUG] - Status code: {response.status_code}")
+            logger.debug(f"[AUTH DEBUG] - Headers: {dict(response.headers)}")
+            
+            if response.status_code == 401:
+                logger.error(f"[AUTH DEBUG] 401 Unauthorized - Authentication failed!")
+                logger.error(f"[AUTH DEBUG] - Request headers sent: {dict(client.headers)}")
+                logger.error(f"[AUTH DEBUG] - Response body: {response.text}")
+                
             if response.status_code == 200:
                 return response
             elif response.status_code in [429, 500, 502, 503, 504]:
