@@ -21,9 +21,17 @@ router = APIRouter(prefix="", tags=["chat"])
 templates = None
 
 
-def get_chat_service_dependency():
-    """This will be set by the main server module"""
-    raise NotImplementedError("Chat service dependency not configured")
+def get_chat_service_dependency() -> ChatService:
+    """Get chat service dependency"""
+    # Import here to avoid circular imports
+    from services.startup import get_startup_service
+    from fastapi import HTTPException
+    
+    startup_service = get_startup_service()
+    if not startup_service or not startup_service.chat_service:
+        raise HTTPException(status_code=503, detail="Chat service not available")
+    
+    return startup_service.chat_service
 
 
 def set_templates(template_instance):
@@ -39,8 +47,12 @@ async def chat_page(
     chat_service: ChatService = Depends(get_chat_service_dependency)
 ):
     """Get the chat page with recent history"""
+    logger.info("Chat page requested")
+    
     # Get recent chat history
     history = chat_service.get_chat_history(limit=10)
+    
+    logger.info(f"Chat page loaded with {len(history)} history items")
     
     return templates.TemplateResponse("chat.html", {
         "request": request,
@@ -56,11 +68,15 @@ async def process_chat(
     chat_service: ChatService = Depends(get_chat_service_dependency)
 ):
     """Process a chat message and return the response"""
+    logger.info(f"Received chat message via API: {message[:100]}{'...' if len(message) > 100 else ''}")
+    
     # Process the chat message
     response = await chat_service.process_chat_message(message)
     
     # Get updated chat history
     history = chat_service.get_chat_history(limit=10)
+    
+    logger.info(f"Chat response sent: {len(response)} characters")
     
     return templates.TemplateResponse("chat.html", {
         "request": request,

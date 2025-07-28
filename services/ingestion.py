@@ -62,7 +62,7 @@ class IngestionService(BaseService):
         self.embedding_service = embedding_service
         
         # Initialize processor
-        self.processor = LimitlessProcessor(enable_segmentation=True)
+        self.processor = LimitlessProcessor(database_service=self.database, enable_segmentation=True)
         
         # Track registered sources
         self.sources: Dict[str, BaseSource] = {}
@@ -150,6 +150,12 @@ class IngestionService(BaseService):
             # Process the item through the pipeline
             processed_item = self.processor.process(item)
             
+            if processed_item is None:
+                # Item was skipped by a processor (e.g., deduplication)
+                result.items_skipped += 1
+                logger.debug(f"Skipped item {item.source_id} after processing pipeline.")
+                return
+
             # Create namespaced ID
             namespaced_id = NamespacedIDManager.create_id(
                 processed_item.namespace, 
@@ -158,6 +164,17 @@ class IngestionService(BaseService):
             
             # Extract days_date for calendar support
             days_date = self._extract_days_date(processed_item)
+
+            # Extract content_hash from metadata with validation
+            content_hash = None
+            if processed_item.metadata and 'deduplication' in processed_item.metadata:
+                dedup_info = processed_item.metadata.get('deduplication', {})
+                if isinstance(dedup_info, dict) and 'content_hash' in dedup_info:
+                    content_hash = dedup_info.get('content_hash')
+                    # Validate that content_hash is an integer
+                    if content_hash is not None and not isinstance(content_hash, int):
+                        logger.warning(f"Invalid content_hash type for item {processed_item.source_id}: {type(content_hash)}")
+                        content_hash = None
             
             # Store in database
             self.database.store_data_item(
@@ -166,7 +183,8 @@ class IngestionService(BaseService):
                 source_id=processed_item.source_id,
                 content=processed_item.content,
                 metadata=processed_item.metadata,
-                days_date=days_date
+                days_date=days_date,
+                content_hash=content_hash
             )
             
             result.items_stored += 1

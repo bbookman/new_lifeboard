@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import uuid
 from typing import List, Dict, Optional, Any
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -33,15 +34,15 @@ class DatabaseService:
             raise RuntimeError(f"Database initialization failed: {result['errors']}")
     
     def store_data_item(self, id: str, namespace: str, source_id: str, 
-                       content: str, metadata: Dict = None, days_date: str = None):
+                       content: str, metadata: Dict = None, days_date: str = None, content_hash: Optional[int] = None):
         """Store data item with namespaced ID"""
         with self.get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO data_items 
-                (id, namespace, source_id, content, metadata, days_date, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (id, namespace, source_id, content, metadata, days_date, content_hash, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (id, namespace, source_id, content, 
-                  JSONMetadataParser.serialize_metadata(metadata), days_date))
+                  JSONMetadataParser.serialize_metadata(metadata), days_date, content_hash))
             conn.commit()
     
     def get_data_items_by_ids(self, ids: List[str]) -> List[Dict]:
@@ -219,14 +220,35 @@ class DatabaseService:
                 'database_size_mb': os.path.getsize(self.db_path) / (1024 * 1024) if os.path.exists(self.db_path) else 0
             }
     
-    def store_chat_message(self, user_message: str, assistant_response: str):
-        """Store a chat message exchange"""
+    def store_chat_message(self, user_message: str, assistant_response: str, 
+                         session_id: Optional[str] = None, 
+                         context_summary: Optional[str] = None,
+                         entities_mentioned: Optional[List[str]] = None,
+                         topics: Optional[List[str]] = None,
+                         processing_time_ms: Optional[int] = None):
+        """Store a chat message exchange with enhanced conversation memory"""
         with self.get_connection() as conn:
+            # Generate session ID if not provided
+            if session_id is None:
+                session_id = self._get_or_create_session_id(conn)
+            
+            # Convert lists to JSON strings
+            entities_json = json.dumps(entities_mentioned) if entities_mentioned else None
+            topics_json = json.dumps(topics) if topics else None
+            
             conn.execute("""
-                INSERT INTO chat_messages (user_message, assistant_response)
-                VALUES (?, ?)
-            """, (user_message, assistant_response))
+                INSERT INTO chat_messages 
+                (user_message, assistant_response, session_id, context_summary, 
+                 entities_mentioned, topics, processing_time_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (user_message, assistant_response, session_id, context_summary,
+                  entities_json, topics_json, processing_time_ms))
+            
+            # Update conversation session
+            self._update_conversation_session(conn, session_id, entities_mentioned, topics)
+            
             conn.commit()
+            return session_id
     
     def get_chat_history(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get recent chat history"""
@@ -340,3 +362,161 @@ class DatabaseService:
         """Get database migration status"""
         migration_runner = MigrationRunner(self.db_path)
         return migration_runner.get_migration_status()
+    
+    def _get_or_create_session_id(self, conn: sqlite3.Connection) -> str:
+        """Get or create a conversation session ID"""
+        # Check for recent session (within last hour)
+        cursor = conn.execute("""
+            SELECT session_id FROM conversation_sessions 
+            WHERE last_activity > datetime('now', '-1 hour')
+            ORDER BY last_activity DESC 
+            LIMIT 1
+        """)
+        
+        row = cursor.fetchone()
+        if row:
+            session_id = row['session_id']
+            # Update last activity
+            conn.execute("""
+                UPDATE conversation_sessions 
+                SET last_activity = CURRENT_TIMESTAMP 
+                WHERE session_id = ?
+            """, (session_id,))
+            return session_id
+        else:
+            # Create new session
+            session_id = str(uuid.uuid4())
+            conn.execute("""
+                INSERT INTO conversation_sessions (session_id, message_count)
+                VALUES (?, 0)
+            """, (session_id,))
+            return session_id
+    
+    def _update_conversation_session(self, conn: sqlite3.Connection, 
+                                   session_id: str, 
+                                   entities: Optional[List[str]] = None,
+                                   topics: Optional[List[str]] = None):
+        """Update conversation session with new entities and topics"""
+        # Get current session data
+        cursor = conn.execute("""
+            SELECT entities_discussed, topics_discussed, message_count
+            FROM conversation_sessions 
+            WHERE session_id = ?
+        """, (session_id,))
+        
+        row = cursor.fetchone()
+        if not row:
+            return
+        
+        # Parse existing entities and topics
+        existing_entities = []
+        if row['entities_discussed']:
+            try:
+                existing_entities = json.loads(row['entities_discussed'])
+            except json.JSONDecodeError:
+                pass
+        
+        existing_topics = []
+        if row['topics_discussed']:
+            try:
+                existing_topics = json.loads(row['topics_discussed'])
+            except json.JSONDecodeError:
+                pass
+        
+        # Merge new entities and topics
+        if entities:
+            existing_entities = list(set(existing_entities + entities))
+        
+        if topics:
+            existing_topics = list(set(existing_topics + topics))
+        
+        # Update session
+        conn.execute("""
+            UPDATE conversation_sessions 
+            SET last_activity = CURRENT_TIMESTAMP,
+                message_count = message_count + 1,
+                entities_discussed = ?,
+                topics_discussed = ?
+            WHERE session_id = ?
+        """, (json.dumps(existing_entities), json.dumps(existing_topics), session_id))
+    
+    def get_conversation_context(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get conversation context for a session"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT id, user_message, assistant_response, timestamp, 
+                       context_summary, entities_mentioned, topics
+                FROM chat_messages
+                WHERE session_id = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (session_id, limit))
+            
+            messages = []
+            for row in cursor.fetchall():
+                # Parse JSON fields
+                entities = None
+                if row['entities_mentioned']:
+                    try:
+                        entities = json.loads(row['entities_mentioned'])
+                    except json.JSONDecodeError:
+                        pass
+                
+                topics = None
+                if row['topics']:
+                    try:
+                        topics = json.loads(row['topics'])
+                    except json.JSONDecodeError:
+                        pass
+                
+                messages.append({
+                    'id': row['id'],
+                    'user_message': row['user_message'],
+                    'assistant_response': row['assistant_response'],
+                    'timestamp': row['timestamp'],
+                    'context_summary': row['context_summary'],
+                    'entities_mentioned': entities,
+                    'topics': topics
+                })
+            
+            # Return in chronological order (oldest first)
+            return list(reversed(messages))
+    
+    def get_session_summary(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get summary of a conversation session"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT session_id, started_at, last_activity, message_count,
+                       session_summary, entities_discussed, topics_discussed
+                FROM conversation_sessions
+                WHERE session_id = ?
+            """, (session_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            # Parse JSON fields
+            entities = []
+            if row['entities_discussed']:
+                try:
+                    entities = json.loads(row['entities_discussed'])
+                except json.JSONDecodeError:
+                    pass
+            
+            topics = []
+            if row['topics_discussed']:
+                try:
+                    topics = json.loads(row['topics_discussed'])
+                except json.JSONDecodeError:
+                    pass
+            
+            return {
+                'session_id': row['session_id'],
+                'started_at': row['started_at'],
+                'last_activity': row['last_activity'],
+                'message_count': row['message_count'],
+                'session_summary': row['session_summary'],
+                'entities_discussed': entities,
+                'topics_discussed': topics
+            }

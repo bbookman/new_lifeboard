@@ -49,6 +49,40 @@ class EmbeddingConfig(BaseModel):
         )
 
 
+class TextProcessingConfig(BaseModel):
+    """Text processing and keyword extraction configuration"""
+    minimum_keyword_length: int = 2
+    maximum_keyword_length: int = 50
+    keyword_search_mode: str = "OR"  # "AND" or "OR"
+    max_keywords_per_query: int = 10
+    enable_stemming: bool = True
+    custom_stop_words: Optional[List[str]] = None
+    verbose_keyword_logging: bool = False
+    enable_chat_round_summary: bool = True
+    summary_text_truncation_length: int = 100
+    
+    @field_validator('keyword_search_mode')
+    @classmethod
+    def validate_search_mode(cls, v):
+        if v not in ["AND", "OR"]:
+            raise ValueError("Keyword search mode must be 'AND' or 'OR'")
+        return v
+    
+    @field_validator('minimum_keyword_length', 'maximum_keyword_length', 'max_keywords_per_query')
+    @classmethod
+    def validate_positive_int(cls, v):
+        if v <= 0:
+            raise ValueError("Must be a positive integer")
+        return v
+    
+    @field_validator('maximum_keyword_length')
+    @classmethod
+    def validate_max_length(cls, v, info):
+        if 'minimum_keyword_length' in info.data and v <= info.data['minimum_keyword_length']:
+            raise ValueError("Maximum keyword length must be greater than minimum")
+        return v
+
+
 class VectorStoreConfig(BaseModel):
     """Vector store configuration"""
     index_path: str = "vector_index.faiss"
@@ -69,13 +103,15 @@ class LimitlessConfig(BaseModel):
     api_key: Optional[str] = None
     base_url: str = "https://api.limitless.ai"
     timezone: str = "UTC"
-    max_retries: int = 3
+    max_retries: int = 4  # Retries per round
     retry_delay: float = 1.0
     request_timeout: float = 30.0
     sync_interval_hours: int = 6
     # Rate limiting configuration
     rate_limit_max_delay: int = 300  # Maximum delay for rate limiting (5 minutes)
     respect_retry_after: bool = True
+    rate_limit_max_rounds: int = 3  # Multiple rounds of retries for rate limiting
+    rate_limit_round_delay: float = 30.0  # Delay between retry rounds
     # Search configuration
     search_enabled: bool = True
     search_weight: float = 0.75  # Weight for Limitless search in hybrid search (75% default)
@@ -200,7 +236,7 @@ class SchedulerConfig(BaseModel):
 class AutoSyncConfig(BaseModel):
     """Auto-sync configuration"""
     enabled: bool = True
-    startup_sync_enabled: bool = False
+    startup_sync_enabled: bool = True
     startup_sync_delay_seconds: int = 60
     auto_register_sources: bool = True
     
@@ -385,6 +421,7 @@ class AppConfig(BaseModel):
     """Main application configuration"""
     database: DatabaseConfig = DatabaseConfig()
     embeddings: EmbeddingConfig = EmbeddingConfig()
+    text_processing: TextProcessingConfig = TextProcessingConfig()
     vector_store: VectorStoreConfig = VectorStoreConfig()
     limitless: LimitlessConfig = LimitlessConfig()
     news: NewsConfig = NewsConfig()

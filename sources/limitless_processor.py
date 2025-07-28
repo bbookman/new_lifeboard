@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 from sources.base import DataItem
@@ -399,23 +400,81 @@ class ConversationSegmentProcessor(BaseProcessor):
             return None
 
 
+import sqlite3
+
 class DeduplicationProcessor(BaseProcessor):
-    """Remove or mark duplicate content (placeholder for future implementation)"""
-    
-    def process(self, item: DataItem) -> DataItem:
-        """Process item for deduplication"""
-        # For now, just add metadata indicating this processor was run
-        # In the future, this could:
-        # - Generate content hashes
-        # - Compare with existing items
-        # - Mark duplicates or similar items
-        
+    """Removes or marks duplicate content based on content hash."""
+
+    def __init__(self, database_service: Any):
+        self.database_service = database_service
+
+    def process(self, item: DataItem) -> Optional[DataItem]:
+        """
+        Process item for deduplication.
+        Returns None if the item is a duplicate and should be skipped.
+        """
+        if not item.content:
+            item.metadata['deduplication'] = {
+                'processed': True,
+                'processor_version': '1.0',
+                'content_hash': None,
+                'is_duplicate': False,
+                'skipped': False,
+                'reason': 'No content to deduplicate'
+            }
+            return item
+
+        content_hash = hash(item.content)
         item.metadata['deduplication'] = {
             'processed': True,
             'processor_version': '1.0',
-            'content_hash': hash(item.content) if item.content else None
+            'content_hash': content_hash,
+            'is_duplicate': False,
+            'skipped': False
         }
-        
+
+        # Check if a duplicate exists in the database
+        try:
+            with self.database_service.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # First check if content_hash column exists
+                try:
+                    cursor.execute("PRAGMA table_info(data_items)")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    if 'content_hash' not in columns:
+                        logger.warning("content_hash column not found in data_items table - skipping deduplication")
+                        item.metadata['deduplication']['skipped'] = False
+                        item.metadata['deduplication']['reason'] = 'content_hash column not available'
+                        return item
+                except sqlite3.Error as pragma_error:
+                    logger.error(f"Failed to check table schema: {pragma_error}")
+                    item.metadata['deduplication']['skipped'] = False
+                    item.metadata['deduplication']['reason'] = f'Schema check error: {pragma_error}'
+                    return item
+                
+                # Perform deduplication check
+                cursor.execute(
+                    "SELECT id FROM data_items WHERE content_hash = ? LIMIT 1",
+                    (content_hash,)
+                )
+                existing_item = cursor.fetchone()
+
+                if existing_item:
+                    logger.info(f"Skipping duplicate item with content_hash: {content_hash}")
+                    item.metadata['deduplication']['is_duplicate'] = True
+                    item.metadata['deduplication']['skipped'] = True
+                    item.metadata['deduplication']['reason'] = 'Duplicate content found'
+                    return None  # Signal to skip this item
+                else:
+                    logger.debug(f"No duplicate found for content_hash: {content_hash}")
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error during deduplication: {e}")
+            item.metadata['deduplication']['skipped'] = False
+            item.metadata['deduplication']['reason'] = f'Database error: {e}'
+            # Do not skip if there's a database error, proceed with insertion
+            
         if 'processing_history' not in item.metadata:
             item.metadata['processing_history'] = []
         
@@ -431,7 +490,7 @@ class DeduplicationProcessor(BaseProcessor):
 class LimitlessProcessor:
     """Main processor for Limitless content with configurable pipeline"""
     
-    def __init__(self, enable_segmentation: bool = True):
+    def __init__(self, database_service: Any, enable_segmentation: bool = True):
         self.processors: List[BaseProcessor] = []
         
         # Always include basic processors
@@ -442,8 +501,8 @@ class LimitlessProcessor:
         if enable_segmentation:
             self.processors.append(ConversationSegmentProcessor())
         
-        # Placeholder for future processors
-        self.processors.append(DeduplicationProcessor())
+        # Deduplication processor
+        self.processors.append(DeduplicationProcessor(database_service))
     
     def add_processor(self, processor: BaseProcessor):
         """Add a custom processor to the pipeline"""
@@ -474,3 +533,63 @@ class LimitlessProcessor:
             'processors': [p.get_processor_name() for p in self.processors],
             'pipeline_version': '2.0'
         }
+
+
+class KeywordExtractionProcessor(BaseProcessor):
+    """Extract and store keywords for improved search and analysis"""
+    
+    def __init__(self, text_processing_service=None):
+        self.text_processing_service = text_processing_service
+        
+        # Import here to avoid circular dependencies
+        if not self.text_processing_service:
+            from services.text_processing_service import TextProcessingService, TextProcessingConfig
+            config = TextProcessingConfig(
+                minimum_keyword_length=3,
+                max_keywords_per_query=20,  # More keywords for content analysis vs search
+                enable_stemming=True
+            )
+            self.text_processing_service = TextProcessingService(config)
+    
+    def process(self, item: DataItem) -> DataItem:
+        """Extract keywords and add to item metadata"""
+        if not item.content:
+            return item
+        
+        start_time = time.time()
+        logger.debug(f"Processing keywords for item: {item.id}")
+        
+        try:
+            # Extract keywords from content
+            keywords = self.text_processing_service.extract_keywords(item.content)
+            
+            # Store keywords in metadata
+            item.metadata['keywords'] = {
+                'extracted_keywords': keywords,
+                'keyword_count': len(keywords),
+                'processor_version': '1.0',
+                'processing_time': time.time() - start_time
+            }
+            
+            # Track processing in metadata
+            if 'processing_history' not in item.metadata:
+                item.metadata['processing_history'] = []
+            
+            item.metadata['processing_history'].append({
+                'processor': self.get_processor_name(),
+                'timestamp': datetime.now().isoformat(),
+                'changes': f'keyword_extraction_{len(keywords)}_keywords'
+            })
+            
+            logger.debug(f"Extracted {len(keywords)} keywords for item {item.id}: {keywords[:5]}{'...' if len(keywords) > 5 else ''}")
+            
+        except Exception as e:
+            logger.error(f"Keyword extraction failed for item {item.id}: {str(e)}")
+            # Add error info to metadata but don't fail the processing
+            item.metadata['keywords'] = {
+                'extraction_error': str(e),
+                'processor_version': '1.0',
+                'processing_time': time.time() - start_time
+            }
+        
+        return item

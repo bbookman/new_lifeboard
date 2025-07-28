@@ -114,6 +114,10 @@ class RetryConfig:
     rate_limit_max_delay: float = 300.0  # Max delay for rate limiting (5 minutes)
     respect_retry_after: bool = True  # Honor Retry-After header if present
     
+    # Multiple rounds configuration for rate limiting
+    rate_limit_max_rounds: int = 1  # Max rounds of retries for rate limiting
+    rate_limit_round_delay: float = 30.0  # Delay between retry rounds
+    
     def __post_init__(self):
         """Validate configuration parameters"""
         if self.max_retries < 0:
@@ -312,71 +316,100 @@ class RetryExecutor:
         return delay
     
     async def execute_async(self, func: Callable, *args, **kwargs) -> RetryResult:
-        """Execute an async function with retry logic"""
+        """Execute an async function with retry logic supporting multiple rounds for rate limiting"""
         start_time = time.time()
         last_exception = None
+        total_attempts = 0
         
-        for attempt in range(self.config.max_retries + 1):  # +1 for initial attempt
-            try:
-                logger.debug(f"Retry attempt {attempt + 1}/{self.config.max_retries + 1} for {func.__name__}")
-                
-                # Apply timeout if configured
-                if self.config.timeout:
-                    result = await asyncio.wait_for(func(*args, **kwargs), timeout=self.config.timeout)
-                else:
-                    result = await func(*args, **kwargs)
-                
-                total_time = time.time() - start_time
-                logger.debug(f"Operation {func.__name__} succeeded on attempt {attempt + 1}")
-                
-                return RetryResult(
-                    success=True,
-                    result=result,
-                    attempts=attempt + 1,
-                    total_time=total_time
-                )
-                
-            except Exception as e:
-                last_exception = e
-                total_time = time.time() - start_time
-                
-                # Check if we should retry
-                if attempt < self.config.max_retries and self.retry_condition.should_retry(e, attempt):
-                    delay = self._calculate_delay(attempt, e)
+        # Handle multiple rounds for rate limiting
+        max_rounds = self.config.rate_limit_max_rounds if isinstance(self.retry_condition, RateLimitRetryCondition) else 1
+        
+        for round_num in range(max_rounds):
+            if round_num > 0:
+                # Sleep between rounds for rate limiting
+                round_delay = self.config.rate_limit_round_delay
+                logger.info(f"Starting retry round {round_num + 1}/{max_rounds} for {func.__name__} after {round_delay}s delay")
+                await asyncio.sleep(round_delay)
+            
+            # Execute a full round of retries
+            for attempt in range(self.config.max_retries + 1):  # +1 for initial attempt
+                total_attempts += 1
+                try:
+                    if round_num > 0 or attempt > 0:
+                        logger.debug(f"Retry round {round_num + 1}, attempt {attempt + 1}/{self.config.max_retries + 1} for {func.__name__} (total attempt #{total_attempts})")
+                    else:
+                        logger.debug(f"Initial attempt for {func.__name__}")
                     
-                    # Enhanced logging for rate limiting
-                    if isinstance(self.retry_condition, RateLimitRetryCondition) and hasattr(e, 'response'):
-                        rate_limit_info = parse_rate_limit_headers(e.response) if hasattr(e, 'response') else {}
-                        logger.warning(
-                            f"Rate limited on attempt {attempt + 1} for {func.__name__}: {str(e)}. "
-                            f"Rate limit info: {rate_limit_info}. Retrying in {delay:.2f} seconds..."
-                        )
+                    # Apply timeout if configured
+                    if self.config.timeout:
+                        result = await asyncio.wait_for(func(*args, **kwargs), timeout=self.config.timeout)
                     else:
-                        logger.warning(
-                            f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. "
-                            f"Retrying in {delay:.2f} seconds..."
-                        )
-                    await asyncio.sleep(delay)
-                    continue
-                else:
-                    # No more retries or non-retryable error
-                    if attempt >= self.config.max_retries:
-                        logger.error(f"All {self.config.max_retries + 1} attempts failed for {func.__name__}")
-                    else:
-                        logger.error(f"Non-retryable error in {func.__name__}: {str(e)}")
+                        result = await func(*args, **kwargs)
+                    
+                    total_time = time.time() - start_time
+                    logger.debug(f"Operation {func.__name__} succeeded on total attempt #{total_attempts}")
                     
                     return RetryResult(
-                        success=False,
-                        exception=e,
-                        attempts=attempt + 1,
+                        success=True,
+                        result=result,
+                        attempts=total_attempts,
                         total_time=total_time
                     )
+                    
+                except Exception as e:
+                    last_exception = e
+                    total_time = time.time() - start_time
+                    
+                    # Check if we should retry within this round
+                    if attempt < self.config.max_retries and self.retry_condition.should_retry(e, attempt):
+                        delay = self._calculate_delay(attempt, e)
+                        
+                        # Enhanced logging for rate limiting
+                        if isinstance(self.retry_condition, RateLimitRetryCondition) and hasattr(e, 'response'):
+                            rate_limit_info = parse_rate_limit_headers(e.response) if hasattr(e, 'response') else {}
+                            logger.warning(
+                                f"Rate limited on round {round_num + 1}, attempt {attempt + 1} for {func.__name__}: {str(e)}. "
+                                f"Rate limit info: {rate_limit_info}. Retrying in {delay:.2f} seconds..."
+                            )
+                        else:
+                            logger.warning(
+                                f"Round {round_num + 1}, attempt {attempt + 1} failed for {func.__name__}: {str(e)}. "
+                                f"Retrying in {delay:.2f} seconds..."
+                            )
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        # End of current round - check if this was a rate limit error and we have more rounds
+                        if (isinstance(self.retry_condition, RateLimitRetryCondition) and 
+                            self.retry_condition.should_retry(e, attempt) and 
+                            round_num < max_rounds - 1):
+                            logger.warning(
+                                f"Round {round_num + 1} completed with rate limit error. "
+                                f"Will start round {round_num + 2} after delay."
+                            )
+                            break  # Break inner loop to start next round
+                        else:
+                            # No more rounds or non-retryable error
+                            if round_num >= max_rounds - 1:
+                                logger.error(f"All {max_rounds} retry rounds failed for {func.__name__} (total attempts: {total_attempts})")
+                            else:
+                                logger.error(f"Non-retryable error in {func.__name__}: {str(e)}")
+                            
+                            return RetryResult(
+                                success=False,
+                                exception=e,
+                                attempts=total_attempts,
+                                total_time=total_time
+                            )
+            
+            # If we get here and it's not the last round, the round ended with a rate limit error
+            # Continue to next round
         
-        # Should never reach here, but just in case
+        # All rounds exhausted
         return RetryResult(
             success=False,
             exception=last_exception,
-            attempts=self.config.max_retries + 1,
+            attempts=total_attempts,
             total_time=time.time() - start_time
         )
     
@@ -513,8 +546,8 @@ def create_api_retry_condition() -> RetryCondition:
     ])
 
 
-def create_rate_limit_retry_config(max_retries: int = 5, base_delay: float = 30.0) -> RetryConfig:
-    """Create retry config optimized for rate limiting scenarios"""
+def create_rate_limit_retry_config(max_retries: int = 4, base_delay: float = 30.0, max_rounds: int = 3) -> RetryConfig:
+    """Create retry config optimized for rate limiting scenarios with multiple rounds"""
     return RetryConfig(
         max_retries=max_retries,
         base_delay=base_delay,
@@ -523,7 +556,9 @@ def create_rate_limit_retry_config(max_retries: int = 5, base_delay: float = 30.
         rate_limit_base_delay=30.0,  # Start with 30 second delays for rate limits
         rate_limit_max_delay=300.0,  # Max 5 minutes for rate limits
         respect_retry_after=True,
-        jitter=True
+        jitter=True,
+        rate_limit_max_rounds=max_rounds,  # Multiple rounds for persistent rate limiting
+        rate_limit_round_delay=30.0  # 30 second delay between rounds
     )
 
 

@@ -1,12 +1,26 @@
 import os
 import tempfile
 from pathlib import Path
+import logging
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 from .models import (
-    AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
+    AppConfig, DatabaseConfig, EmbeddingConfig, TextProcessingConfig, VectorStoreConfig,
     LimitlessConfig, NewsConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
     LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
 )
+
+
+def _parse_custom_stop_words(stop_words_str: str) -> list:
+    """Parse custom stop words from environment variable"""
+    if not stop_words_str:
+        return None
+    
+    # Split by comma and strip whitespace
+    words = [word.strip().lower() for word in stop_words_str.split(',')]
+    # Filter out empty strings
+    return [word for word in words if word]
 
 
 def create_test_config(temp_dir: str = None) -> AppConfig:
@@ -98,19 +112,38 @@ def create_production_config() -> AppConfig:
             startup_burst_enabled=os.getenv("EMBEDDING_STARTUP_BURST_ENABLED", "true").lower() == "true",
             startup_burst_limit=int(os.getenv("EMBEDDING_STARTUP_BURST_LIMIT", "150"))
         ),
+        text_processing=TextProcessingConfig(
+            minimum_keyword_length=int(os.getenv("TEXT_PROCESSING_MIN_KEYWORD_LENGTH", "2")),
+            maximum_keyword_length=int(os.getenv("TEXT_PROCESSING_MAX_KEYWORD_LENGTH", "50")),
+            keyword_search_mode=os.getenv("TEXT_PROCESSING_SEARCH_MODE", "OR"),
+            max_keywords_per_query=int(os.getenv("TEXT_PROCESSING_MAX_KEYWORDS", "10")),
+            enable_stemming=os.getenv("TEXT_PROCESSING_ENABLE_STEMMING", "true").lower() == "true",
+            custom_stop_words=_parse_custom_stop_words(os.getenv("TEXT_PROCESSING_CUSTOM_STOP_WORDS")),
+            verbose_keyword_logging=os.getenv("TEXT_PROCESSING_VERBOSE_LOGGING", "false").lower() == "true",
+            enable_chat_round_summary=os.getenv("TEXT_PROCESSING_ENABLE_CHAT_SUMMARY", "true").lower() == "true",
+            summary_text_truncation_length=int(os.getenv("TEXT_PROCESSING_SUMMARY_TRUNCATION_LENGTH", "100"))
+        ),
         vector_store=VectorStoreConfig(
             index_path=os.getenv("VECTOR_INDEX_PATH", "vector_index.faiss"),
             id_map_path=os.getenv("VECTOR_ID_MAP_PATH", "vector_ids.json"),
             dimension=int(os.getenv("VECTOR_DIMENSION", "384"))
         ),
         limitless=LimitlessConfig(
-            api_key=os.getenv("LIMITLESS_API_KEY"),
-            base_url=os.getenv("LIMITLESS_BASE_URL", "https://api.limitless.ai"),
+            api_key=os.getenv("LIMITLESS__API_KEY"),
+            base_url=os.getenv("LIMITLESS__BASE_URL", "https://api.limitless.ai"),
             timezone=os.getenv("TIME_ZONE", "UTC"),  # Use global timezone
-            max_retries=int(os.getenv("LIMITLESS_MAX_RETRIES", "3")),
-            retry_delay=float(os.getenv("LIMITLESS_RETRY_DELAY", "1.0")),
-            request_timeout=float(os.getenv("LIMITLESS_REQUEST_TIMEOUT", "30.0")),
-            sync_interval_hours=int(os.getenv("LIMITLESS_SYNC_INTERVAL_HOURS", "6"))
+            max_retries=int(os.getenv("LIMITLESS__MAX_RETRIES", "4")),
+            retry_delay=float(os.getenv("LIMITLESS__RETRY_DELAY", "1.0")),
+            request_timeout=float(os.getenv("LIMITLESS__REQUEST_TIMEOUT", "30.0")),
+            sync_interval_hours=int(os.getenv("LIMITLESS__SYNC_INTERVAL_HOURS", "6")),
+            # Rate limiting configuration
+            rate_limit_max_delay=int(os.getenv("LIMITLESS__RATE_LIMIT_MAX_DELAY", "300")),
+            respect_retry_after=os.getenv("LIMITLESS__RESPECT_RETRY_AFTER", "true").lower() == "true",
+            rate_limit_max_rounds=int(os.getenv("LIMITLESS__RATE_LIMIT_MAX_ROUNDS", "3")),
+            rate_limit_round_delay=float(os.getenv("LIMITLESS__RATE_LIMIT_ROUND_DELAY", "30.0")),
+            # Search configuration
+            search_enabled=os.getenv("LIMITLESS__SEARCH_ENABLED", "true").lower() == "true",
+            search_weight=float(os.getenv("LIMITLESS__SEARCH_WEIGHT", "0.75"))
         ),
         news=NewsConfig(
             api_key=os.getenv("RAPID_API_KEY"),
@@ -180,3 +213,5 @@ def create_production_config() -> AppConfig:
         debug=os.getenv("DEBUG", "false").lower() == "true",
         timezone=os.getenv("TIME_ZONE", "UTC")
     )
+    logger.info(f"AppConfig loaded. Auto-sync startup enabled: {app_config.auto_sync.startup_sync_enabled}")
+    return app_config

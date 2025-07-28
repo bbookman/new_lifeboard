@@ -14,6 +14,7 @@ from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from core.logging_config import setup_application_logging
+from services.ollama_manager import OllamaManager
 from config.models import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ class StartupService:
         self.scheduler: Optional[AsyncScheduler] = None
         self.sync_manager: Optional[SyncManagerService] = None
         self.chat_service: Optional[ChatService] = None
+        self.ollama_manager: Optional[OllamaManager] = None
         self.startup_complete = False
         self.logging_setup_result: Optional[Dict[str, Any]] = None
         
@@ -62,12 +64,16 @@ class StartupService:
             # 2. Initialize ingestion service
             await self._initialize_ingestion_service(startup_result)
             
-            # 2.5. Initialize chat service (Phase 7)
-            await self._initialize_chat_service(startup_result)
+            # 2.4. Setup Ollama if using Ollama LLM provider
+            if self.config.llm_provider.provider == "ollama":
+                await self._setup_ollama(startup_result)
             
-            # 3. Register data sources (if auto-register is enabled)
+            # 2.5. Register data sources (if auto-register is enabled)
             if self.config.auto_sync.auto_register_sources:
                 await self._register_data_sources(startup_result)
+            
+            # 3. Initialize chat service (Phase 7) - after sources are registered
+            await self._initialize_chat_service(startup_result)
             
             # 4. Initialize scheduler and sync management (if enabled)
             if enable_auto_sync:
@@ -77,21 +83,25 @@ class StartupService:
                 # 5. Perform startup sync if enabled
                 if self.config.auto_sync.startup_sync_enabled:
                     await self._perform_startup_sync(startup_result)
-            
+
+                    # 7. Perform startup embedding burst for immediate semantic search capability
+                    burst_result = await self._perform_startup_embedding_burst()
+                    startup_result["embedding_burst"] = burst_result
+
+                    
+
+                    
+
             # 6. Perform startup health check
             health_status = await self._perform_startup_health_check()
             startup_result["health_check"] = health_status
             
-            # 7. Perform startup embedding burst for immediate semantic search capability
-            burst_result = await self._perform_startup_embedding_burst()
-            startup_result["embedding_burst"] = burst_result
-            
-            self.startup_complete = True
-            startup_result["success"] = True
-            
             logger.info(f"Application initialization completed successfully. "
                        f"Services: {len(startup_result['services_initialized'])}, "
                        f"Sources: {len(startup_result['sources_registered'])}")
+            
+            # Mark as successful
+            startup_result["success"] = True
             
         except Exception as e:
             error_msg = f"Application initialization failed: {str(e)}"
@@ -183,6 +193,36 @@ class StartupService:
             logger.error(error_msg)
             raise Exception(error_msg)
     
+    async def _setup_ollama(self, startup_result: Dict[str, Any]):
+        """Setup Ollama service and ensure the specified model is available"""
+        try:
+            logger.info("Setting up Ollama service...")
+            
+            # Initialize Ollama manager
+            self.ollama_manager = OllamaManager(self.config.llm_provider.ollama)
+            
+            # Ensure Ollama is running and model is available
+            setup_result = await self.ollama_manager.ensure_ollama_available()
+            
+            if setup_result["success"]:
+                logger.info(f"Ollama setup completed successfully. Actions taken: {', '.join(setup_result['actions_taken'])}")
+                startup_result["services_initialized"].append("ollama")
+            else:
+                error_msg = f"Ollama setup failed: {', '.join(setup_result['errors'])}"
+                logger.error(error_msg)
+                startup_result["errors"].append(error_msg)
+                # Don't raise exception - allow startup to continue without Ollama
+                logger.warning("Continuing startup without Ollama. Chat service may not work properly.")
+            
+            startup_result["ollama_setup"] = setup_result
+            
+        except Exception as e:
+            error_msg = f"Failed to setup Ollama: {str(e)}"
+            logger.error(error_msg)
+            startup_result["errors"].append(error_msg)
+            # Don't raise exception - allow startup to continue
+            logger.warning("Continuing startup without Ollama setup")
+    
     async def _initialize_chat_service(self, startup_result: Dict[str, Any]):
         """Initialize the chat service (Phase 7)"""
         try:
@@ -216,6 +256,7 @@ class StartupService:
             raise Exception(error_msg)
     
     async def _register_data_sources(self, startup_result: Dict[str, Any]):
+        logger.info(f"_register_data_sources called. auto_register_sources: {self.config.auto_sync.auto_register_sources}")
         """Register available data sources"""
         try:
             logger.info("Registering data sources...")
@@ -224,7 +265,7 @@ class StartupService:
             if self.config.limitless.api_key:
                 try:
                     logger.info("Registering Limitless source...")
-                    limitless_source = LimitlessSource(self.config.limitless)
+                    limitless_source = LimitlessSource(self.config.limitless, self.database)
                     self.ingestion_service.register_source(limitless_source)
                     startup_result["sources_registered"].append("limitless")
                     logger.info("Limitless source registered successfully")
@@ -334,6 +375,7 @@ class StartupService:
             startup_result["auto_sync_started"] = False
     
     async def _perform_startup_sync(self, startup_result: Dict[str, Any]):
+        logger.info(f"_perform_startup_sync called. startup_sync_enabled: {self.config.auto_sync.startup_sync_enabled}")
         """Perform initial sync on startup if configured"""
         try:
             logger.info(f"Waiting {self.config.auto_sync.startup_sync_delay_seconds}s before startup sync...")
@@ -371,6 +413,7 @@ class StartupService:
             "ingestion_service_healthy": False,
             "scheduler_healthy": False,
             "sync_manager_healthy": False,
+            "ollama_healthy": False,
             "overall_healthy": False
         }
         
@@ -412,6 +455,18 @@ class StartupService:
                 except:
                     health_status["sync_manager_healthy"] = False
             
+            # Check Ollama (if using Ollama provider)
+            if self.config.llm_provider.provider == "ollama" and self.ollama_manager:
+                try:
+                    ollama_health = await self.ollama_manager.health_check()
+                    health_status["ollama_healthy"] = ollama_health.get("ollama_running", False) and ollama_health.get("model_available", False)
+                    health_status["ollama_health_details"] = ollama_health
+                except:
+                    health_status["ollama_healthy"] = False
+            elif self.config.llm_provider.provider != "ollama":
+                # Not using Ollama, so mark as healthy
+                health_status["ollama_healthy"] = True
+            
             # Overall health
             core_services_healthy = all([
                 health_status["database_healthy"],
@@ -427,7 +482,10 @@ class StartupService:
             if self.sync_manager:
                 sync_services_healthy = sync_services_healthy and health_status["sync_manager_healthy"]
             
-            health_status["overall_healthy"] = core_services_healthy and sync_services_healthy
+            # LLM services health
+            llm_services_healthy = health_status["ollama_healthy"]
+            
+            health_status["overall_healthy"] = core_services_healthy and sync_services_healthy and llm_services_healthy
             
         except Exception as e:
             logger.error(f"Health check failed: {e}")
@@ -447,6 +505,14 @@ class StartupService:
             # Close chat service
             if self.chat_service:
                 await self.chat_service.close()
+            
+            # Close Ollama manager
+            if self.ollama_manager:
+                await self.ollama_manager.shutdown()
+            
+            # Close Ollama manager
+            if self.ollama_manager:
+                await self.ollama_manager.shutdown()
             
             # Close other services
             if self.vector_store:
@@ -469,7 +535,8 @@ class StartupService:
                 "ingestion_service": self.ingestion_service is not None,
                 "chat_service": self.chat_service is not None,
                 "scheduler": self.scheduler is not None,
-                "sync_manager": self.sync_manager is not None
+                "sync_manager": self.sync_manager is not None,
+                "ollama_manager": self.ollama_manager is not None
             }
         }
         

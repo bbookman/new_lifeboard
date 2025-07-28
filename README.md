@@ -84,11 +84,6 @@ Lifeboard uses environment variables for configuration. Create a `.env` file in 
 - **Recommended**: `0.5-0.8` (balance between fresh data and performance)
 - **Example**: `LIMITLESS__SEARCH_WEIGHT=0.75`
 
-#### `LIMITLESS__HYBRID_SEARCH_ENABLED`
-- **Purpose**: Enable 3-way hybrid search (API + vector + SQL)
-- **Default**: `true`
-- **Recommended**: `true` (for comprehensive search results)
-- **Example**: `LIMITLESS__HYBRID_SEARCH_ENABLED=true`
 
 ### Global Settings
 
@@ -264,7 +259,6 @@ LIMITLESS_SYNC_INTERVAL_HOURS=1
 # Search Configuration
 LIMITLESS__SEARCH_ENABLED=true
 LIMITLESS__SEARCH_WEIGHT=0.75
-LIMITLESS__HYBRID_SEARCH_ENABLED=true
 
 # LLM Configuration
 LLM_PROVIDER=ollama
@@ -291,7 +285,6 @@ LIMITLESS_SYNC_INTERVAL_HOURS=1
 # Enhanced search for latest data
 LIMITLESS__SEARCH_ENABLED=true
 LIMITLESS__SEARCH_WEIGHT=0.6
-LIMITLESS__HYBRID_SEARCH_ENABLED=true
 
 # Use OpenAI for better responses
 LLM_PROVIDER=openai

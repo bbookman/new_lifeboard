@@ -8,7 +8,10 @@ from datetime import datetime, timezone
 from .base import BaseSource, DataItem
 from config.models import LimitlessConfig
 from core.retry_utils import (RetryExecutor, create_api_retry_config, create_enhanced_api_retry_condition, 
-                              create_rate_limit_retry_config, RetryConfig, BackoffStrategy)
+                              create_rate_limit_retry_config, create_rate_limit_retry_condition, 
+                              RetryConfig, BackoffStrategy)
+from core.database import DatabaseService # Import DatabaseService
+from sources.limitless_processor import LimitlessProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +29,16 @@ class LimitlessSource(BaseSource):
         START = "start"
         SEARCH = "search"
     
-    def __init__(self, config: LimitlessConfig):
+    def __init__(self, config: LimitlessConfig, database_service: DatabaseService):
         super().__init__("limitless")
         self.config = config
         self.client = None
         self._api_key_configured = config.is_api_key_configured()
+        self.database_service = database_service # Store the DatabaseService instance
+        self.processor = LimitlessProcessor(database_service=self.database_service) # Pass connection
+        logger.debug("===========================")
+        logger.debug("LimitlessSource initialized")
+        logger.debug("===========================")
     
     def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client"""
@@ -47,6 +55,7 @@ class LimitlessSource(BaseSource):
         if self.client:
             await self.client.aclose()
             self.client = None
+        # No need to close db_connection here, it's managed by DatabaseService
     
     async def __aenter__(self):
         return self
@@ -66,12 +75,15 @@ class LimitlessSource(BaseSource):
         try:
             client = self._get_client()
             response = await client.get("/v1/lifelogs", params={self._Params.LIMIT: 1})
+            logger.debug("Limitless connectivity test succeeded")
             return response.status_code == 200
         except Exception:
             return False
     
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """Fetch lifelogs with pagination"""
+        logger.debug(f"Fetching up to {limit} lifelogs from Limitless API")
+        
         if not self._api_key_configured:
             logger.warning("LIMITLESS_API_KEY is not configured in .env file. Skipping data fetch. Please set a valid API key.")
             return
@@ -100,6 +112,7 @@ class LimitlessSource(BaseSource):
                 params[self._Params.START] = since.strftime("%Y-%m-%d %H:%M:%S")
             
             # Make API request with retries
+            logger.debug("Limitless API: awaiting response")
             response = await self._make_request_with_retry(client, "/v1/lifelogs", params)
             
             if not response:
@@ -114,9 +127,11 @@ class LimitlessSource(BaseSource):
             # Transform and yield data items
             for lifelog in lifelogs:
                 data_item = self._transform_lifelog(lifelog)
-                yield data_item
-                fetched_count += 1
+                processed_item = self.processor.process(data_item)
+                if processed_item:  # Only yield if not a duplicate
+                    yield processed_item
                 
+                fetched_count += 1
                 if fetched_count >= limit:
                     break
             
@@ -153,7 +168,9 @@ class LimitlessSource(BaseSource):
             if not lifelog:
                 return None
             
-            return self._transform_lifelog(lifelog)
+            data_item = self._transform_lifelog(lifelog)
+            processed_item = self.processor.process(data_item)
+            return processed_item
             
         except Exception:
             return None
@@ -190,9 +207,12 @@ class LimitlessSource(BaseSource):
             results = []
             for lifelog in lifelogs:
                 data_item = self._transform_lifelog(lifelog)
-                results.append(data_item)
+                processed_item = self.processor.process(data_item)
+                if processed_item: # Only add to results if not a duplicate
+                    results.append(processed_item)
             
             logger.info(f"Limitless search returned {len(results)} results for query: {query}")
+            logger.debug(f"Search results: {results[:100]}")
             return results
             
         except Exception as e:
@@ -331,19 +351,18 @@ class LimitlessSource(BaseSource):
         curl_cmd = self._generate_curl_command(endpoint, params)
         logger.info(f"API Request (curl equivalent): {curl_cmd}")
         
-        # Create enhanced retry configuration with intelligent rate limiting
-        retry_config = RetryConfig(
+        # Create enhanced retry configuration with multiple rounds for rate limiting
+        retry_config = create_rate_limit_retry_config(
             max_retries=self.config.max_retries,
             base_delay=self.config.retry_delay,
-            max_delay=60.0,
-            backoff_strategy=BackoffStrategy.EXPONENTIAL,
-            # Rate limiting specific settings
-            rate_limit_base_delay=30.0,
-            rate_limit_max_delay=self.config.rate_limit_max_delay,
-            respect_retry_after=self.config.respect_retry_after,
-            jitter=True
+            max_rounds=self.config.rate_limit_max_rounds
         )
-        retry_condition = create_enhanced_api_retry_condition()
+        # Override specific config values from the model
+        retry_config.rate_limit_max_delay = self.config.rate_limit_max_delay
+        retry_config.respect_retry_after = self.config.respect_retry_after
+        retry_config.rate_limit_round_delay = self.config.rate_limit_round_delay
+        
+        retry_condition = create_rate_limit_retry_condition(max_delay=self.config.rate_limit_max_delay)
         retry_executor = RetryExecutor(retry_config, retry_condition)
         
         async def make_request():

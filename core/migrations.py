@@ -85,6 +85,7 @@ class InitialSchemaMigration(BaseMigration):
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 days_date DATE,
                 embedding_status TEXT DEFAULT 'pending',
+                content_hash INTEGER, -- New column for deduplication
                 FOREIGN KEY (namespace) REFERENCES data_sources(namespace)
             )
         """)
@@ -107,6 +108,7 @@ class IndexesMigration(BaseMigration):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_embedding_status ON data_items(embedding_status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_updated_at ON data_items(updated_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_days_date ON data_items(days_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_content_hash ON data_items(content_hash)")
 
 
 class ChatMessagesMigration(BaseMigration):
@@ -166,6 +168,71 @@ class NewsTableMigration(BaseMigration):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at)")
 
 
+class ConversationMemoryMigration(BaseMigration):
+    """Enhance chat messages table with conversation memory capabilities"""
+    
+    @property
+    def version(self) -> str:
+        return "005_conversation_memory"
+    
+    @property
+    def description(self) -> str:
+        return "Add conversation memory fields to chat_messages table"
+    
+    def up(self, conn: sqlite3.Connection) -> None:
+        """Add conversation memory columns to chat_messages table"""
+        # Add new columns for conversation memory
+        try:
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN session_id TEXT")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+        
+        try:
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN context_summary TEXT")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+        
+        try:
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN entities_mentioned TEXT")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+        
+        try:
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN topics TEXT")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+        
+        try:
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN processing_time_ms INTEGER")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+        
+        # Create indexes for new fields
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_entities ON chat_messages(entities_mentioned)")
+        
+        # Create conversation sessions table for session management
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_sessions (
+                session_id TEXT PRIMARY KEY,
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                message_count INTEGER DEFAULT 0,
+                session_summary TEXT,
+                entities_discussed TEXT,
+                topics_discussed TEXT
+            )
+        """)
+        
+        # Index for conversation sessions
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conversation_sessions_last_activity ON conversation_sessions(last_activity)")
+
+
 class MigrationRunner:
     """Handles database migration execution"""
     
@@ -176,6 +243,7 @@ class MigrationRunner:
             IndexesMigration(),
             ChatMessagesMigration(),
             NewsTableMigration(),
+            ConversationMemoryMigration(),
         ]
     
     @contextmanager

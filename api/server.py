@@ -12,6 +12,10 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 import uvicorn
+import os
+import signal
+import subprocess
+import time
 
 from services.startup import get_startup_service, StartupService
 from services.sync_manager_service import SyncManagerService
@@ -19,7 +23,7 @@ from services.chat_service import ChatService
 from config.factory import create_production_config
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system
+from api.routes import health, sync, chat, embeddings, system, calendar
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +62,6 @@ def configure_route_dependencies():
     sync.get_sync_manager_dependency = get_sync_manager
     
     # Chat routes
-    chat.get_chat_service_dependency = get_chat_service
     chat.set_templates(templates)
     
     # Embeddings routes
@@ -118,6 +121,7 @@ app.include_router(sync.router)
 app.include_router(chat.router)
 app.include_router(embeddings.router)
 app.include_router(system.router)
+app.include_router(calendar.router)
 
 
 # Global error handlers
@@ -136,6 +140,33 @@ async def internal_server_error_handler(request, exc):
         status_code=500,
         content={"error": "Internal server error", "detail": "An unexpected error occurred"}
     )
+
+
+def release_port_if_needed(port: int):
+    """
+    Check if a port is in use and, if so, terminate the process using it.
+    """
+    logger.info(f"Checking if port {port} is in use...")
+    command = f"lsof -ti :{port}"
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, check=False)
+        pids = result.stdout.strip().split()
+        if not pids:
+            logger.info(f"Port {port} is free.")
+            return
+
+        for pid_str in pids:
+            try:
+                pid = int(pid_str)
+                logger.warning(f"Port {port} is in use by PID {pid}. Terminating process...")
+                os.kill(pid, signal.SIGTERM)
+                time.sleep(1) # Give the process a moment to terminate
+                logger.info(f"Process {pid} terminated.")
+            except (ValueError, ProcessLookupError) as e:
+                logger.warning(f"Could not terminate process {pid_str}: {e}")
+
+    except Exception as e:
+        logger.error(f"An error occurred while checking port {port}: {e}")
 
 
 # Development server runner
@@ -161,5 +192,7 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     
     args = parser.parse_args()
+
+    release_port_if_needed(args.port)
     
     run_server(host=args.host, port=args.port, debug=args.debug)
