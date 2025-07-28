@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ formatted_date }} - Lifeboard Calendar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+        
+        .day-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        .day-header {
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .back-button {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .back-button:hover {
+            background-color: #545b62;
+            color: white;
+            text-decoration: none;
+        }
+        
+        .date-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #333;
+            margin: 0;
+        }
+        
+        .date-subtitle {
+            font-size: 18px;
+            color: #666;
+            margin: 5px 0 0 0;
+        }
+        
+        .day-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 25px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .info-item {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .content-section {
+            margin-bottom: 30px;
+        }
+        
+        .content-header {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .markdown-content {
+            background-color: #fff;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+        
+        .markdown-content h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        
+        .markdown-content h2 {
+            color: #444;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        
+        .markdown-content h3 {
+            color: #555;
+        }
+        
+        .markdown-content blockquote {
+            border-left: 4px solid #007bff;
+            margin: 15px 0;
+            padding: 10px 20px;
+            background-color: #f8f9fa;
+            font-style: italic;
+        }
+        
+        .markdown-content code {
+            background-color: #f1f3f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .markdown-content pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .markdown-content pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        
+        .markdown-content hr {
+            border: none;
+            border-top: 2px solid #ddd;
+            margin: 30px 0;
+        }
+        
+        .markdown-content ul, .markdown-content ol {
+            padding-left: 25px;
+        }
+        
+        .markdown-content li {
+            margin: 5px 0;
+        }
+        
+        .markdown-content a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        
+        .markdown-content a:hover {
+            text-decoration: underline;
+        }
+        
+        .markdown-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+        
+        .markdown-content th, .markdown-content td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .markdown-content th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        @media (max-width: 600px) {
+            .day-container {
+                margin: 10px;
+                padding: 15px;
+            }
+            
+            .date-title {
+                font-size: 24px;
+            }
+            
+            .date-subtitle {
+                font-size: 16px;
+            }
+            
+            .markdown-content {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="day-container">
+        <div class="day-header">
+            <a href="/calendar" class="back-button">← Back to Calendar</a>
+            <h1 class="date-title">{{ formatted_date }}</h1>
+            <p class="date-subtitle">{{ day_of_week }}</p>
+        </div>
+        
+        <div class="day-info">
+            <div class="info-item"><strong>Date:</strong> {{ date }}</div>
+            <div class="info-item"><strong>Items:</strong> {{ item_count }} data items</div>
+            <div class="info-item"><strong>Status:</strong> 
+                {% if has_data %}
+                    <span style="color: #28a745;">✓ Has data</span>
+                {% else %}
+                    <span style="color: #dc3545;">✗ No data</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="content-section">
+            <div class="content-header">Daily Content</div>
+            
+            {% if has_data and markdown_content %}
+                <div class="markdown-content" id="markdown-content">
+                    <!-- Markdown will be rendered here by JavaScript -->
+                    <div style="color: #666; text-align: center; padding: 20px;">
+                        Loading content...
+                    </div>
+                </div>
+            {% else %}
+                <div class="no-data">
+                    <p>No content available for this date.</p>
+                    <p>Try checking other dates that have data indicators in the calendar.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get the markdown content from the template
+            const markdownContent = {{ markdown_content|tojson|safe }};
+            
+            if (markdownContent && markdownContent.trim()) {
+                try {
+                    // Configure marked options
+                    marked.setOptions({
+                        breaks: true,
+                        gfm: true,
+                        sanitize: false
+                    });
+                    
+                    // Parse and render markdown
+                    const htmlContent = marked.parse(markdownContent);
+                    
+                    // Insert rendered HTML
+                    const contentDiv = document.getElementById('markdown-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = htmlContent;
+                    }
+                } catch (error) {
+                    console.error('Error rendering markdown:', error);
+                    
+                    // Fallback: show raw markdown
+                    const contentDiv = document.getElementById('markdown-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = '<pre>' + escapeHtml(markdownContent) + '</pre>';
+                    }
+                }
+            }
+        });
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Handle back button with history navigation
+        document.querySelector('.back-button').addEventListener('click', function(e) {
+            // Check if we came from the calendar page
+            if (document.referrer.includes('/calendar')) {
+                e.preventDefault();
+                window.history.back();
+            }
+            // Otherwise, let the normal link behavior happen
+        });
+    </script>
+</body>
+</html>
