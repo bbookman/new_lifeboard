@@ -140,6 +140,43 @@ class NewsConfig(BaseModel):
                 self.api_key != "your-rapid-api-key-here")
 
 
+class WeatherConfig(BaseModel):
+    """Weather API configuration"""
+    api_key: Optional[str] = Field(None, env="RAPID_API_KEY")
+    endpoint: str = Field("easy-weather1.p.rapidapi.com/daily/5", env="WEATHER_ENDPOINT")
+    latitude: str = Field("34.0522", env="USER_HOME_LATITUDE")
+    longitude: str = Field("-118.2437", env="USER_HOME_LOGITUDE")
+    units: str = Field("metric", env="UNITS")
+    enabled: bool = True
+    max_retries: int = 3
+    retry_delay: float = 1.0
+    request_timeout: float = 30.0
+    sync_interval_hours: int = 4 # every 4 hours
+    # Rate limiting configuration
+    rate_limit_max_delay: int = 300  # Maximum delay for rate limiting (5 minutes)
+    respect_retry_after: bool = True
+
+    @field_validator('api_key')
+    @classmethod
+    def validate_api_key(cls, v):
+        if v is not None and not isinstance(v, str):
+            raise ValueError("API key must be a string")
+        return v
+
+    @field_validator('units')
+    @classmethod
+    def validate_units(cls, v):
+        if v not in ["metric", "standard"]:
+            raise ValueError("Units must be one of: metric, standard")
+        return v
+
+    def is_api_key_configured(self) -> bool:
+        """Check if API key is properly configured"""
+        return (self.api_key is not None and
+                self.api_key.strip() != "" and
+                self.api_key != "your-rapid-api-key-here")
+
+
 class SourceConfig(BaseModel):
     """Data source configuration"""
     namespace: str
@@ -367,6 +404,7 @@ class AppConfig(BaseModel):
     vector_store: VectorStoreConfig = VectorStoreConfig()
     limitless: LimitlessConfig = LimitlessConfig()
     news: NewsConfig = NewsConfig()
+    weather: WeatherConfig = WeatherConfig()
     twitter: TwitterConfig = TwitterConfig()
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()

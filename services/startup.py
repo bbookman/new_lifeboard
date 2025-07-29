@@ -9,6 +9,7 @@ from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
 from sources.limitless import LimitlessSource
 from sources.news import NewsSource
+from sources.weather import WeatherSource
 from sources.twitter import TwitterSource
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
@@ -260,6 +261,24 @@ class StartupService:
             else:
                 logger.info("Twitter source not configured, skipping source registration")
 
+            # Register Weather source if enabled and API key is available
+            if self.config.weather.enabled and self.config.weather.api_key:
+                try:
+                    logger.info("Registering Weather source...")
+                    weather_source = WeatherSource(self.config.weather, self.database)
+                    self.ingestion_service.register_source(weather_source)
+                    startup_result["sources_registered"].append("weather")
+                    logger.info("Weather source registered successfully")
+                except Exception as e:
+                    error_msg = f"Failed to register Weather source: {str(e)}"
+                    logger.warning(error_msg)
+                    startup_result["errors"].append(error_msg)
+            else:
+                if not self.config.weather.enabled:
+                    logger.info("Weather service disabled in configuration, skipping source registration")
+                else:
+                    logger.info("Weather API key not configured, skipping source registration")
+
             # Future: Add other source registrations here
             # if self.config.notion.api_key:
             #     notion_source = NotionSource(self.config.notion)
@@ -331,10 +350,17 @@ class StartupService:
             startup_sync_results = {}
             for namespace in startup_result.get("sources_registered", []):
                 try:
-                    logger.info(f"Performing startup sync for {namespace}")
-                    result = await self.sync_manager.trigger_immediate_sync(namespace, force_full_sync=False)
-                    startup_sync_results[namespace] = result.to_dict()
-                    logger.info(f"Startup sync completed for {namespace}: {result.items_processed} processed")
+                    # Check if this source should be synced based on time interval
+                    should_sync = await self.sync_manager.should_sync_on_startup(namespace)
+                    
+                    if should_sync:
+                        logger.info(f"Performing startup sync for {namespace}")
+                        result = await self.sync_manager.trigger_immediate_sync(namespace, force_full_sync=False)
+                        startup_sync_results[namespace] = result.to_dict()
+                        logger.info(f"Startup sync completed for {namespace}: {result.items_processed} processed")
+                    else:
+                        logger.info(f"Skipping startup sync for {namespace} - not due for sync yet")
+                        startup_sync_results[namespace] = {"skipped": True, "reason": "Not due for sync"}
                     
                 except Exception as e:
                     error_msg = f"Startup sync failed for {namespace}: {str(e)}"

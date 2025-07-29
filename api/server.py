@@ -19,7 +19,7 @@ from services.chat_service import ChatService
 from config.factory import create_production_config
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system, calendar
+from api.routes import health, sync, chat, embeddings, system, calendar, weather
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,9 @@ def configure_route_dependencies():
     
     # Embeddings routes
     embeddings.get_startup_service_dependency = get_startup_service_dependency
+    
+    # Weather routes (using its own dependency pattern)
+    # Note: Weather routes use their own dependency injection pattern
 
 
 # Lifespan context manager for FastAPI
@@ -123,6 +126,7 @@ app.include_router(chat.router)
 app.include_router(calendar.router)
 app.include_router(embeddings.router)
 app.include_router(system.router)
+app.include_router(weather.router)
 
 
 # Global error handlers

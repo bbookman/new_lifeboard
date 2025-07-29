@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from core.base_service import BaseService
 from sources.base import DataItem, BaseSource
 from sources.limitless import LimitlessSource
-from sources.sync_manager import LimitlessSyncManager
+from sources.sync_manager import SyncManager
 from sources.limitless_processor import LimitlessProcessor
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
@@ -106,13 +106,13 @@ class IngestionService(BaseService):
             
             # Handle Limitless source with sync manager
             if isinstance(source, LimitlessSource):
-                sync_manager = LimitlessSyncManager(
-                    limitless_source=source,
+                sync_manager = SyncManager(
                     database=self.database,
-                    config=self.config.limitless
+                    app_config=self.config
                 )
+                sync_manager.register_source(source)
                 
-                async for item in sync_manager.sync(force_full_sync=force_full_sync, limit=limit):
+                async for item in sync_manager.sync_source(namespace, force_full_sync=force_full_sync, limit=limit):
                     await self._process_and_store_item(item, result)
             
             else:

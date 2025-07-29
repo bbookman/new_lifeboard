@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LimitlessConfig, NewsConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
+    LimitlessConfig, NewsConfig, WeatherConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
     LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
 )
 
@@ -77,6 +77,18 @@ def create_test_config(temp_dir: str = None) -> AppConfig:
             request_timeout=5.0,
             sync_interval_hours=24
         ),
+        weather=WeatherConfig(
+            api_key="test-rapid-api-key",
+            endpoint="easy-weather1.p.rapidapi.com/daily/5",
+            latitude="34.0522",
+            longitude="-118.2437",
+            units="metric",
+            enabled=False,  # Disabled for tests by default
+            max_retries=2,
+            retry_delay=0.1,
+            request_timeout=5.0,
+            sync_interval_hours=6
+        ),
         debug=True
     )
 
@@ -124,6 +136,20 @@ def create_production_config() -> AppConfig:
             retry_delay=float(os.getenv("NEWS_RETRY_DELAY", "1.0")),
             request_timeout=float(os.getenv("NEWS_REQUEST_TIMEOUT", "30.0")),
             sync_interval_hours=int(os.getenv("NEWS_SYNC_INTERVAL_HOURS", "24"))
+        ),
+        weather=WeatherConfig(
+            api_key=os.getenv("RAPID_API_KEY"),
+            endpoint=os.getenv("WEATHER_ENDPOINT", "easy-weather1.p.rapidapi.com/daily/5"),
+            latitude=os.getenv("USER_HOME_LATITUDE", "34.0522"),
+            longitude=os.getenv("USER_HOME_LOGITUDE", "-118.2437"),
+            units=os.getenv("UNITS", "metric"),
+            enabled=os.getenv("TURN_ON_WEATHER", "true").lower() == "true",
+            max_retries=int(os.getenv("WEATHER_MAX_RETRIES", "3")),
+            retry_delay=float(os.getenv("WEATHER_RETRY_DELAY", "1.0")),
+            request_timeout=float(os.getenv("WEATHER_REQUEST_TIMEOUT", "30.0")),
+            sync_interval_hours=int(os.getenv("WEATHER__SYNC_INTERVAL_HOURS", "6")),
+            rate_limit_max_delay=int(os.getenv("WEATHER_RATE_LIMIT_MAX_DELAY", "300")),
+            respect_retry_after=os.getenv("WEATHER_RESPECT_RETRY_AFTER", "true").lower() == "true"
         ),
         search=SearchConfig(
             default_limit=int(os.getenv("SEARCH_DEFAULT_LIMIT", "20")),
@@ -191,3 +217,8 @@ def create_production_config() -> AppConfig:
         ),
         debug=os.getenv("DEBUG", "false").lower() == "true"
     )
+
+
+def get_config() -> AppConfig:
+    """Get configuration for the application (defaults to production config)"""
+    return create_production_config()

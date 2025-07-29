@@ -8,6 +8,8 @@ from services.scheduler import AsyncScheduler
 from services.ingestion import IngestionService, IngestionResult
 from sources.base import BaseSource
 from sources.limitless import LimitlessSource
+from sources.news import NewsSource
+from sources.weather import WeatherSource
 from config.models import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,10 @@ class SyncManagerService(BaseService):
         # Determine sync interval
         if isinstance(source, LimitlessSource):
             interval_hours = self.config.limitless.sync_interval_hours
+        elif isinstance(source, NewsSource):
+            interval_hours = self.config.news.sync_interval_hours
+        elif isinstance(source, WeatherSource):
+            interval_hours = self.config.weather.sync_interval_hours
         else:
             # Default sync interval for other sources
             interval_hours = 24
@@ -220,6 +226,40 @@ class SyncManagerService(BaseService):
         else:
             logger.info("Limitless source not available for auto-sync (missing API key or not registered)")
         
+        # Check News source
+        if (self.config.news.enabled and self.config.news.api_key and 
+            "news" in self.ingestion_service.sources):
+            
+            news_source = self.ingestion_service.sources["news"]
+            success = await self.register_source_for_auto_sync(news_source)
+            if success:
+                registered_sources.append("news")
+                logger.info("Auto-registered News source for scheduled sync")
+        else:
+            logger.info("News source not available for auto-sync (disabled or missing API key)")
+        
+        # Check Weather source
+        if (self.config.weather.enabled and self.config.weather.api_key and 
+            "weather" in self.ingestion_service.sources):
+            
+            weather_source = self.ingestion_service.sources["weather"]
+            success = await self.register_source_for_auto_sync(weather_source)
+            if success:
+                registered_sources.append("weather")
+                logger.info("Auto-registered Weather source for scheduled sync")
+        else:
+            logger.info("Weather source not available for auto-sync (disabled or missing API key)")
+        
+        # Check Twitter source (if configured)
+        if "twitter" in self.ingestion_service.sources:
+            twitter_source = self.ingestion_service.sources["twitter"]
+            success = await self.register_source_for_auto_sync(twitter_source)
+            if success:
+                registered_sources.append("twitter")
+                logger.info("Auto-registered Twitter source for scheduled sync")
+        else:
+            logger.info("Twitter source not available for auto-sync (not configured)")
+        
         # Future: Add other source types here
         # if self.config.notion.api_key:
         #     ...
@@ -314,6 +354,55 @@ class SyncManagerService(BaseService):
         
         health_status["healthy"] = len(health_status["issues"]) == 0
         return health_status
+    
+    async def should_sync_on_startup(self, namespace: str) -> bool:
+        """Check if a source should be synced on startup based on sync interval"""
+        from datetime import datetime, timezone, timedelta
+        
+        # Get the last sync time from database
+        last_sync_setting = self.ingestion_service.database.get_setting(f"{namespace}_last_sync")
+        if not last_sync_setting:
+            # Never synced before, should sync
+            logger.info(f"Source {namespace} has never been synced, triggering startup sync")
+            return True
+        
+        try:
+            last_sync_time = datetime.fromisoformat(last_sync_setting)
+        except (ValueError, TypeError):
+            # Invalid last sync time, should sync
+            logger.warning(f"Invalid last sync time for {namespace}: {last_sync_setting}, triggering sync")
+            return True
+        
+        # Determine sync interval based on source type
+        sync_interval_hours = 6  # Default
+        
+        if namespace == "limitless":
+            sync_interval_hours = self.config.limitless.sync_interval_hours
+        elif namespace == "news":
+            sync_interval_hours = self.config.news.sync_interval_hours
+        elif namespace == "weather":
+            sync_interval_hours = self.config.weather.sync_interval_hours
+        elif namespace == "twitter":
+            # Twitter doesn't have a time-based sync interval, it syncs once
+            return False
+        else:
+            logger.warning(f"Unknown namespace {namespace}, using default sync interval")
+        
+        # Check if enough time has passed
+        time_since_last_sync = datetime.now(timezone.utc) - last_sync_time
+        sync_interval_delta = timedelta(hours=sync_interval_hours)
+        
+        should_sync = time_since_last_sync >= sync_interval_delta
+        
+        if should_sync:
+            logger.info(f"Source {namespace} last synced {time_since_last_sync.total_seconds()/3600:.1f} hours ago, "
+                       f"interval is {sync_interval_hours} hours, triggering startup sync")
+        else:
+            remaining_time = sync_interval_delta - time_since_last_sync
+            logger.info(f"Source {namespace} last synced {time_since_last_sync.total_seconds()/3600:.1f} hours ago, "
+                       f"next sync in {remaining_time.total_seconds()/3600:.1f} hours")
+        
+        return should_sync
     
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check on sync system (legacy method for backwards compatibility)"""
