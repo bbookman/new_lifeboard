@@ -14,7 +14,10 @@ from fastapi.templating import Jinja2Templates
 import pytz
 
 from services.startup import StartupService
+from services.weather_service import WeatherService
+from services.news_service import NewsService
 from core.database import DatabaseService
+from config.factory import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,17 @@ def get_database_service(startup_service: StartupService = Depends(lambda: get_s
     if not startup_service.database:
         raise HTTPException(status_code=503, detail="Database service not available")
     return startup_service.database
+
+
+def get_weather_service(database: DatabaseService = Depends(get_database_service)) -> WeatherService:
+    """Get weather service instance"""
+    return WeatherService(database)
+
+
+def get_news_service(database: DatabaseService = Depends(get_database_service)) -> NewsService:
+    """Get news service instance"""
+    config = get_config()
+    return NewsService(database, config.news)
 
 
 def get_user_timezone_aware_now(startup_service: StartupService) -> datetime:
@@ -149,6 +163,69 @@ async def get_day_details(date: str, database: DatabaseService = Depends(get_dat
     except Exception as e:
         logger.error(f"Error getting day details for {date}: {e}")
         raise HTTPException(status_code=500, detail="Failed to get day details")
+
+
+@router.get("/api/day/{date}/enhanced")
+async def get_enhanced_day_data(
+    date: str, 
+    database: DatabaseService = Depends(get_database_service),
+    weather_service: WeatherService = Depends(get_weather_service),
+    news_service: NewsService = Depends(get_news_service)
+) -> Dict[str, Any]:
+    """Get enhanced day data including weather, news, and limitless content"""
+    try:
+        # Validate date format
+        try:
+            parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Get basic day details
+        markdown_content = database.get_markdown_by_date(date)
+        data_items = database.get_data_items_by_date(date)
+        
+        # Get weather data specifically for this date only
+        weather_for_date = weather_service.get_weather_for_specific_date(date)
+        weather_data = [weather_for_date] if weather_for_date else []
+        
+        # Get news data for the date
+        news_data = news_service.get_news_by_date(date)
+        
+        # If no news for specific date, get recent news as fallback
+        if not news_data:
+            news_data = news_service.get_latest_news(limit=5)
+        
+        # Filter limitless data items for better organization
+        limitless_items = [item for item in data_items if item.get('namespace') == 'limitless']
+        
+        return {
+            "date": date,
+            "formatted_date": parsed_date.strftime("%B %d, %Y"),
+            "day_of_week": parsed_date.strftime("%A"),
+            "weather": {
+                "forecast_days": weather_data,
+                "has_data": len(weather_data) > 0
+            },
+            "news": {
+                "articles": news_data,
+                "count": len(news_data),
+                "has_data": len(news_data) > 0
+            },
+            "limitless": {
+                "markdown_content": markdown_content,
+                "item_count": len(limitless_items),
+                "has_data": len(limitless_items) > 0 or bool(markdown_content)
+            },
+            "summary": {
+                "total_items": len(data_items),
+                "has_any_data": len(data_items) > 0 or len(weather_data) > 0 or len(news_data) > 0
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting enhanced day data for {date}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get enhanced day data")
 
 
 @router.get("/day/{date}", response_class=HTMLResponse)

@@ -450,25 +450,38 @@ class StartupService:
     
     async def shutdown_application(self):
         """Gracefully shutdown all services"""
-        logger.info("Starting application shutdown...")
+        logger.info("SHUTDOWN_SERVICE: *** Starting application shutdown ***")
         
         try:
             # Stop sync manager and scheduler
             if self.sync_manager:
+                logger.info("SHUTDOWN_SERVICE: Stopping sync manager...")
                 await self.sync_manager.stop_auto_sync()
+                logger.info("SHUTDOWN_SERVICE: Sync manager stopped")
+            else:
+                logger.info("SHUTDOWN_SERVICE: No sync manager to stop")
             
             # Close chat service
             if self.chat_service:
+                logger.info("SHUTDOWN_SERVICE: Closing chat service...")
                 await self.chat_service.close()
+                logger.info("SHUTDOWN_SERVICE: Chat service closed")
+            else:
+                logger.info("SHUTDOWN_SERVICE: No chat service to close")
             
             # Close other services
             if self.vector_store:
+                logger.info("SHUTDOWN_SERVICE: Cleaning up vector store...")
                 self.vector_store.cleanup()
+                logger.info("SHUTDOWN_SERVICE: Vector store cleaned up")
+            else:
+                logger.info("SHUTDOWN_SERVICE: No vector store to cleanup")
             
-            logger.info("Application shutdown completed successfully")
+            logger.info("SHUTDOWN_SERVICE: *** Application shutdown completed successfully ***")
             
         except Exception as e:
-            logger.error(f"Error during application shutdown: {e}")
+            logger.error(f"SHUTDOWN_SERVICE: Error during application shutdown: {e}")
+            logger.exception("SHUTDOWN_SERVICE: Full shutdown exception details:")
     
     def get_application_status(self) -> Dict[str, Any]:
         """Get current application status"""
@@ -531,14 +544,28 @@ def set_startup_service(startup_service: StartupService):
 
 async def initialize_application(config: AppConfig, enable_auto_sync: bool = True) -> Dict[str, Any]:
     """Initialize the application with the given configuration"""
+    logger.info("STARTUP: *** BEGINNING APPLICATION INITIALIZATION ***")
+    logger.info(f"STARTUP: enable_auto_sync = {enable_auto_sync}")
+    
     startup_service = StartupService(config)
     set_startup_service(startup_service)
     
-    return await startup_service.initialize_application(enable_auto_sync)
+    logger.info("STARTUP: Starting service initialization...")
+    result = await startup_service.initialize_application(enable_auto_sync)
+    
+    logger.info(f"STARTUP: Initialization completed with result: {result.get('success', False)}")
+    logger.info("STARTUP: *** APPLICATION INITIALIZATION FINISHED ***")
+    
+    return result
 
 
 async def shutdown_application():
     """Shutdown the application"""
+    logger.info("SHUTDOWN: *** SHUTDOWN APPLICATION CALLED ***")
     startup_service = get_startup_service()
     if startup_service:
+        logger.info("SHUTDOWN: Startup service found, proceeding with shutdown...")
         await startup_service.shutdown_application()
+        logger.info("SHUTDOWN: *** SHUTDOWN APPLICATION COMPLETED ***")
+    else:
+        logger.warning("SHUTDOWN: No startup service found to shutdown")
