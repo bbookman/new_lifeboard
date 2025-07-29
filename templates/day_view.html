@@ -193,6 +193,149 @@
             margin-bottom: 20px;
         }
         
+        /* Weather Section Styles */
+        .weather-section {
+            margin-bottom: 30px;
+            background-color: #e8f4fd;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .weather-forecast {
+            display: flex;
+            gap: 15px;
+            overflow-x: auto;
+            padding: 10px 0;
+        }
+        
+        .weather-card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            min-width: 140px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: 1px solid #ddd;
+        }
+        
+        .weather-card.today {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        
+        .weather-date {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .weather-day {
+            font-weight: bold;
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .weather-condition {
+            font-size: 12px;
+            color: #555;
+            margin: 5px 0;
+        }
+        
+        .weather-temps {
+            margin-top: 8px;
+        }
+        
+        .temp-high {
+            font-weight: bold;
+            color: #d73027;
+            font-size: 16px;
+        }
+        
+        .temp-low {
+            color: #4575b4;
+            font-size: 14px;
+            margin-left: 5px;
+        }
+        
+        /* News Section Styles */
+        .news-section {
+            margin-bottom: 30px;
+            background-color: #fff3cd;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .news-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .news-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .news-item:last-child {
+            border-bottom: none;
+        }
+        
+        .news-title {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: 500;
+            line-height: 1.4;
+            display: block;
+        }
+        
+        .news-title:hover {
+            text-decoration: underline;
+            color: #0056b3;
+        }
+        
+        .news-meta {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 4px;
+        }
+        
+        /* Limitless Section Styles */
+        .limitless-section {
+            margin-bottom: 30px;
+            background-color: #d1ecf1;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #17a2b8;
+        }
+        
+        .section-header {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .section-count {
+            font-size: 14px;
+            font-weight: normal;
+            color: #666;
+            background-color: rgba(255,255,255,0.7);
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+        
+        .loading-spinner {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
         @media (max-width: 600px) {
             .day-container {
                 margin: 10px;
@@ -210,6 +353,27 @@
             .markdown-content {
                 padding: 15px;
             }
+            
+            .weather-forecast {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .weather-card {
+                min-width: auto;
+                width: 100%;
+            }
+            
+            .section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+            
+            .weather-section, .news-section, .limitless-section {
+                padding: 15px;
+                margin-bottom: 20px;
+            }
         }
     </style>
 </head>
@@ -223,7 +387,7 @@
         
         <div class="day-info">
             <div class="info-item"><strong>Date:</strong> {{ date }}</div>
-            <div class="info-item"><strong>Items:</strong> {{ item_count }} data items</div>
+            <div class="info-item"><strong>Items:</strong> <span id="total-items">{{ item_count }}</span> data items</div>
             <div class="info-item"><strong>Status:</strong> 
                 {% if has_data %}
                     <span style="color: #28a745;">✓ Has data</span>
@@ -233,8 +397,39 @@
             </div>
         </div>
         
-        <div class="content-section">
-            <div class="content-header">Daily Content</div>
+        <!-- Weather Section -->
+        <div class="weather-section" id="weather-section">
+            <div class="section-header">
+                🌤️ 5-Day Weather Forecast
+                <span class="section-count" id="weather-count">Loading...</span>
+            </div>
+            <div class="loading-spinner" id="weather-loading">Loading weather data...</div>
+            <div class="weather-forecast" id="weather-forecast" style="display: none;"></div>
+            <div class="no-data" id="weather-no-data" style="display: none;">
+                <p>No weather data available</p>
+            </div>
+        </div>
+        
+        <!-- News Section -->
+        <div class="news-section" id="news-section">
+            <div class="section-header">
+                📰 News Headlines
+                <span class="section-count" id="news-count">Loading...</span>
+            </div>
+            <div class="loading-spinner" id="news-loading">Loading news...</div>
+            <ul class="news-list" id="news-list" style="display: none;"></ul>
+            <div class="no-data" id="news-no-data" style="display: none;">
+                <p>No news available for this date</p>
+                <p>Recent news will be shown as fallback</p>
+            </div>
+        </div>
+        
+        <!-- Limitless Content Section -->
+        <div class="limitless-section" id="limitless-section">
+            <div class="section-header">
+                💭 Daily Conversations & Activities
+                <span class="section-count" id="limitless-count">{{ item_count }} items</span>
+            </div>
             
             {% if has_data and markdown_content %}
                 <div class="markdown-content" id="markdown-content">
@@ -245,7 +440,7 @@
                 </div>
             {% else %}
                 <div class="no-data">
-                    <p>No content available for this date.</p>
+                    <p>No conversations or activities available for this date.</p>
                     <p>Try checking other dates that have data indicators in the calendar.</p>
                 </div>
             {% endif %}
@@ -254,37 +449,189 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Get the markdown content from the template
-            const markdownContent = {{ markdown_content|tojson|safe }};
+            // Get current date from the URL or template
+            const currentDate = '{{ date }}';
             
+            // Load enhanced data
+            loadEnhancedDayData(currentDate);
+            
+            // Handle existing markdown content
+            const markdownContent = {{ markdown_content|tojson|safe }};
             if (markdownContent && markdownContent.trim()) {
-                try {
-                    // Configure marked options
-                    marked.setOptions({
-                        breaks: true,
-                        gfm: true,
-                        sanitize: false
-                    });
-                    
-                    // Parse and render markdown
-                    const htmlContent = marked.parse(markdownContent);
-                    
-                    // Insert rendered HTML
-                    const contentDiv = document.getElementById('markdown-content');
-                    if (contentDiv) {
-                        contentDiv.innerHTML = htmlContent;
-                    }
-                } catch (error) {
-                    console.error('Error rendering markdown:', error);
-                    
-                    // Fallback: show raw markdown
-                    const contentDiv = document.getElementById('markdown-content');
-                    if (contentDiv) {
-                        contentDiv.innerHTML = '<pre>' + escapeHtml(markdownContent) + '</pre>';
-                    }
-                }
+                renderMarkdownContent(markdownContent);
             }
         });
+
+        async function loadEnhancedDayData(date) {
+            try {
+                const response = await fetch(`/calendar/api/day/${date}/enhanced`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Update page info
+                updatePageInfo(data);
+                
+                // Render weather section
+                renderWeatherSection(data.weather);
+                
+                // Render news section
+                renderNewsSection(data.news);
+                
+                // Update limitless section info
+                updateLimitlessSection(data.limitless);
+                
+            } catch (error) {
+                console.error('Error loading enhanced day data:', error);
+                showError('Failed to load complete day data. Some sections may not be available.');
+            }
+        }
+
+        function updatePageInfo(data) {
+            // Update total items count
+            const totalItemsSpan = document.getElementById('total-items');
+            if (totalItemsSpan && data.summary) {
+                totalItemsSpan.textContent = data.summary.total_items;
+            }
+        }
+
+        function renderWeatherSection(weatherData) {
+            const loading = document.getElementById('weather-loading');
+            const forecast = document.getElementById('weather-forecast');
+            const noData = document.getElementById('weather-no-data');
+            const count = document.getElementById('weather-count');
+            const weatherSection = document.getElementById('weather-section');
+
+            // Hide loading
+            loading.style.display = 'none';
+
+            if (weatherData.has_data && weatherData.forecast_days.length > 0) {
+                // Show weather section and render data
+                weatherSection.style.display = 'block';
+                count.textContent = `${weatherData.forecast_days.length} days`;
+                forecast.style.display = 'flex';
+                
+                forecast.innerHTML = '';
+                weatherData.forecast_days.forEach((day, index) => {
+                    const card = createWeatherCard(day, index === 0);
+                    forecast.appendChild(card);
+                });
+            } else {
+                // Hide entire weather section when no data exists for this date
+                weatherSection.style.display = 'none';
+            }
+        }
+
+        function createWeatherCard(dayData, isToday) {
+            const card = document.createElement('div');
+            card.className = `weather-card ${isToday ? 'today' : ''}`;
+            
+            const tempHigh = dayData.temperatureMax ? Math.round(dayData.temperatureMax) + '°' : '--';
+            const tempLow = dayData.temperatureMin ? Math.round(dayData.temperatureMin) + '°' : '--';
+            const condition = dayData.conditionCode || 'Unknown';
+            
+            card.innerHTML = `
+                <div class="weather-date">${dayData.forecast_month_day || ''}</div>
+                <div class="weather-day">${dayData.forecast_day_name || 'Unknown'}</div>
+                <div class="weather-condition">${condition}</div>
+                <div class="weather-temps">
+                    <span class="temp-high">${tempHigh}</span>
+                    <span class="temp-low">${tempLow}</span>
+                </div>
+            `;
+            
+            return card;
+        }
+
+        function renderNewsSection(newsData) {
+            const loading = document.getElementById('news-loading');
+            const newsList = document.getElementById('news-list');
+            const noData = document.getElementById('news-no-data');
+            const count = document.getElementById('news-count');
+
+            // Hide loading
+            loading.style.display = 'none';
+
+            if (newsData.has_data && newsData.articles.length > 0) {
+                count.textContent = `${newsData.articles.length} articles`;
+                newsList.style.display = 'block';
+                
+                newsList.innerHTML = '';
+                newsData.articles.forEach(article => {
+                    const listItem = createNewsItem(article);
+                    newsList.appendChild(listItem);
+                });
+            } else {
+                count.textContent = 'No articles';
+                noData.style.display = 'block';
+            }
+        }
+
+        function createNewsItem(article) {
+            const li = document.createElement('li');
+            li.className = 'news-item';
+            
+            const publishedDate = article.published_datetime_utc ? 
+                new Date(article.published_datetime_utc).toLocaleDateString() : '';
+            
+            li.innerHTML = `
+                <a href="${article.link}" target="_blank" class="news-title" rel="noopener noreferrer">
+                    ${escapeHtml(article.title)}
+                </a>
+                ${publishedDate ? `<div class="news-meta">Published: ${publishedDate}</div>` : ''}
+            `;
+            
+            return li;
+        }
+
+        function updateLimitlessSection(limitlessData) {
+            const count = document.getElementById('limitless-count');
+            if (count && limitlessData) {
+                count.textContent = `${limitlessData.item_count} items`;
+            }
+        }
+
+        function renderMarkdownContent(markdownContent) {
+            try {
+                // Configure marked options
+                marked.setOptions({
+                    breaks: true,
+                    gfm: true,
+                    sanitize: false
+                });
+                
+                // Parse and render markdown
+                const htmlContent = marked.parse(markdownContent);
+                
+                // Insert rendered HTML
+                const contentDiv = document.getElementById('markdown-content');
+                if (contentDiv) {
+                    contentDiv.innerHTML = htmlContent;
+                }
+            } catch (error) {
+                console.error('Error rendering markdown:', error);
+                
+                // Fallback: show raw markdown
+                const contentDiv = document.getElementById('markdown-content');
+                if (contentDiv) {
+                    contentDiv.innerHTML = '<pre>' + escapeHtml(markdownContent) + '</pre>';
+                }
+            }
+        }
+
+        function showError(message) {
+            // Create error message element
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            
+            // Insert at top of day container
+            const dayContainer = document.querySelector('.day-container');
+            const dayHeader = document.querySelector('.day-header');
+            dayContainer.insertBefore(errorDiv, dayHeader.nextSibling);
+        }
         
         function escapeHtml(text) {
             const div = document.createElement('div');

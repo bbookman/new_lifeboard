@@ -90,7 +90,12 @@ class WeatherSource(BaseSource):
             await self._store_weather_data(data)
             # This source does not yield DataItems directly, it stores in its own table.
             # We will yield a single dummy item to satisfy the sync manager.
-            yield DataItem(namespace=self.namespace, source_id="weather_sync", content="Weather data synced")
+            yield DataItem(
+                namespace=self.namespace, 
+                source_id="weather_sync", 
+                content="Weather data synced",
+                metadata={"sync_time": data['forecastDaily'].get('readTime', '')}
+            )
 
         except Exception as e:
             logger.error(f"Error processing weather response: {e}")
@@ -105,11 +110,21 @@ class WeatherSource(BaseSource):
             logger.warning("Weather data is missing 'readTime'")
             return
 
+        # Extract temperature data from the first day's forecast
+        temperature_max = None
+        temperature_min = None
+        
+        forecast_days = data['forecastDaily'].get('days', [])
+        if forecast_days:
+            first_day = forecast_days[0]
+            temperature_max = first_day.get('temperatureMax')
+            temperature_min = first_day.get('temperatureMin')
+
         with self.db_service.get_connection() as conn:
             conn.execute("""
-                INSERT INTO weather (days_date, response_json)
-                VALUES (?, ?)
-            """, (days_date, json.dumps(data)))
+                INSERT INTO weather (days_date, response_json, temperature_max, temperature_min)
+                VALUES (?, ?, ?, ?)
+            """, (days_date, json.dumps(data), temperature_max, temperature_min))
             conn.commit()
 
     async def get_item(self, source_id: str) -> Optional[DataItem]:
