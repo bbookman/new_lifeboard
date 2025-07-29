@@ -91,7 +91,12 @@ def configure_route_dependencies():
     sync.get_sync_manager_dependency = get_sync_manager
     
     # Chat routes
-    chat.get_chat_service_dependency = get_chat_service
+    startup_service = get_startup_service()
+    if startup_service and startup_service.chat_service:
+        chat.set_chat_service_instance(startup_service.chat_service)
+        logger.info("Chat service dependency configured successfully")
+    else:
+        logger.error("Chat service not available during dependency configuration")
     chat.set_templates(templates)
     
     # Calendar routes
@@ -157,6 +162,12 @@ async def lifespan(app: FastAPI):
         if result["success"]:
             startup_success = True
             logger.info("LIFESPAN: Application initialized successfully")
+            
+            # Configure route dependencies now that services are available
+            logger.info("LIFESPAN: Configuring route dependencies...")
+            configure_route_dependencies()
+            logger.info("LIFESPAN: Route dependencies configured")
+            
             logger.info("LIFESPAN: Entering yield phase - server is now ready")
         else:
             logger.error(f"LIFESPAN: Application initialization failed: {result.get('errors', [])}")
@@ -227,8 +238,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure route dependencies
-configure_route_dependencies()
+# Route dependencies will be configured after services are initialized in lifespan
 
 # Include route modules
 app.include_router(health.router)

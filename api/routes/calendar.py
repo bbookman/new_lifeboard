@@ -145,8 +145,8 @@ async def get_day_details(date: str, database: DatabaseService = Depends(get_dat
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        # Get markdown content for the date
-        markdown_content = database.get_markdown_by_date(date)
+        # Get markdown content for the date (only from limitless namespace)
+        markdown_content = database.get_markdown_by_date(date, namespaces=['limitless'])
         
         # Get data items for additional context
         data_items = database.get_data_items_by_date(date)
@@ -182,7 +182,7 @@ async def get_enhanced_day_data(
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
         # Get basic day details
-        markdown_content = database.get_markdown_by_date(date)
+        markdown_content = database.get_markdown_by_date(date, namespaces=['limitless'])
         data_items = database.get_data_items_by_date(date)
         
         # Get 5-day weather forecast starting from this date
