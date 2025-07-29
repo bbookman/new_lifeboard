@@ -302,7 +302,7 @@ class TestLimitlessIntegration:
                 yield item
         
         # Mock the sync manager's sync method
-        with patch('sources.sync_manager.LimitlessSyncManager.sync', side_effect=mock_sync):
+        with patch('sources.sync_manager.SyncManager.sync_source', side_effect=mock_sync):
             # Perform ingestion
             result = await ingestion_service.ingest_from_source("limitless", limit=10)
         
@@ -364,7 +364,7 @@ class TestLimitlessIntegration:
                 )
                 yield item
         
-        with patch('sources.sync_manager.LimitlessSyncManager.sync', side_effect=mock_sync):
+        with patch('sources.sync_manager.SyncManager.sync_source', side_effect=mock_sync):
             # Step 1: Ingest from source
             ingest_result = await ingestion_service.ingest_from_source("limitless")
             assert ingest_result.success is True
@@ -461,12 +461,12 @@ class TestLimitlessIntegration:
                 yield item
         
         # First sync
-        with patch('sources.sync_manager.LimitlessSyncManager.sync', side_effect=mock_first_sync):
+        with patch('sources.sync_manager.SyncManager.sync_source', side_effect=mock_first_sync):
             result1 = await ingestion_service.ingest_from_source("limitless")
             assert result1.items_stored == 1
         
         # Incremental sync 
-        with patch('sources.sync_manager.LimitlessSyncManager.sync', side_effect=mock_incremental_sync):
+        with patch('sources.sync_manager.SyncManager.sync_source', side_effect=mock_incremental_sync):
             result2 = await ingestion_service.ingest_from_source("limitless", force_full_sync=False)
             assert result2.items_stored == 1
         
@@ -475,7 +475,7 @@ class TestLimitlessIntegration:
         assert len(items) == 2
         
         # Force full sync should work too
-        with patch('sources.sync_manager.LimitlessSyncManager.sync', side_effect=mock_incremental_sync):
+        with patch('sources.sync_manager.SyncManager.sync_source', side_effect=mock_incremental_sync):
             result3 = await ingestion_service.ingest_from_source("limitless", force_full_sync=True)
             # Will attempt to store both, but they already exist
             assert result3.items_processed == 2

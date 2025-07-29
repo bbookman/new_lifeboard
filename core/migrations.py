@@ -166,6 +166,29 @@ class NewsTableMigration(BaseMigration):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at)")
 
 
+class WeatherTableMigration(BaseMigration):
+    """Add weather table"""
+
+    @property
+    def version(self) -> str:
+        return "005_weather_table"
+
+    @property
+    def description(self) -> str:
+        return "Add weather table for weather data"
+
+    def up(self, conn: sqlite3.Connection) -> None:
+        """Create weather table"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS weather (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                days_date TEXT NOT NULL,
+                response_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+
 class MigrationRunner:
     """Handles database migration execution"""
     
@@ -176,6 +199,7 @@ class MigrationRunner:
             IndexesMigration(),
             ChatMessagesMigration(),
             NewsTableMigration(),
+            WeatherTableMigration(),
         ]
     
     @contextmanager

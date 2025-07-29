@@ -3,18 +3,17 @@ from typing import Dict, Any, Optional, List, AsyncIterator
 from datetime import datetime, timezone, timedelta
 import logging
 
-from sources.limitless import LimitlessSource
-from sources.base import DataItem
+from sources.base import BaseSource, DataItem
 from core.database import DatabaseService
-from config.models import LimitlessConfig
+from config.models import AppConfig
 
 logger = logging.getLogger(__name__)
-
 
 class SyncResult:
     """Result of a sync operation"""
     
-    def __init__(self):
+    def __init__(self, namespace: str):
+        self.namespace = namespace
         self.items_processed = 0
         self.items_updated = 0
         self.items_new = 0
@@ -27,19 +26,17 @@ class SyncResult:
     
     @property
     def duration(self) -> Optional[timedelta]:
-        """Get sync duration"""
         if self.start_time and self.end_time:
             return self.end_time - self.start_time
         return None
     
     @property
     def success(self) -> bool:
-        """Check if sync was successful"""
         return len(self.errors) == 0
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for storage"""
         return {
+            "namespace": self.namespace,
             "items_processed": self.items_processed,
             "items_updated": self.items_updated,
             "items_new": self.items_new,
@@ -53,318 +50,88 @@ class SyncResult:
             "last_timestamp": self.last_timestamp.isoformat() if self.last_timestamp else None
         }
 
-
-class LimitlessSyncManager:
-    """Manages incremental synchronization with Limitless API"""
+class SyncManager:
+    """Manages synchronization for all data sources"""
     
-    SETTINGS_LAST_SYNC = "limitless_last_sync_timestamp"
-    SETTINGS_LAST_ID = "limitless_last_processed_id"
-    SETTINGS_LAST_RESULT = "limitless_last_sync_result"
-    
-    def __init__(self, 
-                 limitless_source: LimitlessSource,
-                 database: DatabaseService,
-                 config: LimitlessConfig):
-        self.limitless_source = limitless_source
+    def __init__(self, database: DatabaseService, app_config: AppConfig):
         self.database = database
-        self.config = config
-        self.overlap_hours = 1  # Fetch 1 hour before last sync to avoid missing data
-    
-    async def get_last_sync_time(self) -> Optional[datetime]:
-        """Get the timestamp of the last successful sync"""
-        timestamp_str = self.database.get_setting(self.SETTINGS_LAST_SYNC)
+        self.app_config = app_config
+        self.sources: Dict[str, BaseSource] = {}
+        self._current_results: Dict[str, SyncResult] = {}
+
+    def register_source(self, source: BaseSource):
+        self.sources[source.namespace] = source
+        logger.info(f"Registered source: {source.namespace}")
+
+    async def get_last_sync_time(self, namespace: str) -> Optional[datetime]:
+        key = f"{namespace}_last_sync_timestamp"
+        timestamp_str = self.database.get_setting(key)
         if timestamp_str:
             try:
                 return datetime.fromisoformat(timestamp_str)
             except (ValueError, TypeError):
-                logger.warning(f"Invalid last sync timestamp: {timestamp_str}")
+                logger.warning(f"Invalid last sync timestamp for {namespace}: {timestamp_str}")
         return None
-    
-    async def set_last_sync_time(self, timestamp: datetime):
-        """Store the timestamp of successful sync"""
-        self.database.set_setting(self.SETTINGS_LAST_SYNC, timestamp.isoformat())
-    
-    async def get_last_processed_id(self) -> Optional[str]:
-        """Get the ID of the last processed lifelog"""
-        return self.database.get_setting(self.SETTINGS_LAST_ID)
-    
-    async def set_last_processed_id(self, lifelog_id: str):
-        """Store the ID of the last processed lifelog"""
-        self.database.set_setting(self.SETTINGS_LAST_ID, lifelog_id)
-    
-    async def get_last_sync_result(self) -> Optional[Dict[str, Any]]:
-        """Get the result of the last sync operation"""
-        return self.database.get_setting(self.SETTINGS_LAST_RESULT)
-    
+
+    async def set_last_sync_time(self, namespace: str, timestamp: datetime):
+        key = f"{namespace}_last_sync_timestamp"
+        self.database.set_setting(key, timestamp.isoformat())
+
+    async def get_last_sync_result(self, namespace: str) -> Optional[Dict[str, Any]]:
+        key = f"{namespace}_last_sync_result"
+        return self.database.get_setting(key)
+
     async def store_sync_result(self, result: SyncResult):
-        """Store sync result for monitoring and debugging"""
-        self.database.set_setting(self.SETTINGS_LAST_RESULT, result.to_dict())
-    
-    def calculate_sync_start_time(self, last_sync: Optional[datetime]) -> Optional[datetime]:
-        """Calculate the start time for incremental sync with overlap"""
-        if last_sync is None:
-            return None  # Full sync
-        
-        # Subtract overlap to ensure we don't miss any data
-        return last_sync - timedelta(hours=self.overlap_hours)
-    
-    def _parse_database_timestamp(self, timestamp_str: str) -> datetime:
-        """
-        Parse timestamp from database, handling both SQLite and ISO formats.
-        
-        SQLite's CURRENT_TIMESTAMP produces '2025-07-22 01:12:40' format without timezone.
-        ISO format from API produces '2025-07-22T01:12:40+00:00' with timezone.
-        
-        Args:
-            timestamp_str: Timestamp string from database
-            
-        Returns:
-            datetime: Timezone-aware datetime object (assumes UTC if no timezone info)
-            
-        Raises:
-            ValueError: If timestamp format is invalid
-        """
-        if not timestamp_str:
-            raise ValueError("Empty timestamp string")
-        
-        try:
-            # First try ISO format parsing (handles timezone-aware strings)
-            return datetime.fromisoformat(timestamp_str)
-        except ValueError:
-            # If ISO parsing fails, try SQLite format (assumes UTC)
-            try:
-                # Parse SQLite CURRENT_TIMESTAMP format: '2025-07-22 01:12:40'
-                naive_dt = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
-                # Assume UTC timezone for SQLite timestamps
-                return naive_dt.replace(tzinfo=timezone.utc)
-            except ValueError:
-                # Try alternative SQLite format with microseconds
-                try:
-                    naive_dt = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
-                    return naive_dt.replace(tzinfo=timezone.utc)
-                except ValueError:
-                    raise ValueError(f"Unable to parse timestamp format: {timestamp_str}")
-    
-    async def should_process_item(self, item: DataItem) -> bool:
-        """Determine if an item should be processed (new or updated)"""
-        # Check if item already exists in database
-        existing_items = self.database.get_data_items_by_ids([f"limitless:{item.source_id}"])
-        
-        if not existing_items:
-            return True  # New item
-        
-        existing_item = existing_items[0]
-        
-        # Compare update timestamps if available
-        if item.updated_at and existing_item.get('updated_at'):
-            try:
-                existing_updated = self._parse_database_timestamp(existing_item['updated_at'])
-                # Process if the item has been updated since we last saw it
-                return item.updated_at > existing_updated
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Invalid timestamp in existing item: {existing_item.get('updated_at')} - Error: {str(e)}")
-        
-        # If we can't compare timestamps, skip to avoid duplicates
-        return False
-    
-    async def perform_incremental_sync(self, limit: int = 1000) -> AsyncIterator[DataItem]:
-        """Perform incremental sync to get only new/updated items"""
-        result = SyncResult()
+        key = f"{result.namespace}_last_sync_result"
+        self.database.set_setting(key, result.to_dict())
+
+    async def sync_source(self, namespace: str, force_full_sync: bool = False, limit: int = 1000) -> AsyncIterator[DataItem]:
+        if namespace not in self.sources:
+            logger.error(f"Source '{namespace}' not registered.")
+            return
+
+        source = self.sources[namespace]
+        result = SyncResult(namespace)
+        self._current_results[namespace] = result
         result.start_time = datetime.now(timezone.utc)
-        self._current_result = result
-        
+
         try:
-            # Check if API key is configured before attempting sync
-            if not self.config.is_api_key_configured():
-                logger.warning("LIMITLESS_API_KEY not configured. Incremental sync skipped. Please set a valid API key in .env file.")
-                result.end_time = datetime.now(timezone.utc)
-                await self.store_sync_result(result)
-                return
-            
-            # Get last sync time and calculate start time with overlap
-            last_sync = await self.get_last_sync_time()
-            sync_start_time = self.calculate_sync_start_time(last_sync)
-            
-            logger.info(f"Starting incremental sync from {sync_start_time or 'beginning'}")
-            
-            # Fetch items from Limitless API
-            processed_count = 0
-            latest_timestamp = None
-            
-            async for item in self.limitless_source.fetch_items(since=sync_start_time, limit=limit):
+            last_sync_time = await self.get_last_sync_time(namespace)
+            sync_start_time = last_sync_time - timedelta(hours=1) if last_sync_time else None
+
+            if force_full_sync or last_sync_time is None:
+                logger.info(f"Starting full sync for {namespace}")
+            else:
+                logger.info(f"Starting incremental sync for {namespace} from {sync_start_time}")
+
+            async for item in source.fetch_items(since=sync_start_time, limit=limit):
                 try:
                     result.items_processed += 1
-                    
-                    # Check if we should process this item
-                    if await self.should_process_item(item):
-                        # This is either a new item or an updated one
-                        existing_items = self.database.get_data_items_by_ids([f"limitless:{item.source_id}"])
-                        
-                        if existing_items:
-                            result.items_updated += 1
-                            logger.debug(f"Updating existing item: {item.source_id}")
-                        else:
-                            result.items_new += 1
-                            logger.debug(f"Processing new item: {item.source_id}")
-                        
-                        yield item  # Yield for processing by ingestion pipeline
-                        
-                        # Track latest timestamp and ID
-                        if item.updated_at:
-                            if latest_timestamp is None or item.updated_at > latest_timestamp:
-                                latest_timestamp = item.updated_at
-                                result.last_timestamp = latest_timestamp
-                        
-                        result.last_processed_id = item.source_id
-                        
+                    # A bit of a hack for weather source
+                    if namespace == 'weather':
+                        yield item
+                        continue
+
+                    existing_items = self.database.get_data_items_by_ids([f"{namespace}:{item.source_id}"])
+                    if not existing_items:
+                        result.items_new += 1
+                        yield item
                     else:
                         result.items_skipped += 1
-                        logger.debug(f"Skipping unchanged item: {item.source_id}")
-                    
-                    processed_count += 1
-                    
-                    # Update progress periodically
-                    if processed_count % 100 == 0:
-                        logger.info(f"Processed {processed_count} items...")
-                        
-                        # Store intermediate progress
-                        if result.last_processed_id:
-                            await self.set_last_processed_id(result.last_processed_id)
-                    
+
                 except Exception as e:
-                    error_msg = f"Error processing item {item.source_id}: {str(e)}"
+                    error_msg = f"Error processing item in {namespace}: {str(e)}"
                     logger.error(error_msg)
                     result.errors.append(error_msg)
-                    continue
-            
-            # Update sync timestamps on successful completion - only if we actually processed data
-            if result.success and result.items_processed > 0:
-                # Use the latest data timestamp, not sync completion time
-                if result.last_timestamp:
-                    await self.set_last_sync_time(result.last_timestamp)
-                    logger.info(f"Updated last sync time to latest data timestamp: {result.last_timestamp}")
-                else:
-                    # Fallback to sync completion time if no data timestamps available
-                    sync_completion_time = datetime.now(timezone.utc)
-                    await self.set_last_sync_time(sync_completion_time)
-                    logger.info(f"Updated last sync time to completion time: {sync_completion_time}")
-                
-                if result.last_processed_id:
-                    await self.set_last_processed_id(result.last_processed_id)
-                
-                logger.info(f"Incremental sync completed: {result.items_new} new, "
-                           f"{result.items_updated} updated, {result.items_skipped} skipped")
-            
-        except Exception as e:
-            error_msg = f"Sync failed: {str(e)}"
-            logger.error(error_msg)
-            result.errors.append(error_msg)
-        
-        finally:
-            result.end_time = datetime.now(timezone.utc)
-            await self.store_sync_result(result)
-    
-    async def perform_full_sync(self, limit: int = 1000) -> AsyncIterator[DataItem]:
-        """Perform full sync (for initial setup or recovery)"""
-        result = SyncResult()
-        result.start_time = datetime.now(timezone.utc)
-        self._current_result = result
-        
-        try:
-            # Check if API key is configured before attempting sync
-            if not self.config.is_api_key_configured():
-                logger.warning("LIMITLESS_API_KEY not configured. Full sync skipped. Please set a valid API key in .env file.")
-                result.end_time = datetime.now(timezone.utc)
-                await self.store_sync_result(result)
-                return
-            
-            logger.info("Starting full sync")
-            
-            processed_count = 0
-            
-            async for item in self.limitless_source.fetch_items(limit=limit):
-                try:
-                    result.items_processed += 1
-                    
-                    # In full sync, we process everything
-                    existing_items = self.database.get_data_items_by_ids([f"limitless:{item.source_id}"])
-                    
-                    if existing_items:
-                        result.items_updated += 1
-                    else:
-                        result.items_new += 1
-                    
-                    yield item
-                    
-                    result.last_processed_id = item.source_id
-                    if item.updated_at:
-                        result.last_timestamp = item.updated_at
-                    
-                    processed_count += 1
-                    
-                    if processed_count % 100 == 0:
-                        logger.info(f"Processed {processed_count} items in full sync...")
-                
-                except Exception as e:
-                    error_msg = f"Error processing item {item.source_id}: {str(e)}"
-                    logger.error(error_msg)
-                    result.errors.append(error_msg)
-                    continue
-            
-            # Update sync state on successful completion
+
             if result.success:
-                # Use the latest data timestamp, not sync completion time
-                if result.last_timestamp:
-                    await self.set_last_sync_time(result.last_timestamp)
-                    logger.info(f"Updated last sync time to latest data timestamp: {result.last_timestamp}")
-                else:
-                    # Fallback to sync completion time if no data timestamps available
-                    sync_completion_time = datetime.now(timezone.utc)
-                    await self.set_last_sync_time(sync_completion_time)
-                    logger.info(f"Updated last sync time to completion time: {sync_completion_time}")
-                
-                if result.last_processed_id:
-                    await self.set_last_processed_id(result.last_processed_id)
-                
-                logger.info(f"Full sync completed: {result.items_new} new, {result.items_updated} updated")
-        
+                await self.set_last_sync_time(namespace, result.start_time)
+
         except Exception as e:
-            error_msg = f"Full sync failed: {str(e)}"
+            error_msg = f"Sync failed for {namespace}: {str(e)}"
             logger.error(error_msg)
             result.errors.append(error_msg)
-        
         finally:
             result.end_time = datetime.now(timezone.utc)
             await self.store_sync_result(result)
-    
-    async def sync(self, force_full_sync: bool = False, limit: int = 1000) -> AsyncIterator[DataItem]:
-        """Perform sync operation (incremental by default, full if requested)"""
-        last_sync = await self.get_last_sync_time()
-        
-        if force_full_sync or last_sync is None:
-            async for item in self.perform_full_sync(limit=limit):
-                yield item
-        else:
-            async for item in self.perform_incremental_sync(limit=limit):
-                yield item
-    
-    def get_current_sync_result(self) -> Optional[SyncResult]:
-        """Get the current sync result (for the ongoing sync)"""
-        return getattr(self, '_current_result', None)
-    
-    async def get_sync_status(self) -> Dict[str, Any]:
-        """Get current sync status information"""
-        last_sync = await self.get_last_sync_time()
-        last_result = await self.get_last_sync_result()
-        last_id = await self.get_last_processed_id()
-        
-        return {
-            "last_sync_time": last_sync.isoformat() if last_sync else None,
-            "last_processed_id": last_id,
-            "last_sync_result": last_result,
-            "is_initial_sync": last_sync is None,
-            "overlap_hours": self.overlap_hours,
-            "next_sync_recommended": last_sync is None or 
-                                   (datetime.now(timezone.utc) - last_sync).total_seconds() > 
-                                   (self.config.sync_interval_hours * 3600)
-        }
+            del self._current_results[namespace]

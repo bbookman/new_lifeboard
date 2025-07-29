@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone, timedelta
 import tempfile
 
-from sources.sync_manager import LimitlessSyncManager, SyncResult
+from sources.sync_manager import SyncManager, SyncResult
 from sources.limitless import LimitlessSource
 from sources.base import DataItem
 from core.database import DatabaseService
@@ -49,11 +49,11 @@ def mock_limitless_source():
 @pytest.fixture
 def sync_manager(mock_limitless_source, temp_db, limitless_config):
     """Create sync manager for testing"""
-    return LimitlessSyncManager(
-        limitless_source=mock_limitless_source,
-        database=temp_db,
-        config=limitless_config
-    )
+    from config.models import AppConfig
+    app_config = AppConfig(limitless=limitless_config)
+    manager = SyncManager(database=temp_db, app_config=app_config)
+    manager.register_source(mock_limitless_source)
+    return manager
 
 
 @pytest.fixture
@@ -94,7 +94,8 @@ class TestSyncResult:
     
     def test_sync_result_initialization(self):
         """Test SyncResult initialization"""
-        result = SyncResult()
+        result = SyncResult("test_namespace")
+        assert result.namespace == "test_namespace"
         assert result.items_processed == 0
         assert result.items_new == 0
         assert result.items_updated == 0
@@ -105,7 +106,7 @@ class TestSyncResult:
     
     def test_sync_result_duration(self):
         """Test duration calculation"""
-        result = SyncResult()
+        result = SyncResult("test_namespace")
         start = datetime.now(timezone.utc)
         end = start + timedelta(minutes=5)
         
