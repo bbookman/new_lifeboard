@@ -271,7 +271,7 @@ class StartupService:
                     logger.info("Weather source registered successfully")
                 except Exception as e:
                     error_msg = f"Failed to register Weather source: {str(e)}"
-                    logger.warning(error_msg)
+                    logger.error(error_msg)
                     startup_result["errors"].append(error_msg)
             else:
                 if not self.config.weather.enabled:
@@ -544,8 +544,21 @@ def set_startup_service(startup_service: StartupService):
 
 async def initialize_application(config: AppConfig, enable_auto_sync: bool = True) -> Dict[str, Any]:
     """Initialize the application with the given configuration"""
+    import os
+    
     logger.info("STARTUP: *** BEGINNING APPLICATION INITIALIZATION ***")
+    
+    # Check for test mode environment variable
+    test_mode = os.getenv("LIFEBOARD_TEST_MODE", "false").lower() == "true"
+    disable_sync = os.getenv("LIFEBOARD_DISABLE_SYNC", "false").lower() == "true"
+    
+    if test_mode or disable_sync:
+        logger.warning("STARTUP: *** TEST MODE ENABLED - DISABLING AUTO-SYNC ***")
+        enable_auto_sync = False
+    
     logger.info(f"STARTUP: enable_auto_sync = {enable_auto_sync}")
+    logger.info(f"STARTUP: test_mode = {test_mode}")
+    logger.info(f"STARTUP: disable_sync = {disable_sync}")
     
     startup_service = StartupService(config)
     set_startup_service(startup_service)

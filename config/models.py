@@ -390,6 +390,7 @@ class TwitterConfig(BaseModel):
     """Twitter source configuration"""
     enabled: bool = True
     data_path: Optional[str] = None
+    delete_after_import: bool = False
     sync_interval_hours: int = 24
 
     def is_configured(self) -> bool:

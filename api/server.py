@@ -9,6 +9,7 @@ import logging
 import os
 import signal
 import sys
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -104,6 +105,34 @@ def configure_route_dependencies():
     # Note: Weather routes use their own dependency injection pattern
 
 
+# Global task monitor
+def setup_asyncio_exception_handler():
+    """Set up global asyncio exception handler to catch unhandled exceptions"""
+    def exception_handler(loop, context):
+        exception = context.get('exception')
+        if exception:
+            logger.error(f"ASYNCIO: Unhandled exception in asyncio task: {exception}")
+            logger.error(f"ASYNCIO: Exception context: {context}")
+            logger.exception("ASYNCIO: Full exception details:")
+        else:
+            logger.error(f"ASYNCIO: Unhandled error in asyncio: {context}")
+    
+    loop = asyncio.get_event_loop()
+    loop.set_exception_handler(exception_handler)
+    logger.info("ASYNCIO: Exception handler configured")
+
+def monitor_running_tasks():
+    """Monitor and log all currently running asyncio tasks"""
+    try:
+        tasks = asyncio.all_tasks()
+        logger.info(f"ASYNCIO: Currently running {len(tasks)} tasks")
+        for i, task in enumerate(tasks):
+            logger.debug(f"ASYNCIO: Task {i+1}: {task.get_name()} - {'done' if task.done() else 'running'}")
+            if task.done() and task.exception():
+                logger.error(f"ASYNCIO: Task {task.get_name()} failed with exception: {task.exception()}")
+    except Exception as e:
+        logger.error(f"ASYNCIO: Error monitoring tasks: {e}")
+
 # Lifespan context manager for FastAPI
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -114,6 +143,9 @@ async def lifespan(app: FastAPI):
         logger.info("LIFESPAN: Starting Lifeboard API server...")
         logger.info(f"LIFESPAN: Current working directory: {os.getcwd()}")
         logger.info(f"LIFESPAN: Process ID: {os.getpid()}")
+        
+        # Setup asyncio monitoring
+        setup_asyncio_exception_handler()
         
         # Initialize application
         from services.startup import initialize_application
@@ -135,11 +167,31 @@ async def lifespan(app: FastAPI):
         logger.exception("LIFESPAN: Full exception details:")
     
     logger.info("LIFESPAN: *** YIELD POINT REACHED - Server should now stay running ***")
+    monitor_running_tasks()
     
     try:
         logger.info("LIFESPAN: Entering yield block - server will run until signal received")
-        yield  # Server runs here
-        logger.info("LIFESPAN: Yield block exited normally (this should not happen unless shutdown)")
+        
+        # Create a monitoring task to track asyncio health
+        async def monitor_loop():
+            while True:
+                await asyncio.sleep(30)  # Monitor every 30 seconds
+                monitor_running_tasks()
+                logger.debug("LIFESPAN: Monitoring loop - server still running")
+        
+        monitor_task = asyncio.create_task(monitor_loop(), name="lifespan_monitor")
+        
+        try:
+            yield  # Server runs here
+            logger.warning("LIFESPAN: Yield block exited normally (this should not happen unless shutdown)")
+        finally:
+            logger.info("LIFESPAN: Cancelling monitoring task...")
+            monitor_task.cancel()
+            try:
+                await monitor_task
+            except asyncio.CancelledError:
+                logger.info("LIFESPAN: Monitoring task cancelled successfully")
+    
     except KeyboardInterrupt as e:
         logger.warning(f"LIFESPAN: KeyboardInterrupt received: {e}")
     except SystemExit as e:
@@ -149,6 +201,7 @@ async def lifespan(app: FastAPI):
         logger.exception("LIFESPAN: Full yield exception details:")
     finally:
         logger.info("LIFESPAN: *** YIELD PHASE ENDED - Shutdown triggered ***")
+        monitor_running_tasks()
     
     # Shutdown
     try:
@@ -185,6 +238,7 @@ app.include_router(calendar.router)
 app.include_router(embeddings.router)
 app.include_router(system.router)
 app.include_router(weather.router)
+app.include_router(sync.router)
 
 
 # Global error handlers

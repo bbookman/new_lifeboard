@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Lifeboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #1c1e21;
+            margin: 0;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            font-size: 2rem;
+            color: #1877f2;
+            border-bottom: 1px solid #dddfe2;
+            padding-bottom: 1rem;
+            margin-top: 0;
+        }
+        .settings-section {
+            margin-top: 2rem;
+        }
+        h2 {
+            font-size: 1.5rem;
+            color: #333;
+        }
+        p {
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #606770;
+        }
+        .import-button {
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .import-button:hover {
+            background-color: #166fe5;
+        }
+        #import-status {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #606770;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Settings</h1>
+        <div class="settings-section">
+            <h2>Data Imports</h2>
+            <p>
+                To import your Twitter data, make sure your exported Twitter archive is placed in the directory
+                specified in your <code>.env</code> file (<code>PATH_TO_TWITTER_DATA</code>). Once the files are in place,
+                click the button below to begin the import.
+            </p>
+            <button id="import-twitter-btn" class="import-button">Import Twitter Archive</button>
+            <div id="import-status"></div>
+        </div>
+    </div>
+</body>
+</html>

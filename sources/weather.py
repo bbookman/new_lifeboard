@@ -110,21 +110,11 @@ class WeatherSource(BaseSource):
             logger.warning("Weather data is missing 'readTime'")
             return
 
-        # Extract temperature data from the first day's forecast
-        temperature_max = None
-        temperature_min = None
-        
-        forecast_days = data['forecastDaily'].get('days', [])
-        if forecast_days:
-            first_day = forecast_days[0]
-            temperature_max = first_day.get('temperatureMax')
-            temperature_min = first_day.get('temperatureMin')
-
         with self.db_service.get_connection() as conn:
             conn.execute("""
-                INSERT INTO weather (days_date, response_json, temperature_max, temperature_min)
-                VALUES (?, ?, ?, ?)
-            """, (days_date, json.dumps(data), temperature_max, temperature_min))
+                INSERT INTO weather (days_date, response_json)
+                VALUES (?, ?)
+            """, (days_date, json.dumps(data)))
             conn.commit()
 
     async def get_item(self, source_id: str) -> Optional[DataItem]:

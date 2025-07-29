@@ -1,78 +1,112 @@
 import json
 import os
+import re
+import shutil
 from datetime import datetime
-from typing import List, Dict, Any, Optional, AsyncIterator
+from typing import List, Dict, Any, Optional
 
-from sources.base import BaseSource, DataItem
+from config.models import TwitterConfig
+from core.database import DatabaseService
+from sources.base import BaseSource
+import logging
 
-def _parse_twitter_export(data_path: str) -> List[Dict[str, Any]]:
-    """
-    Parses a Twitter export directory to extract tweet information.
-    """
-    tweets_file = os.path.join(data_path, 'data', 'tweet.js')
-    if not os.path.exists(tweets_file):
-        return []
-
-    with open(tweets_file, 'r') as f:
-        content = f.read()
-        json_content = content.split('=', 1)[1].strip()
-        tweets_data = json.loads(json_content)
-
-    parsed_tweets = []
-    for tweet_data in tweets_data:
-        tweet = tweet_data.get('tweet', {})
-        media_urls = []
-        if 'entities' in tweet and 'media' in tweet['entities']:
-            for media_item in tweet['entities']['media']:
-                media_urls.append(media_item.get('media_url_https'))
-
-        parsed_tweets.append({
-            'tweet_id': tweet.get('id'),
-            'created_at': tweet.get('created_at'),
-            'text': tweet.get('full_text'),
-            'media_urls': media_urls
-        })
-
-    return parsed_tweets
+logger = logging.getLogger(__name__)
 
 class TwitterSource(BaseSource):
-    """
-    Data source for Twitter exports.
-    """
-    def __init__(self, namespace: str, data_path: str):
-        super().__init__(namespace)
-        self.data_path = data_path
+    """Twitter data source"""
 
-    async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
-        """Fetch data items from the Twitter export."""
-        tweets = _parse_twitter_export(self.data_path)
+    def __init__(self, config: TwitterConfig, db_service: DatabaseService):
+        super().__init__("twitter")
+        self.config = config
+        self.db_service = db_service
 
-        for tweet in tweets:
-            created_at = datetime.strptime(tweet['created_at'], '%a %b %d %H:%M:%S %z %Y')
-            if since and created_at < since:
+    async def fetch_data(self) -> List[Dict[str, Any]]:
+        """Fetch and parse Twitter data"""
+        if not self.config.is_configured():
+            logger.warning("Twitter data path not configured. Skipping fetch.")
+            return []
+
+        tweet_js_path = os.path.join(self.config.data_path, 'data', 'tweet.js')
+        if not os.path.exists(tweet_js_path):
+            logger.warning(f"tweet.js not found at {tweet_js_path}. Skipping fetch.")
+            return []
+
+        try:
+            with open(tweet_js_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Remove JavaScript wrapper
+                if 'window.YTD.tweet.part0 = [' in content:
+                    content = content.split('window.YTD.tweet.part0 = [', 1)[1]
+                    content = content.rsplit(']', 1)[0]
+
+                tweets = json.loads(f'[{content}]')
+
+            parsed_tweets = self._parse_tweets(tweets)
+            await self._store_tweets(parsed_tweets)
+
+            if self.config.delete_after_import:
+                logger.info(f"Deleting Twitter data directory: {self.config.data_path}")
+                shutil.rmtree(self.config.data_path)
+
+            return parsed_tweets
+        except Exception as e:
+            logger.error(f"Error processing Twitter data: {e}")
+            return []
+
+    def _parse_tweets(self, tweets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Parse raw tweet objects"""
+        parsed_tweets = []
+        for item in tweets:
+            tweet = item.get('tweet', {})
+            tweet_id = tweet.get('id_str')
+            if not tweet_id:
                 continue
 
-            yield DataItem(
-                namespace=self.namespace,
-                source_id=tweet['tweet_id'],
-                content=tweet['text'],
-                metadata={
-                    'created_at': tweet['created_at'],
-                    'media_urls': tweet['media_urls']
-                },
-                created_at=created_at
-            )
+            created_at_str = tweet.get('created_at')
+            created_at = datetime.strptime(created_at_str, '%a %b %d %H:%M:%S +0000 %Y')
 
-    async def get_item(self, source_id: str) -> Optional[DataItem]:
-        """Get a specific item by source ID."""
-        # This is not easily implemented for a file-based export,
-        # so we'll leave it as not implemented for now.
-        return None
+            media_urls = []
+            if 'media' in tweet.get('entities', {}):
+                for media in tweet['entities']['media']:
+                    media_urls.append(media.get('media_url_https'))
 
-    def get_source_type(self) -> str:
-        """Return the source type identifier."""
-        return "twitter"
+            parsed_tweets.append({
+                'tweet_id': tweet_id,
+                'created_at': created_at.isoformat(),
+                'days_date': created_at.strftime('%Y-%m-%d'),
+                'text': tweet.get('full_text'),
+                'media_urls': json.dumps(media_urls)
+            })
+        return parsed_tweets
 
-    async def test_connection(self) -> bool:
-        """Test if the source is accessible."""
-        return os.path.exists(os.path.join(self.data_path, 'data', 'tweet.js'))
+    async def _store_tweets(self, tweets: List[Dict[str, Any]]):
+        """Store parsed tweets in the database"""
+        if not tweets:
+            return
+
+        with self.db_service.get_connection() as conn:
+            cursor = conn.cursor()
+            for tweet in tweets:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO tweets (tweet_id, created_at, days_date, text, media_urls)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    tweet['tweet_id'],
+                    tweet['created_at'],
+                    tweet['days_date'],
+                    tweet['text'],
+                    tweet['media_urls']
+                ))
+            conn.commit()
+            logger.info(f"Stored {len(tweets)} tweets in the database.")
+
+    async def get_data_for_date(self, date: str) -> List[Dict[str, Any]]:
+        """Get tweets for a specific date"""
+        with self.db_service.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT tweet_id, created_at, text, media_urls
+                FROM tweets
+                WHERE days_date = ?
+                ORDER BY created_at DESC
+            """, (date,))
+            return [dict(row) for row in cursor.fetchall()]
