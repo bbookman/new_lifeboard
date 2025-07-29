@@ -3,10 +3,12 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
 from core.database import DatabaseService
+from config.models import AppConfig
 
 class WeatherService:
-    def __init__(self, db_service: DatabaseService):
+    def __init__(self, db_service: DatabaseService, config: AppConfig):
         self.db_service = db_service
+        self.config = config
 
     def get_latest_weather(self) -> Optional[Dict[str, Any]]:
         """Get the most recent weather data"""
@@ -110,6 +112,9 @@ class WeatherService:
         
         return forecast_days
 
+    def _celsius_to_fahrenheit(self, temp_c: float) -> float:
+        return (temp_c * 9/5) + 32
+
     def parse_weather_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if not data or 'forecastDaily' not in data:
             return {}
@@ -121,11 +126,20 @@ class WeatherService:
         }
 
         for day_forecast in data['forecastDaily'].get('days', []):
+            temp_max = day_forecast.get('temperatureMax')
+            temp_min = day_forecast.get('temperatureMin')
+
+            if self.config.weather.units == 'standard':
+                if temp_max is not None:
+                    temp_max = self._celsius_to_fahrenheit(temp_max)
+                if temp_min is not None:
+                    temp_min = self._celsius_to_fahrenheit(temp_min)
+
             parsed_day = {
                 "forecastStart": day_forecast.get('forecastStart'),
                 "conditionCode": day_forecast.get('conditionCode'),
-                "temperatureMax": day_forecast.get('temperatureMax'),
-                "temperatureMin": day_forecast.get('temperatureMin'),
+                "temperatureMax": temp_max,
+                "temperatureMin": temp_min,
                 "daytimeForecast": {
                     "conditionCode": day_forecast.get('daytimeForecast', {}).get('conditionCode')
                 }

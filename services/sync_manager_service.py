@@ -59,24 +59,52 @@ class SyncManagerService(BaseService):
         # Create sync function
         async def sync_function():
             """Async function to perform sync for this source"""
+            import asyncio
+            import traceback
+            
             try:
-                logger.info(f"Starting scheduled sync for {namespace}")
-                result = await self.ingestion_service.ingest_from_source(
-                    namespace=namespace,
-                    force_full_sync=force_full_sync,
-                    limit=1000
-                )
+                logger.info(f"SYNC_FUNCTION: Starting scheduled sync for {namespace}")
+                logger.info(f"SYNC_FUNCTION: Current asyncio tasks before sync: {len(asyncio.all_tasks())}")
                 
-                logger.info(f"Scheduled sync completed for {namespace}: "
-                           f"{result.items_processed} processed, "
-                           f"{result.items_stored} stored, "
-                           f"{result.errors} errors")
-                
-                return result.to_dict()
+                # Add timeout protection
+                try:
+                    result = await asyncio.wait_for(
+                        self.ingestion_service.ingest_from_source(
+                            namespace=namespace,
+                            force_full_sync=force_full_sync,
+                            limit=1000
+                        ),
+                        timeout=300.0  # 5 minute timeout
+                    )
+                    
+                    logger.info(f"SYNC_FUNCTION: Scheduled sync completed for {namespace}: "
+                               f"{result.items_processed} processed, "
+                               f"{result.items_stored} stored, "
+                               f"{result.errors} errors")
+                               
+                    logger.info(f"SYNC_FUNCTION: Current asyncio tasks after sync: {len(asyncio.all_tasks())}")
+                    return result.to_dict()
+                               
+                except asyncio.TimeoutError:
+                    logger.error(f"SYNC_FUNCTION: Sync for {namespace} timed out after 5 minutes")
+                    # Return a failure result instead of raising
+                    return {"success": False, "error": "timeout", "items_processed": 0, "items_stored": 0}
+                except Exception as sync_error:
+                    logger.error(f"SYNC_FUNCTION: Sync operation failed for {namespace}: {sync_error}")
+                    logger.error(f"SYNC_FUNCTION: Exception type: {type(sync_error).__name__}")
+                    logger.error(f"SYNC_FUNCTION: Full traceback: {traceback.format_exc()}")
+                    # Return a failure result instead of raising
+                    return {"success": False, "error": str(sync_error), "items_processed": 0, "items_stored": 0}
                 
             except Exception as e:
-                logger.error(f"Scheduled sync failed for {namespace}: {e}")
-                raise
+                logger.error(f"SYNC_FUNCTION: Scheduled sync failed for {namespace}: {e}")
+                logger.error(f"SYNC_FUNCTION: Exception type: {type(e).__name__}")
+                logger.error(f"SYNC_FUNCTION: Full traceback: {traceback.format_exc()}")
+                
+                # Don't re-raise the exception to prevent it from bubbling up and potentially
+                # causing the server to shut down
+                logger.error(f"SYNC_FUNCTION: Swallowing exception for {namespace} to prevent server shutdown")
+                return {"success": False, "error": str(e), "items_processed": 0, "items_stored": 0}
         
         # Add job to scheduler
         job_id = self.scheduler.add_job(

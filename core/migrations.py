@@ -189,6 +189,30 @@ class WeatherTableMigration(BaseMigration):
         """)
 
 
+class TweetsTableMigration(BaseMigration):
+    """Add tweets table"""
+
+    @property
+    def version(self) -> str:
+        return "006_tweets_table"
+
+    @property
+    def description(self) -> str:
+        return "Add tweets table for Twitter data"
+
+    def up(self, conn: sqlite3.Connection) -> None:
+        """Create tweets table"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tweets (
+                tweet_id TEXT PRIMARY KEY,
+                created_at TEXT,
+                days_date TEXT,
+                text TEXT,
+                media_urls TEXT
+            )
+        """)
+
+
 class MigrationRunner:
     """Handles database migration execution"""
     
@@ -200,6 +224,7 @@ class MigrationRunner:
             ChatMessagesMigration(),
             NewsTableMigration(),
             WeatherTableMigration(),
+            TweetsTableMigration(),
         ]
     
     @contextmanager

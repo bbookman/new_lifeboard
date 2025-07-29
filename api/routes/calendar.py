@@ -43,7 +43,8 @@ def get_database_service(startup_service: StartupService = Depends(lambda: get_s
 
 def get_weather_service(database: DatabaseService = Depends(get_database_service)) -> WeatherService:
     """Get weather service instance"""
-    return WeatherService(database)
+    config = get_config()
+    return WeatherService(database, config)
 
 
 def get_news_service(database: DatabaseService = Depends(get_database_service)) -> NewsService:
@@ -184,9 +185,8 @@ async def get_enhanced_day_data(
         markdown_content = database.get_markdown_by_date(date)
         data_items = database.get_data_items_by_date(date)
         
-        # Get weather data specifically for this date only
-        weather_for_date = weather_service.get_weather_for_specific_date(date)
-        weather_data = [weather_for_date] if weather_for_date else []
+        # Get 5-day weather forecast starting from this date
+        weather_data = weather_service.get_weather_for_date_range(date, 5)
         
         # Get news data for the date
         news_data = news_service.get_news_by_date(date)
@@ -248,6 +248,12 @@ async def day_view(
     except Exception as e:
         logger.error(f"Error serving day view for {date}: {e}")
         raise HTTPException(status_code=500, detail="Failed to load day view")
+
+
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_view(request: Request):
+    """Serve the settings page"""
+    return templates.TemplateResponse("settings.html", {"request": request})
 
 
 @router.get("/api/month/{year}/{month}")

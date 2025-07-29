@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LimitlessConfig, NewsConfig, WeatherConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
+    LimitlessConfig, NewsConfig, WeatherConfig, TwitterConfig, SearchConfig, SchedulerConfig, AutoSyncConfig, LoggingConfig,
     LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
 )
 
@@ -150,6 +150,12 @@ def create_production_config() -> AppConfig:
             sync_interval_hours=int(os.getenv("WEATHER__SYNC_INTERVAL_HOURS", "6")),
             rate_limit_max_delay=int(os.getenv("WEATHER_RATE_LIMIT_MAX_DELAY", "300")),
             respect_retry_after=os.getenv("WEATHER_RESPECT_RETRY_AFTER", "true").lower() == "true"
+        ),
+        twitter=TwitterConfig(
+            enabled=os.getenv("TWITTER_ENABLED", "true").lower() == "true",
+            data_path=os.getenv("PATH_TO_TWITTER_DATA"),
+            delete_after_import=os.getenv("DELETE_AFTER_IMPORT", "false").lower() == "true",
+            sync_interval_hours=int(os.getenv("TWITTER_SYNC_INTERVAL_HOURS", "24"))
         ),
         search=SearchConfig(
             default_limit=int(os.getenv("SEARCH_DEFAULT_LIMIT", "20")),
