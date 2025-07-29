@@ -295,12 +295,15 @@
             text-decoration: underline;
             color: #0056b3;
         }
-        
-        .news-meta {
-            font-size: 12px;
-            color: #6c757d;
-            margin-top: 4px;
+
+        .news-snippet {
+            font-size: 14px;
+            color: #555;
+            margin-top: 5px;
+            line-height: 1.5;
         }
+        
+        
         
         /* Limitless Section Styles */
         .limitless-section {
@@ -573,14 +576,15 @@
             const li = document.createElement('li');
             li.className = 'news-item';
             
-            const publishedDate = article.published_datetime_utc ? 
-                new Date(article.published_datetime_utc).toLocaleDateString() : '';
-            
+            const snippetHTML = article.snippet 
+                ? `<div class="news-snippet">${escapeHtml(article.snippet)}</div>` 
+                : '';
+
             li.innerHTML = `
                 <a href="${article.link}" target="_blank" class="news-title" rel="noopener noreferrer">
                     ${escapeHtml(article.title)}
                 </a>
-                ${publishedDate ? `<div class="news-meta">Published: ${publishedDate}</div>` : ''}
+                ${snippetHTML}
             `;
             
             return li;

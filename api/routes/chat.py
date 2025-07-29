@@ -6,7 +6,7 @@ conversation management.
 """
 
 import logging
-from fastapi import APIRouter, Depends, Request, Form
+from fastapi import APIRouter, Depends, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -21,9 +21,19 @@ router = APIRouter(prefix="", tags=["chat"])
 templates = None
 
 
+# Global chat service instance - will be set by main server during startup
+_chat_service_instance = None
+
 def get_chat_service_dependency():
-    """This will be set by the main server module"""
-    raise NotImplementedError("Chat service dependency not configured")
+    """Get the chat service instance"""
+    if _chat_service_instance is None:
+        raise HTTPException(status_code=503, detail="Chat service not available")
+    return _chat_service_instance
+
+def set_chat_service_instance(chat_service):
+    """Set the chat service instance (called by main server)"""
+    global _chat_service_instance
+    _chat_service_instance = chat_service
 
 
 def set_templates(template_instance):
