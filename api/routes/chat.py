@@ -49,13 +49,31 @@ async def chat_page(
     chat_service: ChatService = Depends(get_chat_service_dependency)
 ):
     """Get the chat page with recent history"""
-    # Get recent chat history
-    history = chat_service.get_chat_history(limit=10)
+    # Validate templates is available
+    if templates is None:
+        logger.error("Templates not configured for chat endpoint")
+        raise HTTPException(status_code=503, detail="Templates not configured")
     
-    return templates.TemplateResponse("chat.html", {
-        "request": request,
-        "history": history
-    })
+    # Validate chat service is available  
+    if chat_service is None:
+        logger.error("Chat service not available for chat endpoint")
+        raise HTTPException(status_code=503, detail="Chat service not available")
+    
+    try:
+        # Get recent chat history
+        history = chat_service.get_chat_history(limit=10)
+        logger.debug(f"Retrieved {len(history)} chat history items")
+        
+        # Render template
+        return templates.TemplateResponse("chat.html", {
+            "request": request,
+            "history": history
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {e}")
+        logger.exception("Full exception details:")
+        raise
 
 
 @router.post("/chat", response_class=HTMLResponse)
