@@ -254,22 +254,21 @@ class DatabaseService:
             if timestamp_str.endswith('Z'):
                 # UTC timestamp
                 dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-            elif '+' in timestamp_str or timestamp_str.endswith(tuple(f"-{i:02d}:00" for i in range(24))):
+            elif '+' in timestamp_str or '-' in timestamp_str[10:]:
                 # Already has timezone info
                 dt = datetime.fromisoformat(timestamp_str)
             else:
                 # Assume UTC if no timezone info
                 dt = datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
-            
-            # Convert to user timezone
-            if user_timezone != "UTC":
-                try:
-                    user_tz = pytz.timezone(user_timezone)
-                    dt = dt.astimezone(user_tz)
-                except Exception:
-                    # Fallback to UTC if timezone conversion fails
-                    pass
-            
+
+            # Always convert to the target timezone
+            try:
+                target_tz = pytz.timezone(user_timezone)
+                dt = dt.astimezone(target_tz)
+            except Exception:
+                # If target timezone is invalid, convert to UTC as a fallback
+                dt = dt.astimezone(pytz.utc)
+
             # Return date in YYYY-MM-DD format
             return dt.strftime('%Y-%m-%d')
             
