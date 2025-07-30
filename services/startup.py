@@ -449,39 +449,105 @@ class StartupService:
         return health_status
     
     async def shutdown_application(self):
-        """Gracefully shutdown all services"""
+        """Gracefully shutdown all services with timeout protection"""
         logger.info("SHUTDOWN_SERVICE: *** Starting application shutdown ***")
         
+        shutdown_tasks = []
+        shutdown_errors = []
+        
         try:
-            # Stop sync manager and scheduler
+            # Stop sync manager and scheduler first (most critical)
             if self.sync_manager:
                 logger.info("SHUTDOWN_SERVICE: Stopping sync manager...")
-                await self.sync_manager.stop_auto_sync()
-                logger.info("SHUTDOWN_SERVICE: Sync manager stopped")
+                try:
+                    await asyncio.wait_for(self.sync_manager.stop_auto_sync(), timeout=10.0)
+                    logger.info("SHUTDOWN_SERVICE: Sync manager stopped successfully")
+                except asyncio.TimeoutError:
+                    logger.warning("SHUTDOWN_SERVICE: Sync manager shutdown timeout - forcing stop")
+                    shutdown_errors.append("Sync manager shutdown timeout")
+                except Exception as e:
+                    logger.error(f"SHUTDOWN_SERVICE: Error stopping sync manager: {e}")
+                    shutdown_errors.append(f"Sync manager error: {e}")
             else:
                 logger.info("SHUTDOWN_SERVICE: No sync manager to stop")
+            
+            # Stop scheduler if it exists
+            if self.scheduler:
+                logger.info("SHUTDOWN_SERVICE: Stopping scheduler...")
+                try:
+                    await asyncio.wait_for(self.scheduler.stop(), timeout=5.0)
+                    logger.info("SHUTDOWN_SERVICE: Scheduler stopped successfully")
+                except asyncio.TimeoutError:
+                    logger.warning("SHUTDOWN_SERVICE: Scheduler shutdown timeout")
+                    shutdown_errors.append("Scheduler shutdown timeout")
+                except Exception as e:
+                    logger.error(f"SHUTDOWN_SERVICE: Error stopping scheduler: {e}")
+                    shutdown_errors.append(f"Scheduler error: {e}")
             
             # Close chat service
             if self.chat_service:
                 logger.info("SHUTDOWN_SERVICE: Closing chat service...")
-                await self.chat_service.close()
-                logger.info("SHUTDOWN_SERVICE: Chat service closed")
+                try:
+                    await asyncio.wait_for(self.chat_service.close(), timeout=5.0)
+                    logger.info("SHUTDOWN_SERVICE: Chat service closed successfully")
+                except asyncio.TimeoutError:
+                    logger.warning("SHUTDOWN_SERVICE: Chat service shutdown timeout")
+                    shutdown_errors.append("Chat service shutdown timeout")
+                except Exception as e:
+                    logger.error(f"SHUTDOWN_SERVICE: Error closing chat service: {e}")
+                    shutdown_errors.append(f"Chat service error: {e}")
             else:
                 logger.info("SHUTDOWN_SERVICE: No chat service to close")
             
-            # Close other services
+            # Database cleanup (uses context managers, no explicit cleanup needed)
+            if self.database:
+                logger.info("SHUTDOWN_SERVICE: Database uses context managers - no explicit cleanup needed")
+            else:
+                logger.info("SHUTDOWN_SERVICE: No database service to cleanup")
+            
+            # Clean up vector store
             if self.vector_store:
                 logger.info("SHUTDOWN_SERVICE: Cleaning up vector store...")
-                self.vector_store.cleanup()
-                logger.info("SHUTDOWN_SERVICE: Vector store cleaned up")
+                try:
+                    self.vector_store.cleanup()
+                    logger.info("SHUTDOWN_SERVICE: Vector store cleaned up")
+                except Exception as e:
+                    logger.error(f"SHUTDOWN_SERVICE: Error cleaning vector store: {e}")
+                    shutdown_errors.append(f"Vector store error: {e}")
             else:
                 logger.info("SHUTDOWN_SERVICE: No vector store to cleanup")
             
-            logger.info("SHUTDOWN_SERVICE: *** Application shutdown completed successfully ***")
+            # Clean up embedding service if needed
+            if self.embedding_service:
+                logger.info("SHUTDOWN_SERVICE: Cleaning up embedding service...")
+                try:
+                    # Most embedding services don't need explicit cleanup, but check if method exists
+                    if hasattr(self.embedding_service, 'cleanup'):
+                        self.embedding_service.cleanup()
+                    logger.info("SHUTDOWN_SERVICE: Embedding service cleaned up")
+                except Exception as e:
+                    logger.error(f"SHUTDOWN_SERVICE: Error cleaning embedding service: {e}")
+                    shutdown_errors.append(f"Embedding service error: {e}")
+            
+            # Final cleanup
+            self.startup_complete = False
+            
+            if shutdown_errors:
+                logger.warning(f"SHUTDOWN_SERVICE: Completed with {len(shutdown_errors)} errors: {shutdown_errors}")
+            else:
+                logger.info("SHUTDOWN_SERVICE: *** Application shutdown completed successfully ***")
             
         except Exception as e:
-            logger.error(f"SHUTDOWN_SERVICE: Error during application shutdown: {e}")
+            logger.error(f"SHUTDOWN_SERVICE: Critical error during application shutdown: {e}")
             logger.exception("SHUTDOWN_SERVICE: Full shutdown exception details:")
+            shutdown_errors.append(f"Critical shutdown error: {e}")
+        
+        finally:
+            # Log final status regardless of errors
+            logger.info(f"SHUTDOWN_SERVICE: Shutdown process complete. Errors: {len(shutdown_errors)}")
+            if shutdown_errors:
+                for i, error in enumerate(shutdown_errors, 1):
+                    logger.error(f"SHUTDOWN_SERVICE: Error {i}: {error}")
     
     def get_application_status(self) -> Dict[str, Any]:
         """Get current application status"""
@@ -573,12 +639,26 @@ async def initialize_application(config: AppConfig, enable_auto_sync: bool = Tru
 
 
 async def shutdown_application():
-    """Shutdown the application"""
+    """Shutdown the application with timeout protection"""
     logger.info("SHUTDOWN: *** SHUTDOWN APPLICATION CALLED ***")
+    
     startup_service = get_startup_service()
     if startup_service:
         logger.info("SHUTDOWN: Startup service found, proceeding with shutdown...")
-        await startup_service.shutdown_application()
-        logger.info("SHUTDOWN: *** SHUTDOWN APPLICATION COMPLETED ***")
+        try:
+            # Give the shutdown process up to 30 seconds to complete
+            await asyncio.wait_for(startup_service.shutdown_application(), timeout=30.0)
+            logger.info("SHUTDOWN: *** SHUTDOWN APPLICATION COMPLETED SUCCESSFULLY ***")
+        except asyncio.TimeoutError:
+            logger.error("SHUTDOWN: Application shutdown timeout after 30 seconds")
+            logger.error("SHUTDOWN: Some resources may not have been properly released")
+        except Exception as e:
+            logger.error(f"SHUTDOWN: Error during application shutdown: {e}")
+            logger.exception("SHUTDOWN: Full shutdown exception details:")
     else:
         logger.warning("SHUTDOWN: No startup service found to shutdown")
+    
+    # Clear the global startup service reference
+    global _startup_service
+    _startup_service = None
+    logger.info("SHUTDOWN: Global startup service reference cleared")

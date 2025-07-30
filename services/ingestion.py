@@ -7,7 +7,7 @@ from core.base_service import BaseService
 from sources.base import DataItem, BaseSource
 from sources.limitless import LimitlessSource
 from sources.sync_manager import SyncManager
-from sources.limitless_processor import LimitlessProcessor
+from sources.limitless_processor import LimitlessProcessor, BaseProcessor
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
@@ -61,8 +61,11 @@ class IngestionService(BaseService):
         self.vector_store = vector_store
         self.embedding_service = embedding_service
         
-        # Initialize processor
-        self.processor = LimitlessProcessor(enable_segmentation=True)
+        # Initialize processors
+        self.processors: Dict[str, BaseProcessor] = {
+            "limitless": LimitlessProcessor(enable_segmentation=True)
+        }
+        self.default_processor = BaseProcessor()
         
         # Track registered sources
         self.sources: Dict[str, BaseSource] = {}
@@ -147,8 +150,9 @@ class IngestionService(BaseService):
         try:
             result.items_processed += 1
             
-            # Process the item through the pipeline
-            processed_item = self.processor.process(item)
+            # Select the correct processor for the namespace
+            processor = self.processors.get(item.namespace, self.default_processor)
+            processed_item = processor.process(item)
             
             # Create namespaced ID
             namespaced_id = NamespacedIDManager.create_id(
