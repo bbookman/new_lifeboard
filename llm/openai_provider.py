@@ -10,35 +10,32 @@ from typing import Dict, Any, Optional, List, AsyncIterator
 from .base import BaseLLMProvider, LLMResponse, LLMError
 from config.models import OpenAIConfig
 from core.retry_utils import RetryExecutor, create_llm_retry_config, NetworkErrorRetryCondition
+from core.http_client_mixin import HTTPClientMixin
 
 
-class OpenAIProvider(BaseLLMProvider):
+class OpenAIProvider(BaseLLMProvider, HTTPClientMixin):
     """OpenAI cloud LLM provider"""
     
     def __init__(self, config: OpenAIConfig):
-        super().__init__("openai")
+        BaseLLMProvider.__init__(self, "openai")
+        HTTPClientMixin.__init__(self)
         self.config = config
-        self.client = None
     
-    def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client"""
-        if self.client is None:
-            headers = {
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json"
-            }
-            self.client = httpx.AsyncClient(
-                base_url=self.config.base_url,
-                timeout=self.config.timeout,
-                headers=headers
-            )
-        return self.client
+    def _create_client_config(self) -> Dict[str, Any]:
+        """Create HTTP client configuration for OpenAI API"""
+        headers = {
+            "Authorization": f"Bearer {self.config.api_key}",
+            "Content-Type": "application/json"
+        }
+        return {
+            "base_url": self.config.base_url,
+            "timeout": self.config.timeout,
+            "headers": headers
+        }
     
-    async def close(self):
-        """Close HTTP client"""
-        if self.client:
-            await self.client.aclose()
-            self.client = None
+    async def _make_test_request(self, client: httpx.AsyncClient) -> httpx.Response:
+        """Make a test request to verify OpenAI connectivity"""
+        return await client.get("/models")
     
     async def is_available(self) -> bool:
         """Check if OpenAI is available and configured"""
@@ -46,13 +43,7 @@ class OpenAIProvider(BaseLLMProvider):
             self.logger.warning("OpenAI not configured - missing API key")
             return False
         
-        try:
-            client = self._get_client()
-            response = await client.get("/models")
-            return response.status_code == 200
-        except Exception as e:
-            self.logger.warning(f"OpenAI not available: {e}")
-            return False
+        return await super().test_connection()
     
     async def generate_response(self, 
                               prompt: str, 
@@ -95,7 +86,7 @@ class OpenAIProvider(BaseLLMProvider):
             payload["max_tokens"] = self.config.max_tokens
         
         try:
-            client = self._get_client()
+            client = await self._ensure_client()
             response = await self._make_request_with_retry(client, "/chat/completions", payload)
             
             if response.status_code != 200:
@@ -192,7 +183,7 @@ class OpenAIProvider(BaseLLMProvider):
             payload["max_tokens"] = self.config.max_tokens
         
         try:
-            client = self._get_client()
+            client = await self._ensure_client()
             
             async with client.stream("POST", "/chat/completions", json=payload) as response:
                 if response.status_code != 200:
@@ -238,7 +229,7 @@ class OpenAIProvider(BaseLLMProvider):
             return []
         
         try:
-            client = self._get_client()
+            client = await self._ensure_client()
             response = await client.get("/models")
             
             if response.status_code != 200:
@@ -261,7 +252,7 @@ class OpenAIProvider(BaseLLMProvider):
             return {}
         
         try:
-            client = self._get_client()
+            client = await self._ensure_client()
             response = await client.get(f"/models/{model_name}")
             
             if response.status_code != 200:

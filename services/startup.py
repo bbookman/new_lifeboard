@@ -248,8 +248,8 @@ class StartupService:
                 try:
                     logger.info("Registering Twitter source...")
                     twitter_source = TwitterSource(
-                        namespace='twitter',
-                        data_path=self.config.twitter.data_path
+                        self.config.twitter,
+                        self.database
                     )
                     self.ingestion_service.register_source(twitter_source)
                     startup_result["sources_registered"].append("twitter")
@@ -649,6 +649,8 @@ async def shutdown_application():
             # Give the shutdown process up to 30 seconds to complete
             await asyncio.wait_for(startup_service.shutdown_application(), timeout=30.0)
             logger.info("SHUTDOWN: *** SHUTDOWN APPLICATION COMPLETED SUCCESSFULLY ***")
+        except asyncio.CancelledError:
+            logger.info("SHUTDOWN: Shutdown cancelled by user (CTRL+C). Exiting gracefully.")
         except asyncio.TimeoutError:
             logger.error("SHUTDOWN: Application shutdown timeout after 30 seconds")
             logger.error("SHUTDOWN: Some resources may not have been properly released")

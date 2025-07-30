@@ -22,6 +22,9 @@ The project uses pytest for testing. To run the test suite, use the following co
 pytest
 ```
 
+## Creating tests
+Every test must be written to /tests directory.  Do not violate.  The directory currently exists and you must not create the directory nor remove it
+
 ## Key Files
 
 - `api/server.py`: The main FastAPI application file.

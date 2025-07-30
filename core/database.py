@@ -73,17 +73,9 @@ class DatabaseService:
                 LIMIT ?
             """, (namespace, limit))
             
-            results = []
-            for row in cursor.fetchall():
-                item = dict(row)
-                if item['metadata']:
-                    try:
-                        item['metadata'] = json.loads(item['metadata'])
-                    except json.JSONDecodeError:
-                        item['metadata'] = None
-                results.append(item)
-            
-            return results
+            return DatabaseRowParser.parse_rows_with_metadata(
+                [dict(row) for row in cursor.fetchall()]
+            )
     
     def update_embedding_status(self, id: str, status: str):
         """Update embedding status for a data item"""
@@ -106,17 +98,9 @@ class DatabaseService:
                 LIMIT ?
             """, (limit,))
             
-            results = []
-            for row in cursor.fetchall():
-                item = dict(row)
-                if item['metadata']:
-                    try:
-                        item['metadata'] = json.loads(item['metadata'])
-                    except json.JSONDecodeError:
-                        item['metadata'] = None
-                results.append(item)
-            
-            return results
+            return DatabaseRowParser.parse_rows_with_metadata(
+                [dict(row) for row in cursor.fetchall()]
+            )
     
     def get_setting(self, key: str, default: Any = None) -> Any:
         """Get database-backed setting"""

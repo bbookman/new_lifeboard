@@ -2,6 +2,11 @@ from pydantic import BaseModel, field_validator, ConfigDict, Field
 from typing import Optional, List
 import os
 
+from .validation import (
+    APIKeyValidator, StringValidator, NumericValidator, PathValidator,
+    BaseConfigMixin, ConfigValidationError
+)
+
 
 class DatabaseConfig(BaseModel):
     """Database configuration"""
@@ -54,7 +59,7 @@ class VectorStoreConfig(BaseModel):
 
 
 
-class LimitlessConfig(BaseModel):
+class LimitlessConfig(BaseModel, BaseConfigMixin):
     """Limitless API configuration"""
     api_key: Optional[str] = None
     base_url: str = "https://api.limitless.ai"
@@ -70,18 +75,29 @@ class LimitlessConfig(BaseModel):
     @field_validator('api_key')
     @classmethod
     def validate_api_key(cls, v):
-        if v is not None and not isinstance(v, str):
-            raise ValueError("API key must be a string")
-        return v
+        return APIKeyValidator.validate_api_key_format(v, "Limitless API key")
+    
+    @field_validator('max_retries', 'sync_interval_hours', 'rate_limit_max_delay')
+    @classmethod
+    def validate_positive_ints(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_int(v, field_name)
+    
+    @field_validator('retry_delay', 'request_timeout')
+    @classmethod
+    def validate_positive_floats(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_float(v, field_name)
     
     def is_api_key_configured(self) -> bool:
         """Check if API key is properly configured"""
-        return (self.api_key is not None and 
-                self.api_key.strip() != "" and 
-                self.api_key != "your_api_key_here")
+        return super().is_api_key_configured(
+            self.api_key, 
+            additional_placeholders={"your_api_key_here", "limitless_api_key_here"}
+        )
 
 
-class NewsConfig(BaseModel):
+class NewsConfig(BaseModel, BaseConfigMixin):
     """News API configuration"""
     api_key: Optional[str] = None
     language: str = "en"
@@ -101,46 +117,35 @@ class NewsConfig(BaseModel):
     @field_validator('api_key')
     @classmethod
     def validate_api_key(cls, v):
-        if v is not None and not isinstance(v, str):
-            raise ValueError("API key must be a string")
-        return v
+        return APIKeyValidator.validate_api_key_format(v, "News API key")
     
-    @field_validator('language')
+    @field_validator('language', 'country')
     @classmethod
-    def validate_language(cls, v):
-        if not v or not isinstance(v, str):
-            raise ValueError("Language must be a non-empty string")
-        return v
+    def validate_strings(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return StringValidator.validate_non_empty_string(v, field_name)
     
-    @field_validator('country')
+    @field_validator('unique_items_per_day', 'items_to_retrieve', 'max_retries', 'sync_interval_hours', 'rate_limit_max_delay')
     @classmethod
-    def validate_country(cls, v):
-        if not v or not isinstance(v, str):
-            raise ValueError("Country must be a non-empty string")
-        return v
+    def validate_positive_ints(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_int(v, field_name)
     
-    @field_validator('unique_items_per_day')
+    @field_validator('retry_delay', 'request_timeout')
     @classmethod
-    def validate_unique_items_per_day(cls, v):
-        if v <= 0:
-            raise ValueError("Unique items per day must be positive")
-        return v
-    
-    @field_validator('items_to_retrieve')
-    @classmethod
-    def validate_items_to_retrieve(cls, v):
-        if v <= 0:
-            raise ValueError("Items to retrieve must be positive")
-        return v
+    def validate_positive_floats(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_float(v, field_name)
     
     def is_api_key_configured(self) -> bool:
         """Check if API key is properly configured"""
-        return (self.api_key is not None and
-                self.api_key.strip() != "" and
-                self.api_key != "your-rapid-api-key-here")
+        return super().is_api_key_configured(
+            self.api_key,
+            additional_placeholders={"your-rapid-api-key-here", "rapid_api_key_here"}
+        )
 
 
-class WeatherConfig(BaseModel):
+class WeatherConfig(BaseModel, BaseConfigMixin):
     """Weather API configuration"""
     api_key: Optional[str] = Field(None, env="RAPID_API_KEY")
     endpoint: str = Field("easy-weather1.p.rapidapi.com/daily/5", env="WEATHER_ENDPOINT")
@@ -159,22 +164,31 @@ class WeatherConfig(BaseModel):
     @field_validator('api_key')
     @classmethod
     def validate_api_key(cls, v):
-        if v is not None and not isinstance(v, str):
-            raise ValueError("API key must be a string")
-        return v
+        return APIKeyValidator.validate_api_key_format(v, "Weather API key")
 
     @field_validator('units')
     @classmethod
     def validate_units(cls, v):
-        if v not in ["metric", "standard"]:
-            raise ValueError("Units must be one of: metric, standard")
-        return v
+        return StringValidator.validate_string_choices(v, ["metric", "standard"], "Units")
+    
+    @field_validator('max_retries', 'sync_interval_hours', 'rate_limit_max_delay')
+    @classmethod
+    def validate_positive_ints(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_int(v, field_name)
+    
+    @field_validator('retry_delay', 'request_timeout')
+    @classmethod
+    def validate_positive_floats(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_float(v, field_name)
 
     def is_api_key_configured(self) -> bool:
         """Check if API key is properly configured"""
-        return (self.api_key is not None and
-                self.api_key.strip() != "" and
-                self.api_key != "your-rapid-api-key-here")
+        return super().is_api_key_configured(
+            self.api_key,
+            additional_placeholders={"your-rapid-api-key-here", "rapid_api_key_here"}
+        )
 
 
 class SourceConfig(BaseModel):
@@ -186,9 +200,13 @@ class SourceConfig(BaseModel):
     @field_validator('namespace')
     @classmethod
     def validate_namespace(cls, v):
-        if not v or not isinstance(v, str) or ':' in v:
-            raise ValueError("Namespace must be a non-empty string without colons")
-        return v
+        v = StringValidator.validate_non_empty_string(v, "Namespace")
+        return StringValidator.validate_no_special_chars(v, "Namespace", {':'})
+    
+    @field_validator('sync_interval_hours')
+    @classmethod
+    def validate_sync_interval(cls, v):
+        return NumericValidator.validate_positive_int(v, "Sync interval hours")
 
 
 class SearchConfig(BaseModel):
