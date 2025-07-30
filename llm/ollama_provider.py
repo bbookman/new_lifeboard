@@ -10,30 +10,27 @@ from typing import Dict, Any, Optional, List, AsyncIterator
 from .base import BaseLLMProvider, LLMResponse, LLMError
 from config.models import OllamaConfig
 from core.retry_utils import RetryExecutor, create_llm_retry_config, NetworkErrorRetryCondition
+from core.http_client_mixin import HTTPClientMixin
 
 
-class OllamaProvider(BaseLLMProvider):
+class OllamaProvider(BaseLLMProvider, HTTPClientMixin):
     """Ollama local LLM provider"""
     
     def __init__(self, config: OllamaConfig):
-        super().__init__("ollama")
+        BaseLLMProvider.__init__(self, "ollama")
+        HTTPClientMixin.__init__(self)
         self.config = config
-        self.client = None
     
-    def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client"""
-        if self.client is None:
-            self.client = httpx.AsyncClient(
-                base_url=self.config.base_url,
-                timeout=self.config.timeout
-            )
-        return self.client
+    def _create_client_config(self) -> Dict[str, Any]:
+        """Create HTTP client configuration for Ollama API"""
+        return {
+            "base_url": self.config.base_url,
+            "timeout": self.config.timeout
+        }
     
-    async def close(self):
-        """Close HTTP client"""
-        if self.client:
-            await self.client.aclose()
-            self.client = None
+    async def _make_test_request(self, client: httpx.AsyncClient) -> httpx.Response:
+        """Make a test request to verify Ollama connectivity"""
+        return await client.get("/api/tags")
     
     async def is_available(self) -> bool:
         """Check if Ollama is available and configured"""
@@ -41,13 +38,7 @@ class OllamaProvider(BaseLLMProvider):
             self.logger.warning("Ollama not configured - missing base_url or model")
             return False
         
-        try:
-            client = self._get_client()
-            response = await client.get("/api/tags")
-            return response.status_code == 200
-        except Exception as e:
-            self.logger.warning(f"Ollama not available: {e}")
-            return False
+        return await super().test_connection()
     
     async def generate_response(self, 
                               prompt: str, 
@@ -84,7 +75,7 @@ class OllamaProvider(BaseLLMProvider):
             payload["options"] = options
         
         try:
-            client = self._get_client()
+            client = await self._ensure_client()
             response = await self._make_request_with_retry(client, "/api/generate", payload)
             
             if response.status_code != 200:
@@ -166,7 +157,7 @@ class OllamaProvider(BaseLLMProvider):
             payload["options"] = options
         
         try:
-            client = self._get_client()
+            client = await self._ensure_client()
             
             async with client.stream("POST", "/api/generate", json=payload) as response:
                 if response.status_code != 200:
@@ -196,7 +187,7 @@ class OllamaProvider(BaseLLMProvider):
             return []
         
         try:
-            client = self._get_client()
+            client = await self._ensure_client()
             response = await client.get("/api/tags")
             
             if response.status_code != 200:
@@ -217,7 +208,7 @@ class OllamaProvider(BaseLLMProvider):
             return {}
         
         try:
-            client = self._get_client()
+            client = await self._ensure_client()
             response = await client.post("/api/show", json={"name": model_name})
             
             if response.status_code != 200:

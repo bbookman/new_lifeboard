@@ -3,11 +3,11 @@ import os
 import re
 import shutil
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncIterator
 
 from config.models import TwitterConfig
 from core.database import DatabaseService
-from sources.base import BaseSource
+from sources.base import BaseSource, DataItem
 import logging
 
 logger = logging.getLogger(__name__)
@@ -110,3 +110,53 @@ class TwitterSource(BaseSource):
                 ORDER BY created_at DESC
             """, (date,))
             return [dict(row) for row in cursor.fetchall()]
+    
+    # Required abstract methods from BaseSource
+    
+    async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
+        """Fetch data items from the Twitter source"""
+        # This source works by importing data once, not streaming
+        # Return empty iterator for now - actual data is accessed via get_data_for_date
+        return
+        yield  # Make this a generator function
+    
+    async def get_item(self, source_id: str) -> Optional[DataItem]:
+        """Get specific tweet by ID"""
+        with self.db_service.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT tweet_id, created_at, text, media_urls, days_date
+                FROM tweets 
+                WHERE tweet_id = ?
+            """, (source_id,))
+            row = cursor.fetchone()
+            
+            if not row:
+                return None
+            
+            return DataItem(
+                namespace=self.namespace,
+                source_id=row['tweet_id'],
+                content=row['text'],
+                metadata={
+                    'media_urls': row['media_urls'],
+                    'days_date': row['days_date']
+                },
+                created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None
+            )
+    
+    def get_source_type(self) -> str:
+        """Return the source type identifier"""
+        return "twitter_archive"
+    
+    async def test_connection(self) -> bool:
+        """Test if Twitter data source is accessible"""
+        if not self.config.is_configured():
+            return False
+        
+        # Check if the data path exists
+        if not os.path.exists(self.config.data_path):
+            return False
+        
+        # Check if tweet.js exists
+        tweet_js_path = os.path.join(self.config.data_path, 'data', 'tweet.js')
+        return os.path.exists(tweet_js_path)

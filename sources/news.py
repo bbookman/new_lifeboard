@@ -2,6 +2,7 @@ import httpx
 import asyncio
 import logging
 import urllib.parse
+import json
 from typing import List, Dict, Any, Optional, AsyncIterator
 from datetime import datetime, timezone
 
@@ -9,11 +10,12 @@ from .base import BaseSource, DataItem
 from config.models import NewsConfig
 from core.retry_utils import (RetryExecutor, create_api_retry_config, create_enhanced_api_retry_condition, 
                               create_rate_limit_retry_config, RetryConfig, BackoffStrategy)
+from core.http_client_mixin import HTTPClientMixin
 
 logger = logging.getLogger(__name__)
 
 
-class NewsSource(BaseSource):
+class NewsSource(BaseSource, HTTPClientMixin):
     """Real-time News Data API source for news articles"""
     
     def __init__(self, config: NewsConfig):
@@ -23,42 +25,21 @@ class NewsSource(BaseSource):
         Args:
             config: NewsConfig instance containing API configuration
         """
-        super().__init__("news")
+        BaseSource.__init__(self, "news")
+        HTTPClientMixin.__init__(self)
         self.config = config
-        self.client = None
         self._api_key_configured = config.is_api_key_configured()
     
-    def _get_client(self) -> httpx.AsyncClient:
-        """
-        Get or create HTTP client.
-        
-        Returns:
-            Configured httpx.AsyncClient instance
-        """
-        if self.client is None:
-            self.client = httpx.AsyncClient(
-                base_url=f"https://{self.config.endpoint}",
-                headers={
-                    "x-rapidapi-key": self.config.api_key,
-                    "x-rapidapi-host": self.config.endpoint
-                },
-                timeout=self.config.request_timeout
-            )
-        return self.client
-    
-    async def close(self):
-        """Close HTTP client."""
-        if self.client:
-            await self.client.aclose()
-            self.client = None
-    
-    async def __aenter__(self):
-        """Async context manager entry."""
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        await self.close()
+    def _create_client_config(self) -> Dict[str, Any]:
+        """Create HTTP client configuration for News API"""
+        return {
+            "base_url": f"https://{self.config.endpoint}",
+            "headers": {
+                "x-rapidapi-key": self.config.api_key,
+                "x-rapidapi-host": self.config.endpoint
+            },
+            "timeout": self.config.request_timeout
+        }
     
     def get_source_type(self) -> str:
         """
@@ -68,6 +49,14 @@ class NewsSource(BaseSource):
             Source type string
         """
         return "news_api"
+    
+    async def _make_test_request(self, client: httpx.AsyncClient) -> httpx.Response:
+        """Make a test request to verify News API connectivity"""
+        return await client.get("/top-headlines", params={
+            "limit": "1",
+            "country": self.config.country,
+            "lang": self.config.language
+        })
     
     async def test_connection(self) -> bool:
         """
@@ -80,17 +69,7 @@ class NewsSource(BaseSource):
             logger.warning("RAPID_API_KEY is not configured. Connection test skipped.")
             return False
         
-        try:
-            client = self._get_client()
-            response = await client.get("/top-headlines", params={
-                "limit": "1",
-                "country": self.config.country,
-                "lang": self.config.language
-            })
-            return response.status_code == 200
-        except Exception as e:
-            logger.error(f"Connection test failed: {e}")
-            return False
+        return await super().test_connection()
     
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """
@@ -109,7 +88,7 @@ class NewsSource(BaseSource):
         
         # Use unique_items_per_day as the actual limit instead of the limit parameter
         actual_limit = self.config.unique_items_per_day
-        client = self._get_client()
+        client = await self._ensure_client()
         
         # Build request parameters
         params = {
@@ -290,6 +269,76 @@ class NewsSource(BaseSource):
             logger.error(f"Request failed after all retries: {e}")
             return None
     
+    def get_news_by_date(self, db_service, date: str) -> List[Dict[str, Any]]:
+        """Get news articles for a specific date (YYYY-MM-DD format)"""
+        with db_service.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT id, source_id, content, metadata, created_at, days_date
+                FROM data_items 
+                WHERE namespace = 'news' AND days_date = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (date, self.config.unique_items_per_day))
+            
+            news_items = []
+            for row in cursor.fetchall():
+                # Parse metadata to extract title and other fields
+                from core.json_utils import JSONMetadataParser
+                metadata = JSONMetadataParser.parse_metadata(row["metadata"]) or {}
+                
+                news_items.append({
+                    "title": metadata.get("title", row["content"][:100] + "..."),
+                    "link": metadata.get("link", row["source_id"]),
+                    "snippet": metadata.get("snippet", ""),
+                    "thumbnail_url": metadata.get("thumbnail_url"),
+                    "published_datetime_utc": metadata.get("published_datetime_utc"),
+                    "created_at": row["created_at"],
+                    "content": row["content"],
+                    "source": "data_items"
+                })
+            
+            return news_items
+
+    def get_latest_news(self, db_service, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get the most recent news articles"""
+        with db_service.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT id, source_id, content, metadata, created_at, days_date
+                FROM data_items 
+                WHERE namespace = 'news'
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+            
+            news_items = []
+            for row in cursor.fetchall():
+                # Parse metadata to extract title and other fields
+                from core.json_utils import JSONMetadataParser
+                metadata = JSONMetadataParser.parse_metadata(row["metadata"]) or {}
+                
+                news_items.append({
+                    "title": metadata.get("title", row["content"][:100] + "..."),
+                    "link": metadata.get("link", row["source_id"]),
+                    "snippet": metadata.get("snippet", ""),
+                    "thumbnail_url": metadata.get("thumbnail_url"),
+                    "published_datetime_utc": metadata.get("published_datetime_utc"),
+                    "created_at": row["created_at"],
+                    "content": row["content"],
+                    "source": "data_items"
+                })
+            
+            return news_items
+
+    def get_news_count_by_date(self, db_service, date: str) -> int:
+        """Get count of news articles for a specific date"""
+        with db_service.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT COUNT(*) as count FROM data_items 
+                WHERE namespace = 'news' AND days_date = ?
+            """, (date,))
+            
+            return cursor.fetchone()["count"]
+
     async def get_sync_metadata(self) -> Dict[str, Any]:
         """
         Return sync metadata.

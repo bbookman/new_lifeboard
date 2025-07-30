@@ -25,19 +25,80 @@ The project follows a KISS multi-source memory chat application architecture wit
 - Updates: update SQLite row → re-embed → update FAISS vector
 
 ### Core Services
-- Database Service: SQLite ops with namespaced ID management
-- Vector Store Service: FAISS similarity search
-- Embedding Service: text-to-vector conversion
-- Source Registry: auto-discovery and data source management
-- Namespace Prediction Service: LLM-powered source relevance prediction
-- Search Service: orchestrates full search flow
+- **Database Service:** SQLite operations with namespaced ID management.
+- **Vector Store Service:** FAISS similarity search.
+- **Embedding Service:** Text-to-vector conversion using sentence-transformers.
+- **Ingestion Service:** Orchestrates data processing from sources.
+- **Scheduler Service:** Manages background tasks and scheduled jobs.
+- **Sync Manager Service:** Handles the synchronization of data from various sources.
+- **Chat Service:** Manages chat interactions and context.
+- **Startup Service:** Orchestrates application initialization and shutdown.
 
 ### Database Schema
 ```sql
-CREATE TABLE system_settings (key, value, updated_at);
-CREATE TABLE data_sources (namespace, source_type, metadata, item_count, is_active);
-CREATE TABLE data_items (id, namespace, source_id, content, metadata, embedding_status);
-````
+-- Core data storage
+CREATE TABLE data_items (
+    id TEXT PRIMARY KEY,
+    namespace TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    content TEXT,
+    metadata TEXT,
+    embedding_status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    days_date TEXT
+);
+
+-- Manages data sources
+CREATE TABLE data_sources (
+    namespace TEXT PRIMARY KEY,
+    source_type TEXT NOT NULL,
+    metadata TEXT,
+    item_count INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_synced TIMESTAMP,
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Stores chat history
+CREATE TABLE chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_message TEXT NOT NULL,
+    assistant_response TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Stores weather data
+CREATE TABLE weather (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL UNIQUE,
+    data TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Stores imported tweets
+CREATE TABLE tweets (
+    tweet_id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    days_date TEXT NOT NULL,
+    text TEXT,
+    media_urls TEXT
+);
+
+-- General application settings
+CREATE TABLE system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TIMESTAMP
+);
+
+-- Database migration tracking
+CREATE TABLE migrations (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
 
 ### Namespaced IDs
 
@@ -46,47 +107,62 @@ Format: `namespace:source_id` for data isolation and filtering.
 ## External Integrations
 
 ### Limitless API
+*   **Purpose:** Primary source for lifelog data, including conversations and activities.
+*   **Base URL:** `https://api.limitless.ai/v1/`
+*   **Auth:** `X-API-Key` header
 
-* Base URL: `https://api.limitless.ai/v1/`
-* Auth: X-API-Key header
-* Endpoint: `/lifelogs`
-* Features: timezone-aware filtering, pagination, structured markdown content, speaker IDs
+### News API
+*   **Purpose:** Fetches real-time news headlines.
+*   **Endpoint:** `real-time-news-data.p.rapidapi.com`
+*   **Auth:** `X-RapidAPI-Key` header
+
+### Weather API
+*   **Purpose:** Retrieves 5-day weather forecasts.
+*   **Endpoint:** `easy-weather1.p.rapidapi.com/daily/5`
+*   **Auth:** `X-RapidAPI-Key` header
 
 ## Development Approach
 
-* Database-first settings in SQLite (no OS exports)
-* Eager initialization and fail-fast
-* Dependency injection for testability
-* Single responsibility and interface-first design
-* Config from `.env` only; validated on startup
+*   **Configuration:** All configuration is managed through Pydantic models defined in `config/models.py` and loaded via the factory in `config/factory.py`. `.env` files are used for local development.
+*   **Dependency Injection:** Services are designed to be injected, improving testability.
+*   **Single Responsibility:** Services and modules have a clear and focused purpose.
+*   **Database-First Settings:** Application settings are stored in the database to avoid reliance on environment variables for state.
+*   **Eager Initialization:** Services are initialized at startup to ensure the application is in a valid state and to fail fast if there are issues.
 
 ## Testing
 
-* Use `pytest`
-* Store all tests under `/tests` at project root
-* Write tests for all new or refactored code
-* Toggle mock/real API modes via env variables
-* Run unit, integration, mock, real API, and performance tests
+*   **Framework:** `pytest`
+*   **Location:** All tests are located in the `/tests` directory at the project root.
+*   **Execution:** Run tests using `PYTHONPATH=. python -m pytest`.
+*   **Test Review:** A `test_review.md` file is maintained to document the investigation of test failures and propose solutions.
 
 ## Project Structure
 
 ```
 /
-├── supporting_documents/
-│   ├── Overview/lifeboard_vision_statement.md
-│   ├── Planning/Fresh Build Plan.md
-│   └── limitless_api/limitless_api_documentation.md
-├── LICENSE
-├── README.md
+├── api/
+│   └── routes/
+├── config/
+├── core/
+│   └── migrations/
+├── llm/
+├── services/
+├── sources/
+├── templates/
 ├── tests/
 ├── logs/
-└── supporting_documents/Development log.md
+├── supporting_documents/
+├── .env.example
+├── requirements.txt
+├── README.md
+└── CLAUDE.md
 ```
 
 ## Logging
 
-* All logs must go to `/logs` at project root
-* Log all errors with specific exceptions; avoid bare excepts
+*   **Centralized Configuration:** Logging is configured centrally in `core/logging_config.py` using the `setup_application_logging` function.
+*   **Log Directory:** All logs are written to the `/logs` directory at the project root.
+*   **Error Handling:** All errors should be logged with specific exceptions. Avoid bare `except` clauses.
 
 ## Claude Guidelines
 

@@ -9,51 +9,42 @@ from .base import BaseSource, DataItem
 from config.models import LimitlessConfig
 from core.retry_utils import (RetryExecutor, create_api_retry_config, create_enhanced_api_retry_condition, 
                               create_rate_limit_retry_config, RetryConfig, BackoffStrategy)
+from core.http_client_mixin import HTTPClientMixin
 
 logger = logging.getLogger(__name__)
 
 
-class LimitlessSource(BaseSource):
+class LimitlessSource(BaseSource, HTTPClientMixin):
     """Limitless API data source for lifelogs"""
     
     def __init__(self, config: LimitlessConfig):
-        super().__init__("limitless")
+        BaseSource.__init__(self, "limitless")
+        HTTPClientMixin.__init__(self)
         self.config = config
-        self.client = None
         self._api_key_configured = config.is_api_key_configured()
     
-    def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client"""
-        if self.client is None:
-            # Diagnostic logging for authentication debugging
-            logger.debug(f"[AUTH DEBUG] Creating HTTP client with:")
-            logger.debug(f"[AUTH DEBUG] - Base URL: {self.config.base_url}")
-            logger.debug(f"[AUTH DEBUG] - API Key configured: {self.config.api_key is not None}")
-            logger.debug(f"[AUTH DEBUG] - API Key length: {len(self.config.api_key) if self.config.api_key else 0}")
-            logger.debug(f"[AUTH DEBUG] - API Key first 8 chars: {self.config.api_key[:8] if self.config.api_key else 'None'}...")
-            logger.debug(f"[AUTH DEBUG] - is_api_key_configured(): {self._api_key_configured}")
-            
-            self.client = httpx.AsyncClient(
-                base_url=self.config.base_url,
-                headers={"X-API-Key": self.config.api_key},
-                timeout=self.config.request_timeout
-            )
-        return self.client
-    
-    async def close(self):
-        """Close HTTP client"""
-        if self.client:
-            await self.client.aclose()
-            self.client = None
-    
-    async def __aenter__(self):
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
+    def _create_client_config(self) -> Dict[str, Any]:
+        """Create HTTP client configuration for Limitless API"""
+        # Diagnostic logging for authentication debugging
+        logger.debug(f"[AUTH DEBUG] Creating HTTP client with:")
+        logger.debug(f"[AUTH DEBUG] - Base URL: {self.config.base_url}")
+        logger.debug(f"[AUTH DEBUG] - API Key configured: {self.config.api_key is not None}")
+        logger.debug(f"[AUTH DEBUG] - API Key length: {len(self.config.api_key) if self.config.api_key else 0}")
+        logger.debug(f"[AUTH DEBUG] - API Key first 8 chars: {self.config.api_key[:8] if self.config.api_key else 'None'}...")
+        logger.debug(f"[AUTH DEBUG] - is_api_key_configured(): {self._api_key_configured}")
+        
+        return {
+            "base_url": self.config.base_url,
+            "headers": {"X-API-Key": self.config.api_key},
+            "timeout": self.config.request_timeout
+        }
     
     def get_source_type(self) -> str:
         return "limitless_api"
+    
+    async def _make_test_request(self, client: httpx.AsyncClient) -> httpx.Response:
+        """Make a test request to verify Limitless API connectivity"""
+        return await client.get("/v1/lifelogs", params={"limit": 1})
     
     async def test_connection(self) -> bool:
         """Test API connectivity"""
@@ -61,12 +52,7 @@ class LimitlessSource(BaseSource):
             logger.warning("LIMITLESS_API_KEY is not configured in .env file. Connection test skipped.")
             return False
         
-        try:
-            client = self._get_client()
-            response = await client.get("/v1/lifelogs", params={"limit": 1})
-            return response.status_code == 200
-        except Exception:
-            return False
+        return await super().test_connection()
     
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """Fetch lifelogs with pagination"""
@@ -74,7 +60,7 @@ class LimitlessSource(BaseSource):
             logger.warning("LIMITLESS_API_KEY is not configured in .env file. Skipping data fetch. Please set a valid API key.")
             return
         
-        client = self._get_client()
+        client = await self._ensure_client()
         cursor = None
         fetched_count = 0
         
@@ -132,7 +118,7 @@ class LimitlessSource(BaseSource):
             return None
         
         try:
-            client = self._get_client()
+            client = await self._ensure_client()
             params = {
                 "includeMarkdown": True,
                 "includeHeadings": True
