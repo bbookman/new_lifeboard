@@ -26,9 +26,10 @@ from services.startup import get_startup_service, StartupService
 from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
 from config.factory import create_production_config
+from core.dependencies import get_dependency_registry
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system, calendar, weather
+from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings
 
 logger = logging.getLogger(__name__)
 
@@ -142,72 +143,31 @@ def get_chat_service(startup_service: StartupService = Depends(get_startup_servi
     return startup_service.chat_service
 
 
-# Configure dependencies in route modules
+# Configure dependencies using the central registry
 def configure_route_dependencies():
-    """Configure dependency injection for route modules"""
+    """Configure dependency injection for route modules using central registry"""
     logger.info("ROUTE_CONFIG: Starting route dependency configuration...")
     
-    # Health routes
-    health.get_startup_service_dependency = get_startup_service_dependency
-    logger.debug("ROUTE_CONFIG: Health routes configured")
+    # Get the dependency registry
+    registry = get_dependency_registry()
     
-    # Sync routes
-    sync.get_startup_service_dependency = get_startup_service_dependency
-    sync.get_sync_manager_dependency = get_sync_manager
-    logger.debug("ROUTE_CONFIG: Sync routes configured")
+    # Register providers in the dependency registry
+    logger.info("ROUTE_CONFIG: Registering dependency providers...")
+    registry.register_startup_service_provider(get_startup_service)
+    registry.register_sync_manager_provider(lambda startup_service: startup_service.sync_manager)
+    registry.register_chat_service_provider(lambda startup_service: startup_service.chat_service)
+    logger.info("ROUTE_CONFIG: Dependency providers registered successfully")
     
-    # Chat routes - ensure proper order of dependency injection
-    logger.info("ROUTE_CONFIG: Configuring chat route dependencies...")
-    
-    # First, set templates
+    # Configure templates for routes that need them
+    logger.info("ROUTE_CONFIG: Configuring templates...")
     try:
         chat.set_templates(templates)
-        logger.debug("ROUTE_CONFIG: Templates configured for chat routes")
+        calendar.set_templates(templates)
+        settings.set_templates(templates)
+        logger.info("ROUTE_CONFIG: Templates configured successfully")
     except Exception as template_error:
-        logger.error(f"ROUTE_CONFIG: Failed to set chat templates: {template_error}")
+        logger.error(f"ROUTE_CONFIG: Failed to configure templates: {template_error}")
         raise
-    
-    # Then, set chat service instance
-    startup_service = get_startup_service()
-    logger.info(f"ROUTE_CONFIG: Retrieved startup service: {startup_service is not None}")
-    
-    if startup_service:
-        logger.info(f"ROUTE_CONFIG: Startup service type: {type(startup_service)}")
-        has_chat_attr = hasattr(startup_service, 'chat_service')
-        logger.info(f"ROUTE_CONFIG: Startup service has chat_service attribute: {has_chat_attr}")
-        
-        if has_chat_attr:
-            chat_service = startup_service.chat_service
-            logger.info(f"ROUTE_CONFIG: Chat service instance: {chat_service is not None}")
-            if chat_service:
-                logger.info(f"ROUTE_CONFIG: Chat service type: {type(chat_service)}")
-                
-        if startup_service.chat_service:
-            try:
-                chat.set_chat_service_instance(startup_service.chat_service)
-                logger.info("ROUTE_CONFIG: Chat service dependency configured successfully")
-            except Exception as chat_config_error:
-                logger.error(f"ROUTE_CONFIG: Failed to set chat service instance: {chat_config_error}")
-                logger.exception("ROUTE_CONFIG: Chat service configuration exception:")
-        else:
-            logger.error("ROUTE_CONFIG: Chat service is None in startup service")
-    else:
-        logger.error("ROUTE_CONFIG: Startup service is None - cannot configure chat routes")
-    
-    logger.debug("ROUTE_CONFIG: Chat route dependency configuration completed")
-    
-    # Calendar routes
-    calendar.get_startup_service_dependency = get_startup_service_dependency
-    calendar.set_templates(templates)
-    logger.debug("ROUTE_CONFIG: Calendar routes configured")
-    
-    # Embeddings routes
-    embeddings.get_startup_service_dependency = get_startup_service_dependency
-    logger.debug("ROUTE_CONFIG: Embeddings routes configured")
-    
-    # Weather routes (using its own dependency pattern)
-    # Note: Weather routes use their own dependency injection pattern
-    logger.debug("ROUTE_CONFIG: Weather routes use own dependency pattern")
     
     logger.info("ROUTE_CONFIG: Route dependency configuration completed")
 
@@ -467,7 +427,7 @@ app.include_router(calendar.router)
 app.include_router(embeddings.router)
 app.include_router(system.router)
 app.include_router(weather.router)
-app.include_router(sync.router)
+app.include_router(settings.router)
 
 
 # Global error handlers

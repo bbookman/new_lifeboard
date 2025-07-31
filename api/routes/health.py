@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from services.startup import StartupService
 from core.exception_handling import handle_api_exceptions
+from core.dependencies import get_startup_service_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,7 @@ class StatusResponse(BaseModel):
     data: Dict[str, Any]
 
 
-# Dependency function (will be injected from main server)
-def get_startup_service_dependency():
-    """This will be set by the main server module"""
-    raise NotImplementedError("Startup service dependency not configured")
+# Dependency function is imported from core.dependencies
 
 
 @router.get("/health", response_model=HealthResponse)

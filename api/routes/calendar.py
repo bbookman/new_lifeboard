@@ -17,14 +17,14 @@ from services.startup import StartupService
 from services.weather_service import WeatherService
 from services.news_service import NewsService
 from core.database import DatabaseService
+from core.dependencies import get_startup_service_dependency
 from config.factory import get_config
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
-# These will be set by the main server
-get_startup_service_dependency = None
+# Templates will be set by the main server
 templates = None
 
 
@@ -34,7 +34,7 @@ def set_templates(template_instance):
     templates = template_instance
 
 
-def get_database_service(startup_service: StartupService = Depends(lambda: get_startup_service_dependency())) -> DatabaseService:
+def get_database_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> DatabaseService:
     """Get database service from startup service"""
     if not startup_service.database:
         raise HTTPException(status_code=503, detail="Database service not available")
@@ -249,11 +249,6 @@ async def day_view(
         logger.error(f"Error serving day view for {date}: {e}")
         raise HTTPException(status_code=500, detail="Failed to load day view")
 
-
-@router.get("/settings", response_class=HTMLResponse)
-async def settings_view(request: Request):
-    """Serve the settings page"""
-    return templates.TemplateResponse("settings.html", {"request": request})
 
 
 @router.get("/api/month/{year}/{month}")
