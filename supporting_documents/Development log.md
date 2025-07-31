@@ -1293,12 +1293,12 @@ Hybrid Search → LLM Context → Chat Responses
 ```env
 # News Integration
 RAPID_API_KEY=your_rapid_api_key_here
-TURN_ON_NEWS=true
 NEWS_COUNTRY=US
 USERS_LANGUAGE=en
 UNIQUE_NEWS_ITEMS_PER_DAY=5
 NEWS_ITEMS_TO_RETRIEVE=20
 NEWS_SYNC_INTERVAL_HOURS=24
+NEWS_ENDPOINT=real-time-news-data.p.rapidapi.com
 
 # Twitter Integration  
 TWITTER_DATA_PATH=/path/to/twitter/export

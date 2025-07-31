@@ -127,7 +127,6 @@ def create_production_config() -> AppConfig:
         news=NewsConfig(
             api_key=os.getenv("RAPID_API_KEY"),
             language=os.getenv("USERS_LANGUAGE", "en"),
-            enabled=os.getenv("TURN_ON_NEWS", "true").lower() == "true",
             country=os.getenv("NEWS_COUNTRY", "US"),
             unique_items_per_day=int(os.getenv("UNIQUE_NEWS_ITEMS_PER_DAY", "5")),
             endpoint=os.getenv("NEWS_ENDPOINT", "real-time-news-data.p.rapidapi.com"),
