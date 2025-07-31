@@ -46,7 +46,7 @@ CREATE TABLE data_items (
     embedding_status TEXT DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    days_date TEXT
+   days_date TEXT NOT NULL
 );
 
 -- Manages data sources
@@ -73,8 +73,23 @@ CREATE TABLE weather (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL UNIQUE,
     data TEXT NOT NULL,
+    days_date TEXT NOT NULL
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Stores news headlines
+CREATE TABLE news (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    link TEXT,
+    snippet TEXT,
+    days_date TEXT NOT NULL,
+    thumbnail_url TEXT,
+    published_datetime_utc TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 
 -- Stores imported tweets
 CREATE TABLE tweets (
@@ -222,7 +237,10 @@ Claude should:
 
 * Provide concise answers
 * Ask clarifying questions when needed
-* Use neutral, factual tone; avoid phrases like “you’re right” or “great question”
+* Use neutral, factual tone; avoid phrases like "you're right" or "great question"
 
-```
+## Development Reminders
+
+* Ensure _extract_days_date is updated as needed due to addition of new data sources and those datasource "created datetime" values are ingested. Prompt during CLI coding sessions to make it clear which variable will be added to _extract_days_date
+
 ```

@@ -18,8 +18,9 @@ class DataItem:
 class BaseSource(ABC):
     """Base class for all data sources"""
     
-    def __init__(self, namespace: str):
+    def __init__(self, namespace: str, *args, **kwargs):
         self.namespace = namespace
+        super().__init__(*args, **kwargs)
     
     @abstractmethod
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:

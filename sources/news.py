@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from .base import BaseSource, DataItem
 from config.models import NewsConfig
+from core.database import DatabaseService
 from core.retry_utils import (RetryExecutor, create_api_retry_config, create_enhanced_api_retry_condition, 
                               create_rate_limit_retry_config, RetryConfig, BackoffStrategy)
 from core.http_client_mixin import HTTPClientMixin
@@ -18,16 +19,18 @@ logger = logging.getLogger(__name__)
 class NewsSource(BaseSource, HTTPClientMixin):
     """Real-time News Data API source for news articles"""
     
-    def __init__(self, config: NewsConfig):
+    def __init__(self, config: NewsConfig, db_service: DatabaseService = None):
         """
         Initialize NewsSource with configuration.
         
         Args:
             config: NewsConfig instance containing API configuration
+            db_service: DatabaseService instance for data operations
         """
         BaseSource.__init__(self, "news")
         HTTPClientMixin.__init__(self)
         self.config = config
+        self.db_service = db_service
         self._api_key_configured = config.is_api_key_configured()
     
     def _create_client_config(self) -> Dict[str, Any]:
@@ -70,6 +73,14 @@ class NewsSource(BaseSource, HTTPClientMixin):
             return False
         
         return await super().test_connection()
+
+    def _has_news_data_for_date(self, date: str) -> bool:
+        """Check if news data already exists for the given date"""
+        if not self.db_service:
+            return False
+        
+        count = self.get_news_count_by_date(self.db_service, date)
+        return count > 0
     
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """
@@ -84,6 +95,19 @@ class NewsSource(BaseSource, HTTPClientMixin):
         """
         if not self._api_key_configured:
             logger.warning("RAPID_API_KEY is not configured. Skipping data fetch.")
+            return
+
+        # Check if we already have news data for today
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self._has_news_data_for_date(today):
+            logger.info(f"News data already exists for {today}. Skipping API call.")
+            # Yield a dummy item to indicate we checked but didn't fetch new data
+            yield DataItem(
+                namespace=self.namespace,
+                source_id="news_check",
+                content="News data already exists for today",
+                metadata={"check_date": today, "status": "skipped"}
+            )
             return
         
         # Use unique_items_per_day as the actual limit instead of the limit parameter
