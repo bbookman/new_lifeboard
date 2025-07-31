@@ -434,18 +434,25 @@ class IngestionService(BaseService):
             
             # Fallback to extracting from metadata
             if item.metadata:
-                # Try different timestamp fields that might be in metadata
-                timestamp_fields = ['start_time', 'startTime', 'published_datetime_utc', 'created_at', 'timestamp']
+                # Parse metadata if it's a string, otherwise use as-is
+                metadata_dict = item.metadata
+                if isinstance(item.metadata, str):
+                    from core.json_utils import JSONMetadataParser
+                    metadata_dict = JSONMetadataParser.parse_metadata(item.metadata)
                 
-                for field in timestamp_fields:
-                    if field in item.metadata and item.metadata[field]:
-                        user_timezone = self._get_user_timezone_for_namespace(item.namespace)
-                        extracted_date = self.database.extract_date_from_timestamp(
-                            str(item.metadata[field]), 
-                            user_timezone
-                        )
-                        if extracted_date:
-                            return extracted_date
+                if metadata_dict:
+                    # Try different timestamp fields that might be in metadata
+                    timestamp_fields = ['start_time', 'startTime', 'published_datetime_utc', 'created_at', 'timestamp']
+                    
+                    for field in timestamp_fields:
+                        if field in metadata_dict and metadata_dict[field]:
+                            user_timezone = self._get_user_timezone_for_namespace(item.namespace)
+                            extracted_date = self.database.extract_date_from_timestamp(
+                                str(metadata_dict[field]), 
+                                user_timezone
+                            )
+                            if extracted_date:
+                                return extracted_date
             
             return None
             
@@ -460,6 +467,9 @@ class IngestionService(BaseService):
         elif namespace == "news":
             # News typically uses UTC, but we might want to convert to user's preferred timezone
             # For now, return UTC since news published times are usually in UTC
+            return "UTC"
+        elif namespace == "weather":
+            # Weather data uses UTC timestamps
             return "UTC"
         else:
             # Default to UTC for unknown namespaces

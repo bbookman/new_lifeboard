@@ -53,9 +53,33 @@ class WeatherSource(BaseSource, HTTPClientMixin):
         
         return await super().test_connection()
 
+    def _has_weather_data_for_date(self, date: str) -> bool:
+        """Check if weather data already exists for the given date"""
+        with self.db_service.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT COUNT(*) as count
+                FROM weather 
+                WHERE days_date LIKE ?
+            """, (f"%{date}%",))
+            row = cursor.fetchone()
+            return row['count'] > 0 if row else False
+
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 1) -> AsyncIterator[DataItem]:
         if not self._api_key_configured:
             logger.warning("RAPID_API_KEY is not configured for weather. Skipping data fetch.")
+            return
+
+        # Check if we already have weather data for today
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self._has_weather_data_for_date(today):
+            logger.info(f"Weather data already exists for {today}. Skipping API call.")
+            # Yield a dummy item to indicate we checked but didn't fetch new data
+            yield DataItem(
+                namespace=self.namespace,
+                source_id="weather_check",
+                content="Weather data already exists for today",
+                metadata={"check_date": today, "status": "skipped"}
+            )
             return
 
         client = await self._ensure_client()

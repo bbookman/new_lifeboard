@@ -228,7 +228,7 @@ class StartupService:
             if self.config.news.enabled and self.config.news.api_key:
                 try:
                     logger.info("Registering News source...")
-                    news_source = NewsSource(self.config.news)
+                    news_source = NewsSource(self.config.news, self.database)
                     self.ingestion_service.register_source(news_source)
                     startup_result["sources_registered"].append("news")
                     logger.info("News source registered successfully")

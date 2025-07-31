@@ -156,6 +156,7 @@ class NewsTableMigration(BaseMigration):
                 snippet TEXT,
                 thumbnail_url TEXT,
                 published_datetime_utc TEXT,
+                days_date TEXT NOT NULL
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
