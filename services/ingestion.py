@@ -462,15 +462,6 @@ class IngestionService(BaseService):
     
     def _get_user_timezone_for_namespace(self, namespace: str) -> str:
         """Get user timezone configuration for a specific namespace"""
-        if namespace == "limitless":
-            return self.config.limitless.timezone
-        elif namespace == "news":
-            # News typically uses UTC, but we might want to convert to user's preferred timezone
-            # For now, return UTC since news published times are usually in UTC
-            return "UTC"
-        elif namespace == "weather":
-            # Weather data uses UTC timestamps
-            return "UTC"
-        else:
-            # Default to UTC for unknown namespaces
-            return "UTC"
+        # Use the configured user timezone for all namespaces to ensure consistent date extraction
+        # This ensures days_date reflects the user's local date regardless of data source
+        return self.config.limitless.timezone
