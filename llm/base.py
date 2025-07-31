@@ -84,6 +84,10 @@ class BaseLLMProvider(ABC):
         """Get information about a specific model"""
         pass
     
+    async def test_connection(self) -> bool:
+        """Test connection to the LLM provider - default implementation returns True"""
+        return True
+    
     async def close(self):
         """Close any connections and cleanup resources"""
         pass

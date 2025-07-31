@@ -11,7 +11,9 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from services.chat_service import ChatService
+from services.startup import StartupService
 from core.exception_handling import handle_api_exceptions
+from core.dependencies import get_startup_service_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -21,19 +23,11 @@ router = APIRouter(prefix="", tags=["chat"])
 templates = None
 
 
-# Global chat service instance - will be set by main server during startup
-_chat_service_instance = None
-
-def get_chat_service_dependency():
-    """Get the chat service instance"""
-    if _chat_service_instance is None:
+def get_chat_service_for_route(startup_service: StartupService = Depends(get_startup_service_dependency)) -> ChatService:
+    """Get the chat service instance for route dependency injection"""
+    if not startup_service.chat_service:
         raise HTTPException(status_code=503, detail="Chat service not available")
-    return _chat_service_instance
-
-def set_chat_service_instance(chat_service):
-    """Set the chat service instance (called by main server)"""
-    global _chat_service_instance
-    _chat_service_instance = chat_service
+    return startup_service.chat_service
 
 
 def set_templates(template_instance):
@@ -46,7 +40,7 @@ def set_templates(template_instance):
 @handle_api_exceptions("Failed to load chat page", 500, include_details=True)
 async def chat_page(
     request: Request, 
-    chat_service: ChatService = Depends(get_chat_service_dependency)
+    chat_service: ChatService = Depends(get_chat_service_for_route)
 ):
     """Get the chat page with recent history"""
     # Validate templates is available
@@ -81,7 +75,7 @@ async def chat_page(
 async def process_chat(
     request: Request, 
     message: str = Form(...),
-    chat_service: ChatService = Depends(get_chat_service_dependency)
+    chat_service: ChatService = Depends(get_chat_service_for_route)
 ):
     """Process a chat message and return the response"""
     # Process the chat message
