@@ -29,8 +29,26 @@ class JSONMetadataParser:
         if not metadata_str:
             return None
         
+        # Handle edge case where metadata might already be a dict
+        if isinstance(metadata_str, dict):
+            return metadata_str
+        
         try:
-            parsed = json.loads(metadata_str)
+            # Clean up common issues with JSON strings
+            cleaned_str = metadata_str.strip()
+            
+            # Check for double-serialization (JSON string containing escaped JSON)
+            if cleaned_str.startswith('"') and cleaned_str.endswith('"'):
+                try:
+                    # First, try to parse as a string that contains JSON
+                    unescaped = json.loads(cleaned_str)
+                    if isinstance(unescaped, str):
+                        cleaned_str = unescaped
+                except (json.JSONDecodeError, TypeError):
+                    # If that fails, use the original cleaned string
+                    pass
+            
+            parsed = json.loads(cleaned_str)
             # Ensure we return a dict, not other JSON types
             if isinstance(parsed, dict):
                 return parsed
@@ -38,7 +56,12 @@ class JSONMetadataParser:
                 logger.warning(f"Metadata is not a dictionary: {type(parsed)}")
                 return None
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON metadata: {e}")
+            # Provide more detailed error information
+            error_pos = getattr(e, 'pos', 0)
+            context_start = max(0, error_pos - 20)
+            context_end = min(len(metadata_str), error_pos + 20)
+            context = metadata_str[context_start:context_end]
+            logger.warning(f"Failed to parse JSON metadata at position {error_pos}: {e}. Context: '...{context}...'")
             return None
         except Exception as e:
             logger.error(f"Unexpected error parsing metadata: {e}")
@@ -58,12 +81,19 @@ class JSONMetadataParser:
         if metadata is None:
             return None
         
-        # If already a string, return as-is
+        # If already a string, validate it's proper JSON before returning
         if isinstance(metadata, str):
-            return metadata
+            try:
+                # Validate that it's proper JSON
+                json.loads(metadata)
+                return metadata
+            except json.JSONDecodeError:
+                logger.warning("Metadata string is not valid JSON, attempting to fix")
+                # If it's not valid JSON, treat it as a raw string and serialize it
+                return json.dumps(metadata)
         
         try:
-            return json.dumps(metadata)
+            return json.dumps(metadata, ensure_ascii=False)
         except (TypeError, ValueError) as e:
             logger.error(f"Failed to serialize metadata: {e}")
             return None

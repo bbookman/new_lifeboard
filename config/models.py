@@ -144,6 +144,27 @@ class NewsConfig(BaseModel, BaseConfigMixin):
             additional_placeholders={"your-rapid-api-key-here", "rapid_api_key_here"}
         )
 
+    def is_endpoint_configured(self) -> bool:
+        """Check if endpoint is properly configured"""
+        if not self.endpoint or not isinstance(self.endpoint, str):
+            return False
+        
+        # Check if endpoint is empty or whitespace only
+        if not self.endpoint.strip():
+            return False
+        
+        # Check against common placeholder patterns
+        endpoint_lower = self.endpoint.lower().strip()
+        placeholders = {
+            "null", "none", "endpoint_here", "your_endpoint_here", 
+            "news_endpoint_here", "example.com", "api.example.com"
+        }
+        return endpoint_lower not in placeholders
+
+    def is_fully_configured(self) -> bool:
+        """Check if both API key and endpoint are properly configured"""
+        return self.enabled and self.is_api_key_configured() and self.is_endpoint_configured()
+
 
 class WeatherConfig(BaseModel, BaseConfigMixin):
     """Weather API configuration"""
@@ -189,6 +210,27 @@ class WeatherConfig(BaseModel, BaseConfigMixin):
             self.api_key,
             additional_placeholders={"your-rapid-api-key-here", "rapid_api_key_here"}
         )
+
+    def is_endpoint_configured(self) -> bool:
+        """Check if endpoint is properly configured"""
+        if not self.endpoint or not isinstance(self.endpoint, str):
+            return False
+        
+        # Check if endpoint is empty or whitespace only
+        if not self.endpoint.strip():
+            return False
+        
+        # Check against common placeholder patterns
+        endpoint_lower = self.endpoint.lower().strip()
+        placeholders = {
+            "null", "none", "endpoint_here", "your_endpoint_here", 
+            "weather_endpoint_here", "example.com", "api.example.com"
+        }
+        return endpoint_lower not in placeholders
+
+    def is_fully_configured(self) -> bool:
+        """Check if both API key and endpoint are properly configured"""
+        return self.enabled and self.is_api_key_configured() and self.is_endpoint_configured()
 
 
 class SourceConfig(BaseModel):

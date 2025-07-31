@@ -209,7 +209,7 @@ class StartupService:
             logger.info("Registering data sources...")
             
             # Register Limitless source if API key is available
-            if self.config.limitless.api_key:
+            if self.config.limitless.is_api_key_configured():
                 try:
                     logger.info("Registering Limitless source...")
                     limitless_source = LimitlessSource(self.config.limitless)
@@ -224,8 +224,8 @@ class StartupService:
             else:
                 logger.info("Limitless API key not configured, skipping source registration")
             
-            # Register News source if enabled and API key is available
-            if self.config.news.enabled and self.config.news.api_key:
+            # Register News source if fully configured (enabled, API key, and endpoint)
+            if self.config.news.is_fully_configured():
                 try:
                     logger.info("Registering News source...")
                     news_source = NewsSource(self.config.news, self.database)
@@ -240,8 +240,12 @@ class StartupService:
             else:
                 if not self.config.news.enabled:
                     logger.info("News service disabled in configuration, skipping source registration")
-                else:
+                elif not self.config.news.is_api_key_configured():
                     logger.info("News API key not configured, skipping source registration")
+                elif not self.config.news.is_endpoint_configured():
+                    logger.info("News endpoint not configured, skipping source registration")
+                else:
+                    logger.info("News source not fully configured, skipping source registration")
             
             # Register Twitter source if enabled and path is provided
             if self.config.twitter.is_configured():
@@ -261,8 +265,8 @@ class StartupService:
             else:
                 logger.info("Twitter source not configured, skipping source registration")
 
-            # Register Weather source if enabled and API key is available
-            if self.config.weather.enabled and self.config.weather.api_key:
+            # Register Weather source if fully configured (enabled, API key, and endpoint)
+            if self.config.weather.is_fully_configured():
                 try:
                     logger.info("Registering Weather source...")
                     weather_source = WeatherSource(self.config.weather, self.database)
@@ -276,8 +280,12 @@ class StartupService:
             else:
                 if not self.config.weather.enabled:
                     logger.info("Weather service disabled in configuration, skipping source registration")
-                else:
+                elif not self.config.weather.is_api_key_configured():
                     logger.info("Weather API key not configured, skipping source registration")
+                elif not self.config.weather.is_endpoint_configured():
+                    logger.info("Weather endpoint not configured, skipping source registration")
+                else:
+                    logger.info("Weather source not fully configured, skipping source registration")
 
             # Future: Add other source registrations here
             # if self.config.notion.api_key:
