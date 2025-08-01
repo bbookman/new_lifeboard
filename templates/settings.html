@@ -39,7 +39,16 @@
             line-height: 1.5;
             color: #606770;
         }
-        .import-button {
+        .upload-form {
+            margin-top: 1rem;
+        }
+        .upload-form input[type="file"] {
+            border: 1px solid #dddfe2;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        .upload-button {
             background-color: #1877f2;
             color: white;
             border: none;
@@ -49,11 +58,12 @@
             font-weight: bold;
             cursor: pointer;
             transition: background-color 0.3s;
+            margin-left: 0.5rem;
         }
-        .import-button:hover {
+        .upload-button:hover {
             background-color: #166fe5;
         }
-        #import-status {
+        #upload-status {
             margin-top: 1rem;
             font-size: 0.9rem;
             color: #606770;
@@ -66,13 +76,48 @@
         <div class="settings-section">
             <h2>Data Imports</h2>
             <p>
-                To import your Twitter data, make sure your exported Twitter archive is placed in the directory
-                specified in your <code>.env</code> file (<code>PATH_TO_TWITTER_DATA</code>). Once the files are in place,
-                click the button below to begin the import.
+                To import your Twitter data, upload your exported Twitter archive zip file.
             </p>
-            <button id="import-twitter-btn" class="import-button">Import Twitter Archive</button>
-            <div id="import-status"></div>
+            <form id="twitter-upload-form" class="upload-form">
+                <input type="file" id="twitter-file-input" name="file" accept=".zip" required>
+                <button type="submit" class="upload-button">Upload and Import</button>
+            </form>
+            <div id="upload-status"></div>
         </div>
     </div>
+    <script>
+        const form = document.getElementById('twitter-upload-form');
+        const fileInput = document.getElementById('twitter-file-input');
+        const statusDiv = document.getElementById('upload-status');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            statusDiv.textContent = 'Uploading and processing...';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/upload/twitter', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    statusDiv.textContent = result.message;
+                    statusDiv.style.color = 'green';
+                } else {
+                    statusDiv.textContent = `Error: ${result.message}`;
+                    statusDiv.style.color = 'red';
+                }
+            } catch (error) {
+                statusDiv.textContent = 'An unexpected error occurred.';
+                statusDiv.style.color = 'red';
+                console.error('Upload error:', error);
+            }
+        });
+    </script>
 </body>
 </html>

@@ -49,12 +49,8 @@ class JSONMetadataParser:
                     pass
             
             parsed = json.loads(cleaned_str)
-            # Ensure we return a dict, not other JSON types
-            if isinstance(parsed, dict):
-                return parsed
-            else:
-                logger.warning(f"Metadata is not a dictionary: {type(parsed)}")
-                return None
+            # Return the parsed JSON value (dict, string, number, etc.)
+            return parsed
         except json.JSONDecodeError as e:
             # Provide more detailed error information
             error_pos = getattr(e, 'pos', 0)
@@ -102,12 +98,12 @@ class JSONMetadataParser:
             return None
     
     @staticmethod
-    def safe_get_value(data: Optional[Dict[str, Any]], key: str, default: Any = None) -> Any:
+    def safe_get_value(data: Optional[Any], key: str, default: Any = None) -> Any:
         """
         Safely get value from parsed metadata dictionary
         
         Args:
-            data: Parsed metadata dictionary
+            data: Parsed metadata (should be a dictionary)
             key: Key to retrieve
             default: Default value if key not found
             
