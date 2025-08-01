@@ -42,22 +42,30 @@ class TwitterSource(BaseSource):
                 zip_ref.extractall(temp_dir)
                 logger.info(f"Extracted zip to: {temp_dir}")
 
-            tweet_js_path = None
+            # PERMANENT FIX: Robust file discovery that prioritizes tweets.js and never looks for tweet.js
+            tweets_js_path = None
+            possible_filenames = ['tweets.js']  # Correct filename only - NEVER look for tweet.js
+            
             for root, _, files in os.walk(temp_dir):
-                if 'tweet.js' in files:
-                    tweet_js_path = os.path.join(root, 'tweet.js')
-                    logger.info(f"Found tweet.js at: {tweet_js_path}")
+                logger.info(f"DEBUG: Files found in {root}: {files}")
+                for filename in possible_filenames:
+                    if filename in files:
+                        tweets_js_path = os.path.join(root, filename)
+                        logger.info(f"Found Twitter data file: {filename} at: {tweets_js_path}")
+                        break
+                if tweets_js_path:
                     break
             
-            if not tweet_js_path:
-                logger.error(f"tweet.js not found in the extracted archive at {temp_dir}")
+            if not tweets_js_path:
+                logger.error(f"tweets.js not found in the extracted archive at {temp_dir}")
+                logger.error(f"Searched for files: {possible_filenames}")
                 return {
-                    "success": False, 
-                    "imported_count": 0, 
-                    "message": "Could not find tweet.js in the archive."
+                    "success": False,
+                    "imported_count": 0,
+                    "message": "Could not find tweets.js in the archive. Make sure you're using the correct Twitter archive format."
                 }
 
-            with open(tweet_js_path, 'r', encoding='utf-8') as f:
+            with open(tweets_js_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 if 'window.YTD.tweet.part0 = [' in content:
                     content = content.split('window.YTD.tweet.part0 = [', 1)[1]

@@ -68,6 +68,16 @@ class WeatherSource(BaseSource, HTTPClientMixin):
         if not self._api_key_configured:
             logger.warning("RAPID_API_KEY is not configured for weather. Skipping data fetch.")
             return
+        
+        # Check if endpoint is properly configured
+        if not self.config.is_endpoint_configured():
+            logger.warning("WEATHER_ENDPOINT is not configured for weather. Skipping data fetch.")
+            return
+        
+        # Check if weather service is fully configured and enabled
+        if not self.config.is_fully_configured():
+            logger.warning("Weather service is not fully configured or disabled. Skipping data fetch.")
+            return
 
         # Check if we already have weather data for today
         today = datetime.now().strftime("%Y-%m-%d")

@@ -220,11 +220,12 @@ class WeatherConfig(BaseModel, BaseConfigMixin):
         if not self.endpoint.strip():
             return False
         
-        # Check against common placeholder patterns
+        # Check against common placeholder patterns and default fallback values
         endpoint_lower = self.endpoint.lower().strip()
         placeholders = {
-            "null", "none", "endpoint_here", "your_endpoint_here", 
-            "weather_endpoint_here", "example.com", "api.example.com"
+            "null", "none", "endpoint_here", "your_endpoint_here",
+            "weather_endpoint_here", "example.com", "api.example.com",
+            "easy-weather1.p.rapidapi.com/daily/5"  # Default fallback endpoint
         }
         return endpoint_lower not in placeholders
 
