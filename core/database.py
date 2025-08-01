@@ -389,3 +389,10 @@ class DatabaseService:
             return "\n\n---\n\n".join(markdown_parts)
         else:
             return f"# {date}\n\nNo data available for this date."
+
+    def get_latest_tweet_date(self) -> Optional[str]:
+        """Get the latest tweet date from the tweets table"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("SELECT MAX(days_date) FROM tweets")
+            row = cursor.fetchone()
+            return row[0] if row and row[0] else None

@@ -173,11 +173,11 @@ kill_existing_processes
 SERVER_CMD="python api/server.py"
 
 if [ "$AUTO_PORT" = true ]; then
-    SERVER_CMD="$SERVER_CMD --auto-port --port $DEFAULT_PORT"
-    print_status "Using auto-port mode starting from port $DEFAULT_PORT"
-else
     SERVER_CMD="$SERVER_CMD --port $DEFAULT_PORT"
-    print_status "Using fixed port $DEFAULT_PORT"
+    print_status "Using auto-port mode starting from port $DEFAULT_PORT (default behavior)"
+else
+    SERVER_CMD="$SERVER_CMD --port $DEFAULT_PORT --no-auto-port"
+    print_status "Using fixed port $DEFAULT_PORT (auto-port disabled)"
 fi
 
 if [ "$DEBUG" = true ]; then

@@ -43,7 +43,10 @@ class JSONMetadataParser:
                     # First, try to parse as a string that contains JSON
                     unescaped = json.loads(cleaned_str)
                     if isinstance(unescaped, str):
-                        cleaned_str = unescaped
+                        # Only use the unescaped version if it looks like JSON
+                        # (starts with { or [ indicating actual double-serialization)
+                        if unescaped.strip().startswith(('{', '[')):
+                            cleaned_str = unescaped
                 except (json.JSONDecodeError, TypeError):
                     # If that fails, use the original cleaned string
                     pass
@@ -52,12 +55,28 @@ class JSONMetadataParser:
             # Return the parsed JSON value (dict, string, number, etc.)
             return parsed
         except json.JSONDecodeError as e:
-            # Provide more detailed error information
+            # DEFENSIVE FIX: Handle raw strings that aren't valid JSON
+            # Common case: raw timestamp strings like "2025-07-31T02:51:57.519"
+            # being passed instead of proper JSON
+            if "Extra data" in str(e) and e.pos == 4:
+                # This is likely a raw string being passed to the JSON parser
+                # Return the string as-is, wrapped in a simple structure
+                logger.info(f"Converting raw string to JSON-compatible format: {metadata_str[:50]}...")
+                return {"raw_value": metadata_str}
+            
+            # For other JSON errors, provide helpful context
             error_pos = getattr(e, 'pos', 0)
             context_start = max(0, error_pos - 20)
             context_end = min(len(metadata_str), error_pos + 20)
             context = metadata_str[context_start:context_end]
             logger.warning(f"Failed to parse JSON metadata at position {error_pos}: {e}. Context: '...{context}...'")
+            
+            # Try to detect if this is a raw string and handle it gracefully
+            if not cleaned_str.startswith(('{', '[', '"')) and not cleaned_str.endswith(('}', ']', '"')):
+                # This looks like a raw string, wrap it properly
+                logger.info(f"Detected raw string input, wrapping as JSON-compatible: {cleaned_str[:50]}...")
+                return {"raw_value": cleaned_str}
+            
             return None
         except Exception as e:
             logger.error(f"Unexpected error parsing metadata: {e}")

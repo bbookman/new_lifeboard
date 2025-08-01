@@ -56,68 +56,138 @@ logger.info("SERVER: Templates initialized successfully")
 _shutdown_requested = False
 _server_instance = None
 
-# Signal handling for graceful shutdown
+# Signal handling for graceful shutdown with safety checks
 def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully"""
+    """Handle shutdown signals gracefully with enhanced safety checks"""
     global _shutdown_requested, _server_instance
     
-    signal_name = signal.Signals(signum).name if hasattr(signal.Signals, '__getitem__') else str(signum)
+    # Safety check for signal number
+    try:
+        if hasattr(signal, 'Signals') and hasattr(signal.Signals, '__getitem__'):
+            signal_name = signal.Signals(signum).name
+        else:
+            signal_name = f"signal-{signum}"
+    except (ValueError, AttributeError):
+        signal_name = f"unknown-signal-{signum}"
+    
     logger.info(f"SIGNAL: Received shutdown signal {signal_name} ({signum})")
     logger.info(f"SIGNAL: Initiating graceful shutdown...")
     
+    # Set shutdown flag atomically
     _shutdown_requested = True
     
-    # If this is SIGINT (CTRL-C), handle it gracefully
+    # Handle SIGINT (CTRL-C) specially
     if signum == signal.SIGINT:
         logger.info("SIGNAL: CTRL-C detected - starting graceful shutdown")
-        print("\n\n🛑 Graceful shutdown initiated... Please wait for cleanup to complete.")
-        print("⏳ Shutting down services and releasing port bindings...")
+        try:
+            print("\n\n🛑 Graceful shutdown initiated... Please wait for cleanup to complete.")
+            print("⏳ Shutting down services and releasing port bindings...")
+        except Exception as print_error:
+            logger.debug(f"SIGNAL: Error printing shutdown message: {print_error}")
         
         # Trigger uvicorn shutdown if server instance is available
-        if _server_instance:
+        if _server_instance is not None:
             logger.info("SIGNAL: Triggering uvicorn server shutdown...")
             try:
-                _server_instance.should_exit = True
+                # Safety checks before accessing server instance attributes
+                if hasattr(_server_instance, 'should_exit'):
+                    _server_instance.should_exit = True
+                    logger.debug("SIGNAL: Set server.should_exit = True")
+                else:
+                    logger.warning("SIGNAL: Server instance has no 'should_exit' attribute")
+                
                 if hasattr(_server_instance, 'force_exit'):
                     _server_instance.force_exit = False  # Graceful shutdown, not forced
-                logger.info("SIGNAL: Uvicorn shutdown signal sent")
+                    logger.debug("SIGNAL: Set server.force_exit = False")
+                else:
+                    logger.debug("SIGNAL: Server instance has no 'force_exit' attribute")
+                
+                logger.info("SIGNAL: Uvicorn shutdown signal sent successfully")
+            except AttributeError as attr_error:
+                logger.error(f"SIGNAL: Server instance missing expected attributes: {attr_error}")
             except Exception as e:
                 logger.error(f"SIGNAL: Error triggering uvicorn shutdown: {e}")
+                logger.exception("SIGNAL: Full exception details:")
         else:
             logger.warning("SIGNAL: No server instance available to shutdown")
     
-    # For other signals, just set the flag
+    # Handle SIGTERM
     elif signum == signal.SIGTERM:
         logger.info("SIGNAL: SIGTERM received - initiating shutdown")
-        if _server_instance:
-            _server_instance.should_exit = True
-
-# Setup graceful shutdown handling
-def setup_signal_handlers():
-    """Setup signal handlers for graceful shutdown"""
-    # Handle SIGINT (CTRL-C) and SIGTERM gracefully
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    logger.info("SIGNAL: Registered graceful shutdown handlers for SIGINT and SIGTERM")
+        if _server_instance is not None:
+            try:
+                if hasattr(_server_instance, 'should_exit'):
+                    _server_instance.should_exit = True
+                    logger.info("SIGNAL: Set server.should_exit = True for SIGTERM")
+                else:
+                    logger.warning("SIGNAL: Server instance has no 'should_exit' attribute for SIGTERM")
+            except Exception as e:
+                logger.error(f"SIGNAL: Error handling SIGTERM: {e}")
+        else:
+            logger.warning("SIGNAL: No server instance available for SIGTERM handling")
     
-    # Optional: Handle other signals for logging only
+    # Handle other signals
+    else:
+        logger.info(f"SIGNAL: Received {signal_name} - setting shutdown flag only")
+        # For other signals, we just set the shutdown flag and let the application handle it
+    
+    logger.debug(f"SIGNAL: Signal handler for {signal_name} completed successfully")
+
+# Setup graceful shutdown handling with enhanced safety
+def setup_signal_handlers():
+    """Setup signal handlers for graceful shutdown with enhanced safety checks"""
+    logger.info("SIGNAL: Setting up signal handlers...")
+    
+    # Handle SIGINT (CTRL-C) and SIGTERM gracefully
+    try:
+        signal.signal(signal.SIGINT, signal_handler)
+        logger.info("SIGNAL: Registered graceful shutdown handler for SIGINT")
+    except (OSError, ValueError) as e:
+        logger.error(f"SIGNAL: Failed to register SIGINT handler: {e}")
+    
+    try:
+        signal.signal(signal.SIGTERM, signal_handler)
+        logger.info("SIGNAL: Registered graceful shutdown handler for SIGTERM")
+    except (OSError, ValueError) as e:
+        logger.error(f"SIGNAL: Failed to register SIGTERM handler: {e}")
+    
+    # Optional: Handle other signals for logging only with better error handling
     optional_signals = []
-    if hasattr(signal, 'SIGHUP'):
-        optional_signals.append(signal.SIGHUP)
-    if hasattr(signal, 'SIGQUIT'):
-        optional_signals.append(signal.SIGQUIT)
+    
+    # Check for platform-specific signals safely
+    for signal_name in ['SIGHUP', 'SIGQUIT', 'SIGUSR1', 'SIGUSR2']:
+        if hasattr(signal, signal_name):
+            sig_value = getattr(signal, signal_name)
+            optional_signals.append((signal_name, sig_value))
+            logger.debug(f"SIGNAL: Found optional signal {signal_name} = {sig_value}")
     
     def log_only_handler(signum, frame):
-        signal_name = signal.Signals(signum).name if hasattr(signal.Signals, '__getitem__') else str(signum)
+        """Safe logging-only signal handler"""
+        try:
+            if hasattr(signal, 'Signals') and hasattr(signal.Signals, '__getitem__'):
+                signal_name = signal.Signals(signum).name
+            else:
+                signal_name = f"signal-{signum}"
+        except (ValueError, AttributeError):
+            signal_name = f"unknown-signal-{signum}"
+        
         logger.info(f"SIGNAL: Received {signal_name} ({signum}) - logging only")
     
-    for sig in optional_signals:
+    # Register optional signal handlers
+    registered_optional = 0
+    for signal_name, sig_value in optional_signals:
         try:
-            signal.signal(sig, log_only_handler)
-            logger.debug(f"SIGNAL: Registered logging handler for {signal.Signals(sig).name} ({sig})")
-        except (OSError, ValueError):
-            # Some signals might not be available on all platforms
-            pass
+            signal.signal(sig_value, log_only_handler)
+            logger.debug(f"SIGNAL: Registered logging handler for {signal_name} ({sig_value})")
+            registered_optional += 1
+        except (OSError, ValueError) as e:
+            logger.debug(f"SIGNAL: Could not register handler for {signal_name}: {e}")
+            # Some signals might not be available on all platforms - this is expected
+        except Exception as e:
+            logger.warning(f"SIGNAL: Unexpected error registering handler for {signal_name}: {e}")
+    
+    logger.info(f"SIGNAL: Successfully registered {registered_optional} optional signal handlers")
+    logger.info("SIGNAL: Signal handler setup completed")
 
 # Signal handlers will be configured by uvicorn server function
 # setup_signal_handlers()  # Disabled - handled by uvicorn runner
@@ -327,7 +397,9 @@ async def lifespan(app: FastAPI):
                 logger.debug(f"LIFESPAN: Monitoring loop - server still running (check #{monitor_count})")
                 
                 # Check if server should exit (additional safety check)
-                if hasattr(_server_instance, 'should_exit') and _server_instance and _server_instance.should_exit:
+                if (_server_instance is not None and 
+                    hasattr(_server_instance, 'should_exit') and 
+                    _server_instance.should_exit):
                     logger.info("LIFESPAN: Server should_exit flag detected - stopping monitoring")
                     break
                     
@@ -452,22 +524,106 @@ async def internal_server_error_handler(request, exc):
 def find_server_processes_basic():
     """Basic process detection using pgrep (fallback when psutil unavailable)"""
     import subprocess
+    import os
+    
+    current_pid = os.getpid()
+    logger.debug(f"PROCESS: Finding server processes (excluding current PID {current_pid})")
     
     try:
+        # Use more specific pattern and include command line args
         result = subprocess.run(['pgrep', '-f', 'python.*api/server.py'], 
-                              capture_output=True, text=True, timeout=5)
+                              capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
-            pids = [int(pid.strip()) for pid in result.stdout.strip().split('\n') if pid.strip()]
+            pids = []
+            for pid_str in result.stdout.strip().split('\n'):
+                if pid_str.strip():
+                    try:
+                        pid = int(pid_str.strip())
+                        if pid != current_pid:  # Exclude current process
+                            pids.append(pid)
+                            logger.debug(f"PROCESS: Found server process PID {pid}")
+                        else:
+                            logger.debug(f"PROCESS: Skipping current process PID {pid}")
+                    except ValueError:
+                        logger.warning(f"PROCESS: Invalid PID format: '{pid_str.strip()}'")
+                        continue
+            
+            # Verify processes are still running
+            verified_pids = []
+            for pid in pids:
+                try:
+                    # Try to send signal 0 to check if process exists
+                    os.kill(pid, 0)
+                    verified_pids.append(pid)
+                    logger.debug(f"PROCESS: Verified PID {pid} is running")
+                except (OSError, ProcessLookupError):
+                    logger.debug(f"PROCESS: PID {pid} no longer exists")
+                    continue
+            
+            logger.info(f"PROCESS: Found {len(verified_pids)} verified server processes")
+            return verified_pids
+        else:
+            logger.debug(f"PROCESS: pgrep returned code {result.returncode}, no processes found")
+    except subprocess.TimeoutExpired:
+        logger.warning("PROCESS: pgrep command timed out")
+    except subprocess.CalledProcessError as e:
+        logger.debug(f"PROCESS: pgrep failed with return code {e.returncode}")
+    except FileNotFoundError:
+        logger.warning("PROCESS: pgrep command not found - trying alternative methods")
+        return find_server_processes_alternative()
+    except ValueError as e:
+        logger.warning(f"PROCESS: Error parsing pgrep output: {e}")
+    
+    return []
+
+def find_server_processes_alternative():
+    """Alternative process detection when pgrep is unavailable"""
+    import subprocess
+    import os
+    
+    current_pid = os.getpid()
+    logger.debug("PROCESS: Using alternative process detection (ps + grep)")
+    
+    try:
+        # Use ps with grep as fallback
+        ps_result = subprocess.run(['ps', 'aux'], 
+                                 capture_output=True, text=True, timeout=10)
+        if ps_result.returncode != 0:
+            logger.warning("PROCESS: ps command failed")
+            return []
+        
+        grep_result = subprocess.run(['grep', '-E', r'python.*api/server\.py'], 
+                                   input=ps_result.stdout, 
+                                   capture_output=True, text=True, timeout=5)
+        
+        if grep_result.returncode == 0:
+            pids = []
+            for line in grep_result.stdout.strip().split('\n'):
+                if line.strip() and 'grep' not in line:  # Exclude grep process itself
+                    try:
+                        # Extract PID from ps output (second column)
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            pid = int(parts[1])
+                            if pid != current_pid:
+                                pids.append(pid)
+                                logger.debug(f"PROCESS: Found server process PID {pid} via ps")
+                    except (ValueError, IndexError):
+                        continue
+            
+            logger.info(f"PROCESS: Alternative method found {len(pids)} server processes")
             return pids
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, ValueError):
-        pass
+        
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.warning(f"PROCESS: Alternative process detection failed: {e}")
     
     return []
 
 def find_server_processes():
-    """Find existing server processes"""
+    """Find existing server processes with enhanced reliability"""
     try:
         import psutil
+        logger.debug("PROCESS: Using psutil for process detection")
     except ImportError:
         logger.warning("PROCESS: psutil not available - using basic process detection")
         return find_server_processes_basic()
@@ -476,70 +632,156 @@ def find_server_processes():
     
     server_processes = []
     current_pid = os.getpid()  # Don't include current process
+    logger.debug(f"PROCESS: Searching for server processes (excluding current PID {current_pid})")
     
     try:
-        for proc in psutil.process_iter(['pid', 'cmdline']):
+        # Get process iterator with more attributes for better filtering
+        for proc in psutil.process_iter(['pid', 'cmdline', 'name', 'status']):
             try:
-                cmdline = proc.info['cmdline']
+                proc_info = proc.info
+                pid = proc_info['pid']
+                cmdline = proc_info['cmdline']
+                name = proc_info['name']
+                status = proc_info['status']
+                
+                # Skip current process
+                if pid == current_pid:
+                    continue
+                
+                # Skip zombie processes
+                if status == psutil.STATUS_ZOMBIE:
+                    logger.debug(f"PROCESS: Skipping zombie process PID {pid}")
+                    continue
+                
+                # Check if this is a Python process running our server
                 if (cmdline and 
                     len(cmdline) >= 2 and
-                    'python' in cmdline[0] and 
-                    'api/server.py' in ' '.join(cmdline) and
-                    proc.info['pid'] != current_pid):
-                    server_processes.append(proc.info['pid'])
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    ('python' in name.lower() or 'python' in cmdline[0]) and 
+                    any('api/server.py' in arg for arg in cmdline)):
+                    
+                    # Double-check the process is actually running
+                    try:
+                        if proc.is_running():
+                            server_processes.append(pid)
+                            logger.debug(f"PROCESS: Found server process PID {pid} (status: {status})")
+                            logger.debug(f"PROCESS: Process cmdline: {' '.join(cmdline[:3])}...")
+                        else:
+                            logger.debug(f"PROCESS: PID {pid} not running, skipping")
+                    except psutil.NoSuchProcess:
+                        logger.debug(f"PROCESS: PID {pid} disappeared during check")
+                        continue
+                        
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                # Process disappeared or access denied - skip silently
                 continue
-    except Exception as e:
-        logger.warning(f"PROCESS: Error finding server processes: {e}")
+            except Exception as e:
+                logger.debug(f"PROCESS: Error checking process {proc_info.get('pid', 'unknown')}: {e}")
+                continue
     
+    except Exception as e:
+        logger.warning(f"PROCESS: Error during psutil process iteration: {e}")
+        logger.info("PROCESS: Falling back to basic process detection")
+        return find_server_processes_basic()
+    
+    logger.info(f"PROCESS: Found {len(server_processes)} server processes using psutil")
     return server_processes
 
 def kill_existing_processes_basic(server_pids, graceful_timeout: int = 10):
-    """Basic process termination without psutil"""
+    """Basic process termination without psutil with enhanced reliability"""
     import subprocess
     import time
+    import os
     
     if not server_pids:
+        logger.info("PROCESS: No processes to terminate")
         return True
     
-    # Step 1: Send SIGTERM
+    logger.info(f"PROCESS: Terminating {len(server_pids)} processes: {server_pids}")
+    
+    # Step 1: Send SIGTERM for graceful shutdown
+    sigterm_sent = []
+    sigterm_failed = []
+    
     for pid in server_pids:
         try:
-            subprocess.run(['kill', '-TERM', str(pid)], timeout=5)
+            # Verify process exists before attempting to kill
+            os.kill(pid, 0)  # Signal 0 doesn't kill, just checks if process exists
+            subprocess.run(['kill', '-TERM', str(pid)], timeout=5, check=True)
+            sigterm_sent.append(pid)
             logger.info(f"PROCESS: Sent SIGTERM to process {pid}")
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        except ProcessLookupError:
+            logger.debug(f"PROCESS: Process {pid} already gone")
+        except subprocess.CalledProcessError as e:
+            if e.returncode == 1:  # Process not found
+                logger.debug(f"PROCESS: Process {pid} not found during SIGTERM")
+            else:
+                logger.warning(f"PROCESS: Error sending SIGTERM to {pid}: return code {e.returncode}")
+                sigterm_failed.append(pid)
+        except (subprocess.TimeoutExpired, OSError) as e:
             logger.warning(f"PROCESS: Error sending SIGTERM to {pid}: {e}")
+            sigterm_failed.append(pid)
     
-    # Step 2: Wait and check
-    time.sleep(graceful_timeout)
+    if sigterm_sent:
+        logger.info(f"PROCESS: Waiting {graceful_timeout}s for {len(sigterm_sent)} processes to terminate gracefully")
     
-    # Step 3: Check what's still running
-    remaining_pids = find_server_processes_basic()
-    still_running = [pid for pid in server_pids if pid in remaining_pids]
+    # Step 2: Wait for graceful shutdown with progressive checking
+    wait_interval = min(2, graceful_timeout // 5)  # Check every 2s or graceful_timeout/5, whichever is smaller
+    total_waited = 0
     
-    # Step 4: Force kill if needed
-    if still_running:
-        logger.warning(f"PROCESS: Force killing {len(still_running)} remaining processes")
-        for pid in still_running:
+    while total_waited < graceful_timeout and sigterm_sent:
+        time.sleep(wait_interval)
+        total_waited += wait_interval
+        
+        # Check which processes are still running
+        still_running = []
+        for pid in sigterm_sent:
             try:
-                subprocess.run(['kill', '-KILL', str(pid)], timeout=5)
-                logger.info(f"PROCESS: Sent SIGKILL to process {pid}")
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
-                logger.error(f"PROCESS: Error sending SIGKILL to {pid}: {e}")
+                os.kill(pid, 0)  # Check if process still exists
+                still_running.append(pid)
+            except ProcessLookupError:
+                logger.debug(f"PROCESS: Process {pid} terminated gracefully")
+        
+        sigterm_sent = still_running
+        if not sigterm_sent:
+            logger.info(f"PROCESS: All processes terminated gracefully after {total_waited}s")
+            break
+        else:
+            logger.debug(f"PROCESS: {len(sigterm_sent)} processes still running after {total_waited}s")
     
-    # Final verification
+    # Step 3: Force kill remaining processes
+    all_remaining = sigterm_sent + sigterm_failed
+    if all_remaining:
+        logger.warning(f"PROCESS: Force killing {len(all_remaining)} remaining processes: {all_remaining}")
+        
+        for pid in all_remaining:
+            try:
+                os.kill(pid, 0)  # Check if process still exists
+                subprocess.run(['kill', '-KILL', str(pid)], timeout=5, check=True)
+                logger.info(f"PROCESS: Sent SIGKILL to process {pid}")
+            except ProcessLookupError:
+                logger.debug(f"PROCESS: Process {pid} already gone before SIGKILL")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"PROCESS: Error sending SIGKILL to {pid}: return code {e.returncode}")
+            except (subprocess.TimeoutExpired, OSError) as e:
+                logger.error(f"PROCESS: Error sending SIGKILL to {pid}: {e}")
+        
+        # Wait briefly for SIGKILL to take effect
+        time.sleep(2)
+    
+    # Step 4: Final verification
     final_check = find_server_processes_basic()
     remaining_after_kill = [pid for pid in server_pids if pid in final_check]
     
     if remaining_after_kill:
-        logger.error(f"PROCESS: {len(remaining_after_kill)} processes still running: {remaining_after_kill}")
+        logger.error(f"PROCESS: {len(remaining_after_kill)} processes still running after termination attempts: {remaining_after_kill}")
+        logger.error("PROCESS: Manual intervention may be required")
         return False
     else:
         logger.info("PROCESS: All processes terminated successfully")
         return True
 
 def kill_existing_processes(graceful_timeout: int = 10):
-    """Kill existing server processes gracefully then forcefully if needed"""
+    """Kill existing server processes gracefully then forcefully if needed with enhanced reliability"""
     server_pids = find_server_processes()
     if not server_pids:
         logger.info("PROCESS: No existing server processes found")
@@ -549,50 +791,117 @@ def kill_existing_processes(graceful_timeout: int = 10):
     
     try:
         import psutil
+        logger.debug("PROCESS: Using psutil for process termination")
     except ImportError:
         logger.warning("PROCESS: psutil not available - using basic process termination")
         return kill_existing_processes_basic(server_pids, graceful_timeout)
     
     import time
     
-    # Step 1: Send SIGTERM for graceful shutdown
+    # Step 1: Validate and send SIGTERM for graceful shutdown
     terminated_processes = []
+    access_denied_pids = []
+    already_gone_pids = []
+    
     for pid in server_pids:
         try:
             proc = psutil.Process(pid)
-            logger.info(f"PROCESS: Sending SIGTERM to process {pid}")
+            
+            # Check if process is still our server process
+            try:
+                cmdline = proc.cmdline()
+                if not (cmdline and any('api/server.py' in arg for arg in cmdline)):
+                    logger.warning(f"PROCESS: PID {pid} no longer appears to be a server process, skipping")
+                    continue
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
+                pass  # Will be handled below
+            
+            logger.info(f"PROCESS: Sending SIGTERM to process {pid} (status: {proc.status()})")
             proc.terminate()
             terminated_processes.append(proc)
+            
         except psutil.NoSuchProcess:
             logger.debug(f"PROCESS: Process {pid} already gone")
+            already_gone_pids.append(pid)
         except psutil.AccessDenied:
             logger.warning(f"PROCESS: Access denied to terminate process {pid}")
+            access_denied_pids.append(pid)
         except Exception as e:
             logger.error(f"PROCESS: Error terminating process {pid}: {e}")
     
-    # Step 2: Wait for graceful shutdown
-    if terminated_processes:
-        logger.info(f"PROCESS: Waiting up to {graceful_timeout}s for graceful shutdown...")
-        try:
-            psutil.wait_procs(terminated_processes, timeout=graceful_timeout)
-            logger.info("PROCESS: All processes terminated gracefully")
-        except psutil.TimeoutExpired as e:
-            logger.warning(f"PROCESS: {len(e.alive)} processes didn't terminate gracefully")
-            
-            # Step 3: Force kill remaining processes
-            for proc in e.alive:
-                try:
-                    logger.warning(f"PROCESS: Force killing process {proc.pid}")
-                    proc.kill()
-                except psutil.NoSuchProcess:
-                    pass
-                except Exception as kill_error:
-                    logger.error(f"PROCESS: Error force killing process {proc.pid}: {kill_error}")
+    if already_gone_pids:
+        logger.info(f"PROCESS: {len(already_gone_pids)} processes already terminated")
     
-    # Verify cleanup
+    # Step 2: Wait for graceful shutdown with progress monitoring
+    if terminated_processes:
+        logger.info(f"PROCESS: Waiting up to {graceful_timeout}s for {len(terminated_processes)} processes to terminate gracefully...")
+        
+        try:
+            gone, alive = psutil.wait_procs(terminated_processes, timeout=graceful_timeout)
+            
+            if gone:
+                logger.info(f"PROCESS: {len(gone)} processes terminated gracefully")
+                for proc in gone:
+                    logger.debug(f"PROCESS: Process {proc.pid} terminated gracefully")
+            
+            if alive:
+                logger.warning(f"PROCESS: {len(alive)} processes didn't terminate gracefully within {graceful_timeout}s")
+                
+                # Step 3: Force kill remaining processes
+                for proc in alive:
+                    try:
+                        logger.warning(f"PROCESS: Force killing process {proc.pid}")
+                        proc.kill()
+                        logger.info(f"PROCESS: Sent SIGKILL to process {proc.pid}")
+                    except psutil.NoSuchProcess:
+                        logger.debug(f"PROCESS: Process {proc.pid} disappeared before SIGKILL")
+                    except psutil.AccessDenied:
+                        logger.error(f"PROCESS: Access denied for SIGKILL on process {proc.pid}")
+                        access_denied_pids.append(proc.pid)
+                    except Exception as kill_error:
+                        logger.error(f"PROCESS: Error force killing process {proc.pid}: {kill_error}")
+                
+                # Wait briefly for SIGKILL to take effect
+                if alive:
+                    logger.info(f"PROCESS: Waiting 3s for SIGKILL to take effect on {len(alive)} processes...")
+                    time.sleep(3)
+                    
+                    # Check if SIGKILL worked
+                    still_alive = []
+                    for proc in alive:
+                        try:
+                            if proc.is_running():
+                                still_alive.append(proc)
+                                logger.error(f"PROCESS: Process {proc.pid} survived SIGKILL")
+                            else:
+                                logger.debug(f"PROCESS: Process {proc.pid} terminated by SIGKILL")
+                        except psutil.NoSuchProcess:
+                            logger.debug(f"PROCESS: Process {proc.pid} terminated by SIGKILL")
+                    
+                    if still_alive:
+                        logger.error(f"PROCESS: {len(still_alive)} processes survived SIGKILL - may need manual intervention")
+                        
+        except psutil.TimeoutExpired as e:
+            logger.error(f"PROCESS: Timeout during process termination: {e}")
+    
+    # Handle access denied processes
+    if access_denied_pids:
+        logger.warning(f"PROCESS: Could not terminate {len(access_denied_pids)} processes due to access restrictions: {access_denied_pids}")
+        logger.warning("PROCESS: These processes may need to be terminated manually or with elevated privileges")
+    
+    # Step 4: Final verification
+    time.sleep(1)  # Brief pause before final check
     remaining_pids = find_server_processes()
+    
     if remaining_pids:
-        logger.error(f"PROCESS: {len(remaining_pids)} processes still running: {remaining_pids}")
+        logger.error(f"PROCESS: {len(remaining_pids)} server processes still running after termination attempts: {remaining_pids}")
+        
+        # Provide helpful suggestions
+        if access_denied_pids:
+            logger.error("PROCESS: Some processes may require elevated privileges to terminate")
+            logger.error("PROCESS: Try running with sudo if necessary")
+        
+        logger.error("PROCESS: Manual process cleanup may be required")
         return False
     else:
         logger.info("PROCESS: All existing server processes terminated successfully")
@@ -614,18 +923,41 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False, kil
         else:
             print("✅ Existing server processes cleaned up successfully")
     
-    # Check if port is already in use
-    def is_port_in_use(port: int) -> bool:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind((host, port))
-                return False
-            except OSError:
-                return True
+    # Check if port is already in use with enhanced error handling
+    def is_port_in_use(port: int, host: str = host) -> bool:
+        """Check if a port is in use on the specified host with detailed error reporting"""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                # Set socket options for better reliability
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                
+                try:
+                    s.bind((host, port))
+                    logger.debug(f"PORT: Port {port} is available on {host}")
+                    return False
+                except OSError as bind_error:
+                    # More specific error handling
+                    if bind_error.errno == 48:  # Address already in use (macOS/BSD)
+                        logger.debug(f"PORT: Port {port} is in use on {host} (Address already in use)")
+                    elif bind_error.errno == 98:  # Address already in use (Linux)
+                        logger.debug(f"PORT: Port {port} is in use on {host} (Address already in use)")
+                    elif bind_error.errno == 13:  # Permission denied
+                        logger.warning(f"PORT: Permission denied for port {port} on {host} (may need elevated privileges)")
+                    elif bind_error.errno == 99:  # Cannot assign requested address
+                        logger.warning(f"PORT: Cannot assign requested address {host}:{port} (invalid host?)")
+                    else:
+                        logger.debug(f"PORT: Port {port} unavailable on {host}: {bind_error} (errno: {bind_error.errno})")
+                    return True
+        except Exception as e:
+            logger.warning(f"PORT: Error checking port {port} on {host}: {e}")
+            return True  # Assume port is in use if we can't check
     
-    # Check for port conflicts
-    if is_port_in_use(port):
-        logger.error(f"UVICORN: Port {port} is already in use!")
+    # Check for port conflicts with enhanced diagnostics
+    if is_port_in_use(port, host):
+        logger.error(f"UVICORN: Port {port} is already in use on host {host}!")
+        
+        # Enhanced port conflict diagnostics
+        port_diagnostics = diagnose_port_conflict(port, host)
         
         # Show what's using the port
         try:
@@ -633,24 +965,42 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False, kil
             result = subprocess.run(['lsof', '-i', f':{port}'], 
                                  capture_output=True, text=True, timeout=5)
             if result.stdout:
-                logger.error(f"UVICORN: Process using port {port}:")
+                logger.error(f"UVICORN: Processes using port {port}:")
                 for line in result.stdout.strip().split('\n'):
-                    logger.error(f"UVICORN:   {line}")
+                    if line.strip():  # Skip empty lines
+                        logger.error(f"UVICORN:   {line}")
                 
                 # Try to detect if it's one of our server processes
                 server_pids = find_server_processes()
                 if server_pids:
                     logger.warning(f"UVICORN: Detected {len(server_pids)} existing server processes")
-                    print("\n💡 Suggestions:")
+                    print("\n💡 Suggestions for existing server processes:")
                     print("  • Use --kill-existing to automatically clean up old processes")
                     print("  • Use --auto-port to automatically find an available port")
                     print(f"  • Use --port {port + 1} to try a different port")
                     print("  • Run: ./start_server.sh --kill-existing")
+                    print(f"  • Manual cleanup: kill {' '.join(map(str, server_pids))}")
                 else:
                     logger.error(f"UVICORN: Port {port} is used by another application")
-                    print("\n💡 Suggestions:")
+                    print("\n💡 Suggestions for external application conflict:")
                     print(f"  • Use --port {port + 1} to try a different port")
                     print("  • Use --auto-port to automatically find an available port")
+                    if port_diagnostics.get('common_service'):
+                        print(f"  • Port {port} is commonly used by: {port_diagnostics['common_service']}")
+                    print(f"  • Stop the service using port {port} if it's not needed")
+        except subprocess.TimeoutExpired:
+            logger.warning("UVICORN: Timeout checking port usage with lsof")
+            print("\n💡 Basic suggestions:")
+            print("  • Use --kill-existing to clean up any old server processes")
+            print("  • Use --auto-port to automatically find an available port")
+            print(f"  • Use --port {port + 1} to try a different port")
+        except FileNotFoundError:
+            logger.debug("UVICORN: lsof command not available")
+            print("\n💡 Suggestions (lsof unavailable):")
+            print("  • Use --kill-existing to clean up any old server processes")
+            print("  • Use --auto-port to automatically find an available port")
+            print(f"  • Use --port {port + 1} to try a different port")
+            print("  • Check manually: netstat -an | grep :8000")
         except Exception as e:
             logger.debug(f"UVICORN: Error checking port usage: {e}")
             print("\n💡 Suggestions:")
@@ -695,48 +1045,120 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False, kil
         )
         server = uvicorn.Server(config)
         
-        # Store server instance for potential external shutdown
+        # Store server instance for potential external shutdown with safety checks
         global _server_instance
-        _server_instance = server
-        logger.info(f"UVICORN: Server instance stored for graceful shutdown")
-        logger.info(f"UVICORN: Server starting with graceful shutdown timeout: 30s")
+        if server is not None:
+            _server_instance = server
+            logger.info(f"UVICORN: Server instance stored for graceful shutdown")
+            logger.info(f"UVICORN: Server starting with graceful shutdown timeout: 30s")
+        else:
+            logger.error("UVICORN: Server instance is None - cannot store for shutdown")
+            _server_instance = None
         
         print("✅ Server configuration complete")
         print("⏳ Initializing application services...")
         
-        # Install custom signal handlers that work with uvicorn
-        original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_DFL)
-        original_sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        # Install custom signal handlers that work with uvicorn with safety checks
+        original_sigint_handler = None
+        original_sigterm_handler = None
+        
+        try:
+            original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_DFL)
+            logger.debug("UVICORN: Saved original SIGINT handler")
+        except (OSError, ValueError) as e:
+            logger.warning(f"UVICORN: Error saving original SIGINT handler: {e}")
+        
+        try:
+            original_sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            logger.debug("UVICORN: Saved original SIGTERM handler")
+        except (OSError, ValueError) as e:
+            logger.warning(f"UVICORN: Error saving original SIGTERM handler: {e}")
         
         def uvicorn_signal_handler(signum, frame):
-            """Signal handler that properly triggers uvicorn shutdown"""
-            signal_name = signal.Signals(signum).name
-            logger.info(f"UVICORN: Received {signal_name} - initiating graceful shutdown")
-            print(f"\n\n🛑 Graceful shutdown initiated by {signal_name}...")
-            print("⏳ Shutting down services and releasing port bindings...")
+            """Signal handler that properly triggers uvicorn shutdown with safety checks"""
+            # Safe signal name resolution
+            try:
+                if hasattr(signal, 'Signals') and hasattr(signal.Signals, '__getitem__'):
+                    signal_name = signal.Signals(signum).name
+                else:
+                    signal_name = f"signal-{signum}"
+            except (ValueError, AttributeError):
+                signal_name = f"unknown-signal-{signum}"
             
-            # Set the shutdown flag and trigger uvicorn shutdown
+            logger.info(f"UVICORN: Received {signal_name} ({signum}) - initiating graceful shutdown")
+            
+            # Safe console output
+            try:
+                print(f"\n\n🛑 Graceful shutdown initiated by {signal_name}...")
+                print("⏳ Shutting down services and releasing port bindings...")
+            except Exception as print_error:
+                logger.debug(f"UVICORN: Error printing shutdown message: {print_error}")
+            
+            # Set the shutdown flag and trigger uvicorn shutdown with safety checks
             global _shutdown_requested
             _shutdown_requested = True
-            server.should_exit = True
             
-            # For SIGINT, we want graceful shutdown
-            if signum == signal.SIGINT:
-                server.force_exit = False
-            # For SIGTERM, also graceful but faster
-            elif signum == signal.SIGTERM:
-                server.force_exit = False
+            # Safely access server attributes
+            try:
+                if hasattr(server, 'should_exit'):
+                    server.should_exit = True
+                    logger.debug("UVICORN: Set server.should_exit = True")
+                else:
+                    logger.error("UVICORN: Server has no 'should_exit' attribute")
+                
+                # Configure graceful shutdown for both SIGINT and SIGTERM
+                if hasattr(server, 'force_exit'):
+                    if signum == signal.SIGINT:
+                        server.force_exit = False  # Graceful shutdown for CTRL-C
+                        logger.debug("UVICORN: Set graceful shutdown for SIGINT")
+                    elif signum == signal.SIGTERM:
+                        server.force_exit = False  # Also graceful for SIGTERM
+                        logger.debug("UVICORN: Set graceful shutdown for SIGTERM")
+                    else:
+                        logger.debug(f"UVICORN: Using default force_exit setting for {signal_name}")
+                else:
+                    logger.warning("UVICORN: Server has no 'force_exit' attribute")
+                    
+            except AttributeError as attr_error:
+                logger.error(f"UVICORN: Server missing expected attributes: {attr_error}")
+            except Exception as e:
+                logger.error(f"UVICORN: Error configuring server shutdown: {e}")
+                logger.exception("UVICORN: Full exception details:")
+            
+            logger.info(f"UVICORN: Signal handler for {signal_name} completed")
         
-        # Install our custom handlers
-        signal.signal(signal.SIGINT, uvicorn_signal_handler)
-        signal.signal(signal.SIGTERM, uvicorn_signal_handler)
+        # Install our custom handlers with error handling
+        try:
+            signal.signal(signal.SIGINT, uvicorn_signal_handler)
+            logger.info("UVICORN: Installed custom SIGINT handler")
+        except (OSError, ValueError) as e:
+            logger.error(f"UVICORN: Failed to install SIGINT handler: {e}")
+        
+        try:
+            signal.signal(signal.SIGTERM, uvicorn_signal_handler)
+            logger.info("UVICORN: Installed custom SIGTERM handler")
+        except (OSError, ValueError) as e:
+            logger.error(f"UVICORN: Failed to install SIGTERM handler: {e}")
         
         try:
             server.run()
         finally:
-            # Restore original handlers
-            signal.signal(signal.SIGINT, original_sigint_handler)
-            signal.signal(signal.SIGTERM, original_sigterm_handler)
+            # Restore original handlers with error handling
+            try:
+                if original_sigint_handler is not None:
+                    signal.signal(signal.SIGINT, original_sigint_handler)
+                    logger.debug("UVICORN: Restored original SIGINT handler")
+            except (OSError, ValueError) as e:
+                logger.warning(f"UVICORN: Error restoring SIGINT handler: {e}")
+            
+            try:
+                if original_sigterm_handler is not None:
+                    signal.signal(signal.SIGTERM, original_sigterm_handler)
+                    logger.debug("UVICORN: Restored original SIGTERM handler")
+            except (OSError, ValueError) as e:
+                logger.warning(f"UVICORN: Error restoring SIGTERM handler: {e}")
+            
+            logger.debug("UVICORN: Signal handler cleanup completed")
         
     except KeyboardInterrupt:
         logger.info("UVICORN: KeyboardInterrupt received - server shutting down gracefully")
@@ -757,23 +1179,130 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False, kil
         print("👋 Thank you for using Lifeboard!\n")
 
 
-def find_available_port(start_port: int = 8000, max_attempts: int = 100) -> int:
-    """Find an available port starting from start_port"""
-    import socket
+def diagnose_port_conflict(port: int, host: str) -> dict:
+    """Diagnose why a port is unavailable and provide helpful context"""
+    diagnostics = {
+        'port': port,
+        'host': host,
+        'common_service': None,
+        'permission_issue': False,
+        'network_issue': False
+    }
     
-    logger.info(f"PORT: Searching for available port starting from {start_port}")
+    # Check for common services on well-known ports
+    common_ports = {
+        80: "HTTP web server (Apache, Nginx, etc.)",
+        443: "HTTPS web server (Apache, Nginx, etc.)",
+        8000: "Development server (Django, Flask, etc.)",
+        8080: "HTTP proxy/web server (Tomcat, Jenkins, etc.)",
+        3000: "Node.js development server (React, Next.js, etc.)",
+        5000: "Flask development server",
+        8888: "Jupyter Notebook",
+        9000: "Various development tools"
+    }
+    
+    if port in common_ports:
+        diagnostics['common_service'] = common_ports[port]
+        logger.debug(f"PORT: Port {port} is commonly used by: {common_ports[port]}")
+    
+    # Test for permission issues (ports < 1024 typically require root)
+    if port < 1024:
+        diagnostics['permission_issue'] = True
+        logger.debug(f"PORT: Port {port} is a privileged port (< 1024), may require elevated privileges")
+    
+    # Test if host address is valid
+    import socket
+    try:
+        socket.inet_aton(host)
+    except socket.error:
+        if host not in ['localhost', '0.0.0.0', '127.0.0.1']:
+            diagnostics['network_issue'] = True
+            logger.debug(f"PORT: Host '{host}' may not be a valid network address")
+    
+    return diagnostics
+
+def find_available_port(start_port: int = 8000, host: str = "0.0.0.0", max_attempts: int = 100) -> int:
+    """Find an available port starting from start_port on specified host with enhanced reliability"""
+    import socket
+    import time
+    
+    logger.info(f"PORT: Searching for available port starting from {start_port} on host {host}")
+    logger.debug(f"PORT: Will check up to {max_attempts} ports in range {start_port}-{start_port + max_attempts - 1}")
+    
+    # Track any ports that had issues for reporting
+    problematic_ports = []
     
     for port in range(start_port, start_port + max_attempts):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("0.0.0.0", port))
-                logger.info(f"PORT: Found available port {port}")
-                return port
-            except OSError:
-                logger.debug(f"PORT: Port {port} is in use, trying next")
-                continue
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                # Set socket options for better reliability
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                
+                try:
+                    s.bind((host, port))
+                    logger.info(f"PORT: Found available port {port} on host {host}")
+                    
+                    # Double-check by briefly testing the port
+                    try:
+                        s.listen(1)
+                        logger.debug(f"PORT: Verified port {port} can accept connections")
+                    except OSError as listen_error:
+                        logger.warning(f"PORT: Port {port} bound but can't listen: {listen_error}")
+                        problematic_ports.append((port, f"listen failed: {listen_error}"))
+                        continue
+                    
+                    return port
+                    
+                except OSError as bind_error:
+                    logger.debug(f"PORT: Port {port} is in use on {host}: {bind_error}")
+                    
+                    # Track specific error types for better diagnostics
+                    if bind_error.errno == 13:  # Permission denied
+                        problematic_ports.append((port, "permission denied"))
+                    elif bind_error.errno in [48, 98]:  # Address already in use
+                        problematic_ports.append((port, "in use"))
+                    else:
+                        problematic_ports.append((port, f"bind error: {bind_error}"))
+                    continue
+                    
+        except Exception as socket_error:
+            logger.debug(f"PORT: Error testing port {port}: {socket_error}")
+            problematic_ports.append((port, f"socket error: {socket_error}"))
+            continue
     
-    error_msg = f"No available ports found in range {start_port}-{start_port + max_attempts}"
+    # If we get here, no port was available
+    logger.error(f"PORT: No available ports found in range {start_port}-{start_port + max_attempts - 1} on host {host}")
+    
+    # Provide detailed diagnostics
+    if problematic_ports:
+        logger.error(f"PORT: Encountered issues with {len(problematic_ports)} ports:")
+        
+        # Group by error type for cleaner reporting
+        error_summary = {}
+        for port, error in problematic_ports[:10]:  # Limit to first 10 for brevity
+            if error not in error_summary:
+                error_summary[error] = []
+            error_summary[error].append(port)
+        
+        for error, ports in error_summary.items():
+            logger.error(f"PORT:   {error}: ports {ports}")
+        
+        if len(problematic_ports) > 10:
+            logger.error(f"PORT:   ... and {len(problematic_ports) - 10} more ports with issues")
+    
+    # Provide helpful suggestions
+    suggestions = []
+    if any("permission denied" in error for _, error in problematic_ports):
+        suggestions.append("Try using ports > 1024 or run with elevated privileges")
+    if host == "0.0.0.0":
+        suggestions.append("Try using host '127.0.0.1' or 'localhost' instead")
+    if start_port < 8000:
+        suggestions.append("Try starting from a higher port number (e.g., 8000+)")
+    
+    error_msg = f"No available ports found in range {start_port}-{start_port + max_attempts - 1} on host {host}"
+    if suggestions:
+        error_msg += f"\nSuggestions: {'; '.join(suggestions)}"
+    
     logger.error(f"PORT: {error_msg}")
     raise RuntimeError(error_msg)
 
@@ -784,8 +1313,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Lifeboard API Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
-    parser.add_argument("--auto-port", action="store_true", 
-                       help="Automatically find an available port starting from --port")
+    parser.add_argument("--no-auto-port", action="store_true", 
+                       help="Disable automatic port finding (use exact port specified)")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--kill-existing", action="store_true", 
                        help="Kill existing server processes before starting")
@@ -793,12 +1322,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     port = args.port
-    if args.auto_port:
+    if not args.no_auto_port:
+        # Auto-port is the default behavior
         try:
-            port = find_available_port(args.port)
-            print(f"Using available port: {port}")
+            port = find_available_port(args.port, args.host)
+            if port != args.port:
+                print(f"🔄 Port {args.port} was in use, using available port: {port} on host {args.host}")
+            else:
+                print(f"✅ Using requested port: {port} on host {args.host}")
         except RuntimeError as e:
-            print(f"Error: {e}")
+            print(f"❌ Auto-port failed: {e}")
+            print(f"💡 Try using --no-auto-port to use exact port {args.port} (may fail if in use)")
             exit(1)
+    else:
+        print(f"🎯 Using exact port: {port} on host {args.host} (auto-port disabled)")
     
     run_server(host=args.host, port=port, debug=args.debug, kill_existing=args.kill_existing)

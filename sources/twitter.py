@@ -21,16 +21,19 @@ class TwitterSource(BaseSource):
         self.config = config
         self.db_service = db_service
 
-    async def import_from_zip(self, zip_path: str) -> bool:
-        """Import Twitter data from a zip archive."""
+    async def import_from_zip(self, zip_path: str) -> Dict[str, Any]:
+        """Import Twitter data from a zip archive, only adding new tweets."""
         if not self.config.is_configured():
             logger.warning("Twitter source not enabled. Skipping import.")
-            return False
+            return {
+                "success": False,
+                "imported_count": 0,
+                "message": "Twitter source is not enabled in the configuration."
+            }
 
         temp_dir = "twitter_data"
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
-            logger.info(f"Created temporary directory for Twitter data import {temp_dir}")
         os.makedirs(temp_dir)
 
         try:
@@ -38,102 +41,93 @@ class TwitterSource(BaseSource):
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
                 logger.info(f"Extracted zip to: {temp_dir}")
-                
-                # List extracted files for debugging
-                extracted_files = []
-                for root, dirs, files in os.walk(temp_dir):
-                    for file in files:
-                        extracted_files.append(os.path.relpath(os.path.join(root, file), temp_dir))
-                #logger.info(f"Extracted files: {extracted_files}")
 
-            # Find the tweets.js file - it might be in a subdirectory like 'twitter-x/data/tweets.js'
             tweet_js_path = None
-            for root, dirs, files in os.walk(temp_dir):
-                if 'tweets.js' in files:
-                    tweet_js_path = os.path.join(root, 'tweets.js')
-                    logger.info(f"Found tweets.js at: {tweet_js_path}")
+            for root, _, files in os.walk(temp_dir):
+                if 'tweet.js' in files:
+                    tweet_js_path = os.path.join(root, 'tweet.js')
+                    logger.info(f"Found tweet.js at: {tweet_js_path}")
                     break
             
-            if not tweet_js_path or not os.path.exists(tweet_js_path):
-                logger.error(f"tweets.js not found in the extracted archive")
-                logger.error(f"Searched all directories in: {temp_dir}")
-                return False
+            if not tweet_js_path:
+                logger.error(f"tweet.js not found in the extracted archive at {temp_dir}")
+                return {
+                    "success": False, 
+                    "imported_count": 0, 
+                    "message": "Could not find tweet.js in the archive."
+                }
 
             with open(tweet_js_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                logger.info(f"Read tweet.js file, size: {len(content)} characters")
-                #logger.info(f"First 200 characters: {content[:200]}")
-                
-                if 'window.YTD.tweets.part0 = [' in content:
-                    logger.info("Found expected Twitter export format (tweets.part0)")
-                    content = content.split('window.YTD.tweets.part0 = [', 1)[1]
-                    content = content.rsplit(']', 1)[0]
-                elif 'window.YTD.tweet.part0 = [' in content:
-                    logger.info("Found expected Twitter export format (tweet.part0)")
+                if 'window.YTD.tweet.part0 = [' in content:
                     content = content.split('window.YTD.tweet.part0 = [', 1)[1]
                     content = content.rsplit(']', 1)[0]
-                else:
-                    logger.warning("Expected Twitter export format not found, trying to parse as JSON array directly")
+                elif 'window.YTD.tweets.part0 = [' in content: # Handle plural 'tweets'
+                    content = content.split('window.YTD.tweets.part0 = [', 1)[1]
+                    content = content.rsplit(']', 1)[0]
 
                 tweets = json.loads(f'[{content}]')
-                logger.info(f"Successfully parsed {len(tweets)} tweets from tweet.js")
-
-
 
             parsed_tweets = self._parse_tweets(tweets)
-            logger.info(f"Parsed {len(parsed_tweets)} tweets for storage")
-            
-            await self._store_tweets(parsed_tweets)
-            logger.info(f"Successfully imported {len(parsed_tweets)} tweets to database")
-            return True
+            logger.info(f"Parsed {len(parsed_tweets)} total tweets from the archive.")
+
+            latest_date_in_db = self.db_service.get_latest_tweet_date()
+            logger.info(f"Latest tweet date in database: {latest_date_in_db}")
+
+            if latest_date_in_db:
+                new_tweets = [p for p in parsed_tweets if p['days_date'] > latest_date_in_db]
+                logger.info(f"Found {len(new_tweets)} new tweets to import.")
+            else:
+                new_tweets = parsed_tweets
+                logger.info("No existing tweets found. Importing all parsed tweets.")
+
+            if not new_tweets:
+                logger.info("No new tweets to import. Skipping database storage.")
+                return {
+                    "success": True,
+                    "imported_count": 0,
+                    "message": "Twitter archive processed. No new tweets found to import."
+                }
+
+            await self._store_tweets(new_tweets)
+            return {
+                "success": True,
+                "imported_count": len(new_tweets),
+                "message": f"Successfully imported {len(new_tweets)} new tweets."
+            }
         except Exception as e:
-            logger.error(f"Error processing Twitter zip import: {e}")
-            logger.exception("Full traceback for Twitter import error:")
-            return False
+            logger.error(f"Error processing Twitter zip import: {e}", exc_info=True)
+            return {
+                "success": False, 
+                "imported_count": 0, 
+                "message": f"An error occurred during import: {e}"
+            }
         finally:
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
-                logger.info(f"Removed temporary directory {temp_dir}")
             if os.path.exists(zip_path):
                 os.remove(zip_path)
-
 
     def _parse_tweets(self, tweets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Parse raw tweet objects"""
         parsed_tweets = []
-        for i, item in enumerate(tweets):
-            if not isinstance(item, dict):
-                logger.warning(f"Tweet item {i} is not a dictionary, skipping")
-                continue
-                
+        for item in tweets:
             tweet = item.get('tweet', {})
-            if not isinstance(tweet, dict):
-                logger.warning(f"Tweet item {i} does not contain a valid tweet object, skipping")
-                continue
-                
             tweet_id = tweet.get('id_str')
             if not tweet_id:
-                logger.warning(f"Tweet item {i} missing id_str field, skipping")
                 continue
 
             created_at_str = tweet.get('created_at')
-            if not created_at_str:
-                logger.warning(f"Tweet {tweet_id} missing created_at field, skipping")
-                continue
-                
             try:
                 created_at = datetime.strptime(created_at_str, '%a %b %d %H:%M:%S +0000 %Y')
-                logger.debug(f"Parsed tweet {tweet_id} date: {created_at}")
-            except ValueError as e:
-                logger.error(f"Failed to parse date '{created_at_str}' for tweet {tweet_id}: {e}")
+            except (ValueError, TypeError):
+                logger.warning(f"Could not parse date for tweet {tweet_id}, skipping.")
                 continue
 
             media_urls = []
             if 'media' in tweet.get('entities', {}):
                 for media in tweet['entities']['media']:
                     media_urls.append(media.get('media_url_https'))
-                    logger.debug(f"Found media {media_urls}")
-
 
             parsed_tweets.append({
                 'tweet_id': tweet_id,
@@ -142,8 +136,6 @@ class TwitterSource(BaseSource):
                 'text': tweet.get('full_text'),
                 'media_urls': json.dumps(media_urls)
             })
-            #logger.debug(f"Parsed tweet {parsed_tweets}")
-
         return parsed_tweets
 
     async def _store_tweets(self, tweets: List[Dict[str, Any]]):
@@ -164,7 +156,6 @@ class TwitterSource(BaseSource):
                     tweet['text'],
                     tweet['media_urls']
                 ))
-                #logger.debug(f"Inserted tweet {tweet}")
             conn.commit()
             logger.info(f"Stored {len(tweets)} tweets in the database.")
 
