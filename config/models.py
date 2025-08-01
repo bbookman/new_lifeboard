@@ -449,13 +449,11 @@ class LLMProviderConfig(BaseModel):
 class TwitterConfig(BaseModel):
     """Twitter source configuration"""
     enabled: bool = True
-    data_path: Optional[str] = None
-    delete_after_import: bool = False
     sync_interval_hours: int = 24
 
     def is_configured(self) -> bool:
         """Check if Twitter source is properly configured"""
-        return self.enabled and self.data_path is not None and os.path.isdir(self.data_path)
+        return self.enabled
 
 
 class AppConfig(BaseModel):
