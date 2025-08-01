@@ -57,13 +57,13 @@ async def upload_twitter_archive(
         with open(temp_zip_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        success = await twitter_source.import_from_zip(temp_zip_path)
+        result = await twitter_source.import_from_zip(temp_zip_path)
 
-        if success:
-            return JSONResponse(content={"message": "Twitter archive imported successfully."})
+        if result["success"]:
+            return JSONResponse(content={"message": result["message"]})
         else:
-            logger.error(f"Twitter import failed for file: {file.filename}")
-            return JSONResponse(content={"message": "Failed to import Twitter archive."}, status_code=500)
+            logger.error(f"Twitter import failed: {result['message']}")
+            return JSONResponse(content={"message": result["message"]}, status_code=500)
     except Exception as e:
-        logger.error(f"Error uploading Twitter archive: {e}")
-        return JSONResponse(content={"message": "An error occurred during the upload process."}, status_code=500)
+        logger.error(f"Error uploading Twitter archive: {e}", exc_info=True)
+        return JSONResponse(content={"message": "An unexpected error occurred during the upload process."}, status_code=500)

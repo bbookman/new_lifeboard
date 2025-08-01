@@ -243,4 +243,9 @@ Claude should:
 
 * Ensure _extract_days_date is updated as needed due to addition of new data sources and those datasource "created datetime" values are ingested. Prompt during CLI coding sessions to make it clear which variable will be added to _extract_days_date
 
+## Claude Memories
+
+* Do not inspect or review supporting_documents directory unless directed to do so
+
+```
 ```
