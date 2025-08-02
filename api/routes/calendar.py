@@ -92,6 +92,7 @@ async def calendar_month_view(
         
         # Get days with data for initial load
         days_with_data = database.get_days_with_data()
+        days_with_twitter_data = database.get_days_with_data(namespaces=['twitter'])
         
         logger.info(f"Calendar displaying current date: {current_date.strftime('%Y-%m-%d')} "
                    f"({current_date.strftime('%A, %B %d, %Y')})")
@@ -102,7 +103,8 @@ async def calendar_month_view(
             "current_year": current_date.year,
             "current_month_name": current_date.strftime("%B"),
             "current_date": current_date.strftime("%Y-%m-%d"),
-            "days_with_data": days_with_data
+            "days_with_data": days_with_data,
+            "days_with_twitter_data": days_with_twitter_data
         })
     except Exception as e:
         logger.error(f"Error serving calendar template: {e}")
@@ -114,22 +116,21 @@ async def get_days_with_data(
     year: Optional[int] = None,
     month: Optional[int] = None,
     database: DatabaseService = Depends(get_database_service)
-) -> List[str]:
+) -> Dict[str, List[str]]:
     """Get list of dates that have data available"""
     try:
         # Get all days with data
         all_days = database.get_days_with_data()
+        twitter_days = database.get_days_with_data(namespaces=['twitter'])
         
         # Filter by year/month if specified
         if year is not None and month is not None:
-            filtered_days = []
             target_prefix = f"{year:04d}-{month:02d}"
-            for day in all_days:
-                if day.startswith(target_prefix):
-                    filtered_days.append(day)
-            return filtered_days
+            filtered_days = [day for day in all_days if day.startswith(target_prefix)]
+            filtered_twitter_days = [day for day in twitter_days if day.startswith(target_prefix)]
+            return {"all": filtered_days, "twitter": filtered_twitter_days}
         
-        return all_days
+        return {"all": all_days, "twitter": twitter_days}
     except Exception as e:
         logger.error(f"Error getting days with data: {e}")
         raise HTTPException(status_code=500, detail="Failed to get calendar data")

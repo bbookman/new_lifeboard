@@ -87,12 +87,17 @@
             color: #ccc;
         }
         
-        .day-cell.has-data {
+        <div class="day-cell.has-data">
             background-color: #e3f2fd;
         }
         
         .day-cell.has-data:hover {
             background-color: #bbdefb;
+        }
+        
+        .twitter-indicator {
+            font-size: 12px;
+            margin-left: 5px;
         }
         
         .data-indicator {
@@ -168,7 +173,8 @@
                 this.currentDate = new Date();
                 this.currentYear = this.currentDate.getFullYear();
                 this.currentMonth = this.currentDate.getMonth(); // 0-based
-                this.daysWithData = [];
+                this.daysWithData = {{ days_with_data | tojson }};
+                this.daysWithTwitterData = {{ days_with_twitter_data | tojson }};
                 
                 this.initializeEventListeners();
                 this.loadCalendar();
@@ -201,10 +207,13 @@
                     if (!response.ok) {
                         throw new Error('Failed to fetch days with data');
                     }
-                    this.daysWithData = await response.json();
+                    const data = await response.json();
+                    this.daysWithData = data.all;
+                    this.daysWithTwitterData = data.twitter;
                 } catch (error) {
                     console.error('Error loading days with data:', error);
                     this.daysWithData = [];
+                    this.daysWithTwitterData = [];
                 }
             }
             
@@ -275,7 +284,7 @@
                 const dateString = this.formatDate(date);
                 const hasData = this.daysWithData.includes(dateString);
                 
-                if (hasData && !isOtherMonth) {
+                if (hasData) {
                     cell.classList.add('has-data');
                     cell.style.cursor = 'pointer';
                     
@@ -301,6 +310,15 @@
                 dayNumber.className = 'day-number';
                 dayNumber.textContent = date.getDate();
                 cell.appendChild(dayNumber);
+
+                // Add Twitter indicator
+                const hasTwitterData = this.daysWithTwitterData.includes(dateString);
+                if (hasTwitterData && !isOtherMonth) {
+                    const twitterIndicator = document.createElement('div');
+                    twitterIndicator.className = 'twitter-indicator';
+                    twitterIndicator.textContent = '🐥';
+                    cell.appendChild(twitterIndicator);
+                }
                 
                 document.getElementById('calendar-grid').appendChild(cell);
             }

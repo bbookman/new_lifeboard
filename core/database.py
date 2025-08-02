@@ -324,6 +324,7 @@ class DatabaseService:
     def get_days_with_data(self, namespaces: Optional[List[str]] = None) -> List[str]:
         """Get list of days that have data (for calendar indicators)"""
         with self.get_connection() as conn:
+            # Base query for data_items
             query = """
                 SELECT DISTINCT days_date 
                 FROM data_items 
@@ -333,14 +334,42 @@ class DatabaseService:
             
             # Add namespace filter if provided
             if namespaces:
-                placeholders = ','.join('?' * len(namespaces))
-                query += f" AND namespace IN ({placeholders})"
-                params.extend(namespaces)
-            
-            query += " ORDER BY days_date ASC"
-            
-            cursor = conn.execute(query, params)
-            return [row['days_date'] for row in cursor.fetchall()]
+                # Special handling for twitter
+                if 'twitter' in namespaces:
+                    # Get twitter dates from the tweets table
+                    cursor = conn.execute("SELECT DISTINCT days_date FROM tweets WHERE days_date IS NOT NULL")
+                    twitter_dates = {row['days_date'] for row in cursor.fetchall()}
+                    
+                    # If only twitter is requested, return just those dates
+                    if len(namespaces) == 1:
+                        return sorted(list(twitter_dates))
+                    
+                    # Remove twitter from namespaces to avoid querying it in data_items
+                    namespaces.remove('twitter')
+                else:
+                    twitter_dates = set()
+
+                if namespaces: # If other namespaces are left
+                    placeholders = ','.join('?' * len(namespaces))
+                    query += f" AND namespace IN ({placeholders})"
+                    params.extend(namespaces)
+                
+                cursor = conn.execute(query, params)
+                other_dates = {row['days_date'] for row in cursor.fetchall()}
+                
+                # Combine and return sorted unique dates
+                all_dates = sorted(list(twitter_dates.union(other_dates)))
+                return all_dates
+
+            else: # No namespace specified, get all dates
+                cursor = conn.execute(query)
+                all_dates = {row['days_date'] for row in cursor.fetchall()}
+                
+                # Also get all twitter dates
+                cursor = conn.execute("SELECT DISTINCT days_date FROM tweets WHERE days_date IS NOT NULL")
+                twitter_dates = {row['days_date'] for row in cursor.fetchall()}
+                
+                return sorted(list(all_dates.union(twitter_dates)))
     
     def get_markdown_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> str:
         """Extract and combine markdown content from metadata for a specific date"""
