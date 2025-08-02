@@ -163,9 +163,10 @@ class NewsTableMigration(BaseMigration):
         """)
         
         # Indexes for news table
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_news_published_datetime ON news(published_datetime_utc)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at)")
-
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_news_snippet ON news(snippet)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_news_title ON news(title)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_news_days_date ON news(days_date)")
+        
 
 class WeatherTableMigration(BaseMigration):
     """Add weather table"""
@@ -188,6 +189,8 @@ class WeatherTableMigration(BaseMigration):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_weather_days_date ON weather(days_date)")
 
 
 class TweetsTableMigration(BaseMigration):
@@ -212,6 +215,9 @@ class TweetsTableMigration(BaseMigration):
                 media_urls TEXT
             )
         """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_days_date ON tweets(days_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_text ON tweets(text)")
+
 
 
 class MigrationRunner:
