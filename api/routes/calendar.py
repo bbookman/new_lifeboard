@@ -145,10 +145,10 @@ async def get_day_details(date: str, database: DatabaseService = Depends(get_dat
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        # Get data items, filtered by the 'limitless' namespace. This is the source of truth.
-        data_items = database.get_data_items_by_date(date, namespaces=['limitless'])
+        # Get limitless items from dedicated table
+        limitless_items = database.get_limitless_items_by_date(date)
         
-        # Get markdown content from the filtered items.
+        # Get markdown content from limitless items
         markdown_content = database.get_markdown_by_date(date, namespaces=['limitless'])
         
         return {
@@ -156,8 +156,8 @@ async def get_day_details(date: str, database: DatabaseService = Depends(get_dat
             "formatted_date": parsed_date.strftime("%B %d, %Y"),
             "day_of_week": parsed_date.strftime("%A"),
             "markdown_content": markdown_content,
-            "item_count": len(data_items),
-            "has_data": len(data_items) > 0  # Correctly base has_data on filtered items
+            "item_count": len(limitless_items),
+            "has_data": len(limitless_items) > 0  # Correctly base has_data on filtered items
         }
     except HTTPException:
         raise
@@ -183,7 +183,7 @@ async def get_enhanced_day_data(
         
         # Get basic day details
         markdown_content = database.get_markdown_by_date(date, namespaces=['limitless'])
-        data_items = database.get_data_items_by_date(date)
+        limitless_items = database.get_limitless_items_by_date(date)
         
         # Get 5-day weather forecast starting from this date
         weather_data = weather_service.get_weather_for_date_range(date, 5)
@@ -194,9 +194,6 @@ async def get_enhanced_day_data(
         # If no news for specific date, get recent news as fallback
         if not news_data:
             news_data = news_service.get_latest_news(limit=5)
-        
-        # Filter limitless data items for better organization
-        limitless_items = [item for item in data_items if item.get('namespace') == 'limitless']
         
         return {
             "date": date,

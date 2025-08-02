@@ -156,7 +156,7 @@ class NewsTableMigration(BaseMigration):
                 snippet TEXT,
                 thumbnail_url TEXT,
                 published_datetime_utc TEXT,
-                days_date TEXT NOT NULL
+                days_date TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -219,6 +219,44 @@ class TweetsTableMigration(BaseMigration):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_text ON tweets(text)")
 
 
+class LimitlessTableMigration(BaseMigration):
+    """Add limitless table for consistent data source architecture"""
+
+    @property
+    def version(self) -> str:
+        return "007_limitless_table"
+
+    @property
+    def description(self) -> str:
+        return "Add limitless table for Limitless API data"
+
+    def up(self, conn: sqlite3.Connection) -> None:
+        """Create limitless table"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS limitless (
+                id TEXT PRIMARY KEY,
+                lifelog_id TEXT UNIQUE NOT NULL,
+                title TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                is_starred BOOLEAN DEFAULT FALSE,
+                updated_at_api TEXT,
+                processed_content TEXT NOT NULL,
+                raw_data TEXT NOT NULL,
+                days_date TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Indexes for performance
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_lifelog_id ON limitless(lifelog_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_days_date ON limitless(days_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_start_time ON limitless(start_time)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_is_starred ON limitless(is_starred)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_processed_content ON limitless(processed_content)")
+
+
 
 class MigrationRunner:
     """Handles database migration execution"""
@@ -232,6 +270,7 @@ class MigrationRunner:
             NewsTableMigration(),
             WeatherTableMigration(),
             TweetsTableMigration(),
+            LimitlessTableMigration(),
         ]
     
     @contextmanager
