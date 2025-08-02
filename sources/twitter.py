@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional, AsyncIterator
 from config.models import TwitterConfig
 from core.database import DatabaseService
 from sources.base import BaseSource, DataItem
+from sources.twitter_processor import TwitterProcessor
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,10 +17,12 @@ logger = logging.getLogger(__name__)
 class TwitterSource(BaseSource):
     """Twitter data source"""
 
-    def __init__(self, config: TwitterConfig, db_service: DatabaseService):
+    def __init__(self, config: TwitterConfig, db_service: DatabaseService, ingestion_service=None):
         super().__init__("twitter")
         self.config = config
         self.db_service = db_service
+        self.ingestion_service = ingestion_service
+        self.processor = TwitterProcessor()
 
     async def import_from_zip(self, zip_path: str) -> Dict[str, Any]:
         """Import Twitter data from a zip archive, only adding new tweets."""
@@ -79,15 +82,13 @@ class TwitterSource(BaseSource):
             parsed_tweets = self._parse_tweets(tweets)
             logger.info(f"Parsed {len(parsed_tweets)} total tweets from the archive.")
 
-            latest_date_in_db = self.db_service.get_latest_tweet_date()
-            logger.info(f"Latest tweet date in database: {latest_date_in_db}")
+            # Get existing tweets from data_items table
+            existing_tweet_ids = await self._get_existing_tweet_ids()
+            logger.info(f"Found {len(existing_tweet_ids)} existing tweets in database.")
 
-            if latest_date_in_db:
-                new_tweets = [p for p in parsed_tweets if p['days_date'] > latest_date_in_db]
-                logger.info(f"Found {len(new_tweets)} new tweets to import.")
-            else:
-                new_tweets = parsed_tweets
-                logger.info("No existing tweets found. Importing all parsed tweets.")
+            # Filter out existing tweets
+            new_tweets = [t for t in parsed_tweets if t['tweet_id'] not in existing_tweet_ids]
+            logger.info(f"Found {len(new_tweets)} new tweets to import.")
 
             if not new_tweets:
                 logger.info("No new tweets to import. Skipping database storage.")
@@ -97,7 +98,7 @@ class TwitterSource(BaseSource):
                     "message": "Twitter archive processed. No new tweets found to import."
                 }
 
-            await self._store_tweets(new_tweets)
+            await self._ingest_tweets(new_tweets)
             return {
                 "success": True,
                 "imported_count": len(new_tweets),
@@ -121,7 +122,7 @@ class TwitterSource(BaseSource):
         parsed_tweets = []
         for item in tweets:
             tweet = item.get('tweet', {})
-            tweet_id = tweet.get('id_str')
+            tweet_id = tweet.get('id_str') or tweet.get('id')
             if not tweet_id:
                 continue
 
@@ -146,66 +147,113 @@ class TwitterSource(BaseSource):
             })
         return parsed_tweets
 
-    async def _store_tweets(self, tweets: List[Dict[str, Any]]):
-        """Store parsed tweets in the database"""
-        if not tweets:
+    async def _get_existing_tweet_ids(self) -> set:
+        """Get existing tweet IDs from data_items table"""
+        existing_tweets = self.db_service.get_data_items_by_namespace(self.namespace, limit=10000)
+        return {item['source_id'] for item in existing_tweets}
+
+    async def _ingest_tweets(self, tweets: List[Dict[str, Any]]):
+        """Ingest tweets through the ingestion service"""
+        if not tweets or not self.ingestion_service:
+            logger.warning("Cannot ingest tweets: missing tweets or ingestion service")
             return
 
-        with self.db_service.get_connection() as conn:
-            cursor = conn.cursor()
-            for tweet in tweets:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO tweets (tweet_id, created_at, days_date, text, media_urls)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    tweet['tweet_id'],
-                    tweet['created_at'],
-                    tweet['days_date'],
-                    tweet['text'],
-                    tweet['media_urls']
-                ))
-            conn.commit()
-            logger.info(f"Stored {len(tweets)} tweets in the database.")
+        # Convert tweet dicts to DataItem objects
+        data_items = []
+        for tweet in tweets:
+            try:
+                # Parse timestamp
+                created_at = None
+                if tweet.get('created_at'):
+                    created_at = datetime.fromisoformat(tweet['created_at'])
+
+                # Create DataItem
+                data_item = DataItem(
+                    namespace=self.namespace,
+                    source_id=tweet['tweet_id'],
+                    content=tweet['text'] or "",
+                    metadata={
+                        'media_urls': tweet.get('media_urls', '[]'),
+                        'original_created_at': tweet.get('created_at'),
+                        'days_date': tweet.get('days_date'),
+                        'source_type': 'twitter_archive'
+                    },
+                    created_at=created_at,
+                    updated_at=datetime.now()
+                )
+
+                # Process the item
+                processed_item = self.processor.process(data_item)
+                data_items.append(processed_item)
+
+            except Exception as e:
+                logger.error(f"Error creating DataItem for tweet {tweet.get('tweet_id', 'unknown')}: {e}")
+                continue
+
+        # Ingest through the ingestion service
+        logger.info(f"Ingesting {len(data_items)} tweets through ingestion service")
+        
+        # Process items in batches
+        result = await self.ingestion_service.ingest_items("twitter", data_items)
+        
+        if result.errors:
+            logger.warning(f"Some tweets failed to ingest: {result.errors}")
+        
+        logger.info(f"Ingestion complete: {result.items_stored} stored, {len(result.errors)} errors")
+
+        logger.info(f"Successfully ingested {len(data_items)} tweets")
 
     async def get_data_for_date(self, date: str) -> List[Dict[str, Any]]:
         """Get tweets for a specific date"""
-        with self.db_service.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT tweet_id, created_at, text, media_urls
-                FROM tweets
-                WHERE days_date = ?
-                ORDER BY created_at DESC
-            """, (date,))
-            return [dict(row) for row in cursor.fetchall()]
+        return self.db_service.get_data_items_by_date(date, [self.namespace])
 
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """Fetch data items from the Twitter source"""
-        return
-        yield
+        # Get Twitter data from the unified data_items table
+        items = self.db_service.get_data_items_by_namespace(self.namespace, limit)
+        
+        for item in items:
+            # Filter by since if provided
+            if since and item.get('created_at'):
+                item_date = datetime.fromisoformat(item['created_at'])
+                if item_date <= since:
+                    continue
+            
+            # Parse metadata if it's a string
+            metadata = item.get('metadata', {})
+            if isinstance(metadata, str):
+                import json
+                try:
+                    metadata = json.loads(metadata)
+                except (json.JSONDecodeError, TypeError):
+                    metadata = {}
+            
+            yield DataItem(
+                namespace=item['namespace'],
+                source_id=item['source_id'],
+                content=item['content'],
+                metadata=metadata,
+                created_at=datetime.fromisoformat(item['created_at']) if item.get('created_at') else None,
+                updated_at=datetime.fromisoformat(item['updated_at']) if item.get('updated_at') else None
+            )
 
     async def get_item(self, source_id: str) -> Optional[DataItem]:
         """Get specific tweet by ID"""
-        with self.db_service.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT tweet_id, created_at, text, media_urls, days_date
-                FROM tweets
-                WHERE tweet_id = ?
-            """, (source_id,))
-            row = cursor.fetchone()
-
-            if not row:
-                return None
-
-            return DataItem(
-                namespace=self.namespace,
-                source_id=row['tweet_id'],
-                content=row['text'],
-                metadata={
-                    'media_urls': row['media_urls'],
-                    'days_date': row['days_date']
-                },
-                created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None
-            )
+        namespaced_id = f"{self.namespace}:{source_id}"
+        items = self.db_service.get_data_items_by_ids([namespaced_id])
+        
+        if not items:
+            return None
+        
+        item = items[0]
+        return DataItem(
+            namespace=item['namespace'],
+            source_id=item['source_id'],
+            content=item['content'],
+            metadata=item.get('metadata', {}),
+            created_at=datetime.fromisoformat(item['created_at']) if item.get('created_at') else None,
+            updated_at=datetime.fromisoformat(item['updated_at']) if item.get('updated_at') else None
+        )
 
     def get_source_type(self) -> str:
         """Return the source type identifier"""

@@ -13,7 +13,6 @@ async def sync_twitter(
     if "twitter" not in startup_service.ingestion_service.sources:
         raise HTTPException(status_code=404, detail="Twitter source not available or not configured")
 
-    twitter_source = startup_service.ingestion_service.sources["twitter"]
-    background_tasks.add_task(twitter_source.fetch_data)
-
-    return {"message": "Twitter import started successfully. The data will be available shortly."}
+    # For Twitter, sync is done through manual upload, not automatic fetching
+    # This endpoint exists for API consistency but doesn't do anything for Twitter
+    return {"message": "Twitter data sync is done through manual archive upload. Use the upload endpoint instead."}

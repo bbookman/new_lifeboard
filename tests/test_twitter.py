@@ -67,11 +67,11 @@ def test_parse_twitter_export(sample_twitter_export):
 
     assert tweets[0]['tweet_id'] == "123"
     assert tweets[0]['text'] == "This is a test tweet."
-    assert tweets[0]['media_urls'] == ["https://example.com/image.jpg"]
+    assert json.loads(tweets[0]['media_urls']) == ["https://example.com/image.jpg"]
 
     assert tweets[1]['tweet_id'] == "456"
     assert tweets[1]['text'] == "Another test tweet."
-    assert tweets[1]['media_urls'] == []
+    assert json.loads(tweets[1]['media_urls']) == []
 
 @pytest.mark.asyncio
 async def test_twitter_source_fetch_items(sample_twitter_export):

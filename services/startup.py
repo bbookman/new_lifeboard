@@ -253,7 +253,8 @@ class StartupService:
                     logger.info("Registering Twitter source...")
                     twitter_source = TwitterSource(
                         self.config.twitter,
-                        self.database
+                        self.database,
+                        self.ingestion_service
                     )
                     self.ingestion_service.register_source(twitter_source)
                     startup_result["sources_registered"].append("twitter")
