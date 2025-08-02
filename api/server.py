@@ -18,9 +18,10 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import uvicorn
+from datetime import datetime
 
 from services.startup import get_startup_service, StartupService
 from services.sync_manager_service import SyncManagerService
@@ -500,6 +501,13 @@ app.include_router(embeddings.router)
 app.include_router(system.router)
 app.include_router(weather.router)
 app.include_router(settings.router)
+
+
+@app.get("/")
+async def root():
+    """Redirect to today's calendar day view"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    return RedirectResponse(url=f"/calendar/day/{today}")
 
 
 # Global error handlers

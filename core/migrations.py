@@ -193,30 +193,6 @@ class WeatherTableMigration(BaseMigration):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_weather_days_date ON weather(days_date)")
 
 
-class TweetsTableMigration(BaseMigration):
-    """Add tweets table"""
-
-    @property
-    def version(self) -> str:
-        return "006_tweets_table"
-
-    @property
-    def description(self) -> str:
-        return "Add tweets table for Twitter data"
-
-    def up(self, conn: sqlite3.Connection) -> None:
-        """Create tweets table"""
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS tweets (
-                tweet_id TEXT PRIMARY KEY,
-                created_at TEXT,
-                days_date TEXT,
-                text TEXT,
-                media_urls TEXT
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_days_date ON tweets(days_date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tweets_text ON tweets(text)")
 
 
 class LimitlessTableMigration(BaseMigration):
@@ -269,7 +245,6 @@ class MigrationRunner:
             ChatMessagesMigration(),
             NewsTableMigration(),
             WeatherTableMigration(),
-            TweetsTableMigration(),
             LimitlessTableMigration(),
         ]
     

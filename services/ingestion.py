@@ -457,7 +457,7 @@ class IngestionService(BaseService):
                 
                 if metadata_dict:
                     # Try different timestamp fields that might be in metadata
-                    timestamp_fields = ['start_time', 'startTime', 'published_datetime_utc', 'created_at', 'timestamp']
+                    timestamp_fields = ['start_time', 'startTime', 'published_datetime_utc', 'created_at', 'timestamp', 'original_created_at']
                     
                     for field in timestamp_fields:
                         if field in metadata_dict and metadata_dict[field]:
