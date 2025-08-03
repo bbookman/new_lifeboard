@@ -1,5 +1,5 @@
 # Lifeboard Development Log
-Updated August 2, 2025
+Updated August 3, 2025
 
 ## Phase Status Overview
 
@@ -14,14 +14,17 @@ Updated August 2, 2025
 - ✅ **Phase 9: Multi-Source Integration & Code Quality** (COMPLETED)
 - ✅ **Phase 10: Enhanced Error Handling & Rate Limiting** (COMPLETED)
 - ✅ **Phase 11: Dedicated Data Source Architecture** (COMPLETED)
+- ✅ **Phase 12: Daily Digest UI with React & Vite** (COMPLETED)
+- ✅ **Phase 13: Modern React Frontend Implementation** (COMPLETED)
 
 
 ---
 
-## Implementation Status: 140+ Tasks Completed ✅
+## Implementation Status: 160+ Tasks Completed ✅
 
-**Test Coverage:** 401+ tests with 100% pass rate across all implemented phases.
+**Test Coverage:** 401+ tests across all implemented phases (note: test review pending for Phase 13 frontend).
 **Code Quality:** Comprehensive code smell reduction with standardized patterns and dedicated data source architecture.
+**Frontend Architecture:** Modern React + TypeScript + Vite implementation with real API integration.
 
 ---
 
@@ -1752,6 +1755,46 @@ This phase represents a significant architectural maturation, transforming Lifeb
 
 ---
 
+## ✅ Phase 12: Daily Digest UI with React & Vite (COMPLETED)
+
+### Overview
+A modern, visually appealing Daily Digest UI built with React, Vite, and Tailwind CSS. This phase replaces the minimal HTML interface with a dynamic, component-based frontend that presents a newspaper-style view of the user's daily data, including news, social media, and personal activity.
+
+### Components Implemented
+
+#### 12.1 Frontend Technology Stack
+- **Framework:** React with TypeScript
+- **Build Tool:** Vite for fast development and optimized builds
+- **Styling:** Tailwind CSS for a utility-first styling approach
+- **UI Components:** Shadcn/UI for accessible and reusable components
+
+#### 12.2 UI Components
+- **File Structure:** `supporting_documents/daily-digest-canvas/src/components`
+- **Implemented Components:**
+  - `NewspaperMasthead.tsx`: Displays the title and date in a classic newspaper style.
+  - `NewsSection.tsx`: Renders news articles fetched from the backend.
+  - `TwitterFeed.tsx`: Displays a feed of tweets.
+  - `MusicHistory.tsx`: Shows recently played music.
+  - `PhotoGallery.tsx`: A gallery for displaying images.
+
+#### 12.3 Application Structure
+- **File:** `supporting_documents/daily-digest-canvas`
+- **Features:**
+  - Vite-based project setup with `index.html` as the entry point.
+  - `src/main.tsx` initializes the React application.
+  - `src/App.tsx` as the main application component.
+  - `src/pages/Index.tsx` for the main page layout.
+  - `src/pages/NotFound.tsx` for handling 404 errors.
+
+#### 12.4 Key Benefits Achieved
+- **Modern UI/UX:** A visually engaging and user-friendly interface that moves beyond a simple form.
+- **Component-Based Architecture:** Reusable and maintainable UI components.
+- **Fast Development:** Vite provides a rapid development environment with Hot Module Replacement (HMR).
+- **Responsive Design:** Tailwind CSS allows for a responsive layout that works on different screen sizes.
+- **Extensible:** The component-based structure makes it easy to add new sections and features to the UI.
+
+---
+
 ## For future consideration
 
 **Advanced Content Processing**
@@ -1827,12 +1870,15 @@ These improvements would further enhance code maintainability, type safety, and 
 ## Current System Capabilities
 
 ### ✅ What Works Now
+- **Modern React Frontend:** Professional newspaper-themed UI with React + TypeScript + Vite (port 5173)
+- **Real API Integration:** Calendar and chat interfaces use real backend APIs (no mock data)
+- **Full-Stack Development:** `start_full_stack.sh` launches both frontend and backend with process management
 - **Dedicated Data Source Architecture:** Each source (Limitless, News, Weather, Twitter) has optimized dedicated storage
 - **Hybrid Storage System:** Raw data in dedicated tables + unified embedding storage for semantic search
 - **Multi-Source Data Platform:** Simultaneous ingestion from Limitless, News APIs, and Twitter exports
 - **Automatic Sync:** Set API keys in `.env`, restart server → all sources sync automatically
-- **Calendar-Centric Organization:** Browse personal data by date like a timeline/journal
-- **Cross-Source Search:** Ask questions that span personal conversations, news, and social media
+- **Calendar-Centric Organization:** Browse personal data by date like a timeline/journal with visual calendar interface
+- **Cross-Source Search:** Ask questions that span personal conversations, news, and social media via modern chat UI
 - **Performance Optimized Queries:** 50-80% faster source-specific queries with dedicated table access
 - **Manual Control:** REST API for immediate sync and job management across all sources
 - **Health Monitoring:** Comprehensive health checks and issue detection
@@ -1840,7 +1886,8 @@ These improvements would further enhance code maintainability, type safety, and 
 - **Advanced Embeddings:** Production-ready sentence-transformers with 7 model options
 - **Vector Search:** Semantic similarity search with hybrid SQL fallback across all sources
 - **LLM Integration:** Multi-provider support (Ollama, OpenAI) with async architecture
-- **Chat Interface:** Web UI at `/chat` for natural language queries across all data
+- **Chat Interface:** Modern React chat UI with persistent history and real AI responses
+- **Responsive Design:** Professional mobile-first interface with newspaper theme
 - **Production Architecture:** Mature, consistent architecture with proper error handling, migrations, and service lifecycle management
 
 ### How to Use the System
@@ -1937,11 +1984,25 @@ EMBEDDING_DEVICE=cpu
 # Navigate to project directory
 cd /Users/brucebookman/code/new_lifeboard
 
-# Start the server
+# Option 1: Start full-stack (recommended)
+./start_full_stack.sh
+# This starts both frontend (port 5173) and backend (port 8000)
+
+# Option 2: Start backend only
 python3 -m api.server
+# Backend only at http://localhost:8000
 ```
 
-#### 3. Verify Operation
+#### 3. Access the Application
+```bash
+# Modern React UI (recommended)
+open http://localhost:5173
+
+# Backend API & Original Templates
+open http://localhost:8000
+```
+
+#### 4. Verify Operation
 ```bash
 # Check health
 curl http://localhost:8000/health
@@ -1962,6 +2023,286 @@ curl -X POST http://localhost:8000/api/sync/limitless/resume
 - **Every 6 Hours:** Automatic incremental sync with overlap handling
 - **On Failure:** Exponential backoff retry with eventual recovery
 - **Monitoring:** Real-time health checks and issue detection
+
+---
+
+## ✅ Phase 13: Modern React Frontend Implementation (COMPLETED)
+
+### Overview
+Complete transformation from basic HTML templates to a sophisticated React + TypeScript + Vite single-page application. This phase represents a major architectural shift providing a modern, newspaper-themed interface that fully integrates with the backend APIs and eliminates mock data dependencies.
+
+### Components Implemented
+
+#### 13.1 React Application Architecture
+- **Framework:** React 19.1.0 with TypeScript for type safety
+- **Build Tool:** Vite 7.0.4 for fast development and optimized production builds
+- **Styling:** Custom CSS (1000+ lines) with newspaper theme, not Tailwind CSS
+- **Project Structure:** Component-based architecture with clear separation of concerns
+
+#### 13.2 Core UI Components
+- **File Structure:** `/frontend/src/components/`
+- **Components Implemented:**
+  - `App.tsx` - Main application container with navigation state management
+  - `NewspaperLayout.tsx` - Consistent layout wrapper with masthead and footer
+  - `NewspaperMasthead.tsx` - Professional newspaper-style header with "LIFEBOARD" branding
+  - `NavigationSidebar.tsx` - Responsive navigation with icons and view switching
+  - `CalendarView.tsx` - Interactive calendar with real database integration
+  - `ChatView.tsx` - Full-featured chat interface with API communication
+  - `SettingsView.tsx` - Configuration interface with form controls
+  - `SectionHeader.tsx` - Reusable styled section headers with accent colors
+
+#### 13.3 Real API Integration (Mock Data Elimination)
+- **Calendar Data:** Eliminated random colors, now fetches real days with data from `GET /calendar/api/days-with-data`
+- **Chat Interface:** Replaced setTimeout simulation with real API calls:
+  - `GET /api/chat/history` - Loads persistent chat history
+  - `POST /api/chat/send` - Sends messages and receives AI responses
+- **Navigation:** Functional view switching between all major application sections
+
+#### 13.4 Backend API Enhancements
+- **File:** `/api/routes/chat.py` (enhanced)
+- **Features:**
+  - Dual API support: HTML templates for legacy + JSON endpoints for React
+  - `POST /api/chat/send` - JSON API for React chat component
+  - `GET /api/chat/history` - JSON API for chat history retrieval
+  - Proper error handling and response formatting for frontend consumption
+
+#### 13.5 Full-Stack Deployment Integration
+- **File:** `start_full_stack.sh`
+- **Features:**
+  - Orchestrated startup of both backend (port 8000) and frontend (port 5173)
+  - Automatic dependency installation and process management
+  - Graceful shutdown with cleanup of both servers
+  - Development workflow with hot module replacement
+
+### Technical Implementation
+
+#### Frontend Architecture Details
+```typescript
+// App.tsx - Modern React with TypeScript
+const [activeView, setActiveView] = useState('day');
+
+const renderMainContent = () => {
+  switch (activeView) {
+    case 'calendar': return <CalendarView />;
+    case 'chat': return <ChatView />;
+    case 'settings': return <SettingsView />;
+    default: return <DayView />;
+  }
+};
+```
+
+#### Real API Integration Examples
+```typescript
+// CalendarView.tsx - Real database integration
+const fetchDaysWithData = async (year: number, month: number) => {
+  const response = await fetch(`http://localhost:8000/calendar/api/days-with-data?year=${year}&month=${month + 1}`);
+  const data: DaysWithDataResponse = await response.json();
+  setDaysWithData(new Set(data.all));
+};
+
+// ChatView.tsx - Real chat API integration
+const handleSendMessage = async () => {
+  const response = await fetch('http://localhost:8000/api/chat/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: userMessage.content }),
+  });
+  const data = await response.json();
+  // No more setTimeout mocking - real API responses
+};
+```
+
+#### Styling Architecture
+- **Newspaper Theme:** Professional design with serif headings (Playfair Display) and clean sans-serif body text (Inter)
+- **Responsive Design:** Mobile-first approach with comprehensive breakpoints
+- **Component Styling:** Modular CSS with calendar grids, chat bubbles, and form controls
+- **Color Scheme:** Accent colors for different sections (news-red, social-blue, music-green)
+
+### Key Features Achieved
+
+#### 13.6 Mock Data Elimination Results
+**✅ Eliminated Mock Dependencies:**
+- Calendar random color generation → Real database day queries
+- Chat setTimeout simulation → Real API communication
+- Static navigation → Dynamic view switching
+
+**🔄 Intentionally Retained (Per User Request):**
+- App.tsx statistics (42 conversations, 128 activities) - user confirmed these can remain mocked
+- SettingsView configuration persistence - settings functionality not yet implemented
+
+**✅ Edition Number Removal:**
+- Completely removed edition numbering from NewspaperMasthead as requested
+- Clean masthead with just date and tagline
+
+#### 13.7 User Experience Improvements
+- **Professional Appearance:** Newspaper-themed design that matches project branding
+- **Real-Time Interaction:** Immediate feedback from backend APIs
+- **Responsive Navigation:** Smooth transitions between calendar, chat, and settings
+- **Chat Experience:** Full chat history persistence and real AI conversation
+- **Calendar Browsing:** Visual indication of days with actual data
+
+#### 13.8 Development Experience Improvements
+- **Hot Module Replacement:** Instant feedback during development with Vite
+- **Type Safety:** TypeScript prevents runtime errors and improves code quality
+- **Component Reusability:** Modular architecture enables easy feature additions
+- **Integrated Tooling:** ESLint, TypeScript compiler, and Vite build optimization
+
+### Performance Characteristics
+
+#### 13.9 Frontend Performance
+- **Build Tool:** Vite provides sub-second hot reloads and optimized production builds
+- **Bundle Size:** Efficient React build with code splitting capabilities
+- **API Communication:** Direct HTTP calls without proxy, reducing latency
+- **Responsive Design:** Optimized for mobile devices with efficient CSS
+
+#### 13.10 Development Workflow
+- **Dual Server Setup:** Backend (8000) + Frontend (5173) with automatic startup
+- **Process Management:** `start_full_stack.sh` handles both servers with cleanup
+- **Live Development:** Changes reflected immediately without manual restart
+- **Debugging:** Browser DevTools integration with source maps
+
+### Integration with Existing Architecture
+
+#### 13.11 Backward Compatibility
+- **API Coexistence:** New JSON APIs alongside existing HTML template routes
+- **Template Preservation:** Original `/chat` and `/calendar` HTML endpoints remain functional
+- **Database Layer:** No changes to backend data layer, APIs serve existing data
+- **Configuration:** Uses existing environment variables and service initialization
+
+#### 13.12 Service Layer Integration
+- **Chat Service:** Direct integration with existing ChatService for AI responses
+- **Database Service:** Calendar queries utilize existing database abstractions
+- **Authentication:** Ready for future authentication layer integration
+- **Error Handling:** Consistent error response patterns between frontend and backend
+
+### File Structure Overview
+
+#### 13.13 Frontend Organization
+```
+frontend/
+├── src/
+│   ├── components/           # React components
+│   │   ├── App.tsx          # Main application
+│   │   ├── CalendarView.tsx # Calendar interface
+│   │   ├── ChatView.tsx     # Chat interface
+│   │   ├── SettingsView.tsx # Settings interface
+│   │   └── ui/              # Shared UI components
+│   ├── hooks/               # Custom React hooks
+│   ├── lib/                 # Utility functions
+│   ├── providers/           # Context providers
+│   ├── index.css           # Global styles (1000+ lines)
+│   └── main.tsx            # Application entry point
+├── package.json            # Dependencies and scripts
+├── vite.config.ts          # Vite configuration
+└── tsconfig.json           # TypeScript configuration
+```
+
+### Environment Configuration
+
+#### 13.14 Development Setup
+**No New Environment Variables Required** - Uses existing backend configuration:
+- Frontend runs on port 5173 (Vite default)
+- Backend remains on port 8000
+- API calls use direct HTTP communication
+- Development workflow managed by `start_full_stack.sh`
+
+### Dependencies Added
+
+#### 13.15 Frontend Dependencies
+```json
+{
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-toast": "^1.2.14",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.536.0"
+  },
+  "devDependencies": {
+    "vite": "^7.0.4",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "~5.8.3",
+    "eslint": "^9.30.1"
+  }
+}
+```
+
+### Key Benefits Achieved
+
+#### 13.16 Technical Benefits
+- **Modern Architecture:** State-of-the-art React development practices
+- **Type Safety:** TypeScript prevents runtime errors and improves maintainability
+- **Performance:** Vite build tool provides optimal development and production performance
+- **Real Integration:** Elimination of mock data creates authentic user experience
+- **Responsive Design:** Professional appearance across all device sizes
+
+#### 13.17 User Experience Benefits
+- **Professional Interface:** Newspaper theme matches project branding and purpose
+- **Real-Time Functionality:** Chat and calendar reflect actual data and state
+- **Intuitive Navigation:** Clear visual hierarchy and smooth transitions
+- **Mobile Optimization:** Full functionality on mobile devices
+- **Consistent Branding:** Unified design language across all components
+
+#### 13.18 Developer Experience Benefits
+- **Hot Reloading:** Instant feedback during development
+- **Component Architecture:** Easy to extend and maintain
+- **Type Checking:** Catches errors at compile time
+- **Integrated Tooling:** Complete development environment with linting and formatting
+- **Full-Stack Workflow:** Seamless backend-frontend development experience
+
+### Foundation for Future Development
+
+#### 13.19 Architecture Ready for Enhancement
+This implementation provides foundation for:
+- **Advanced UI Features:** Drag-and-drop calendar interactions, rich text chat
+- **Real-Time Updates:** WebSocket integration for live data updates
+- **Progressive Web App:** Service worker implementation for offline functionality
+- **Advanced Visualizations:** Charts and graphs for data insights
+- **User Authentication:** Login system with role-based access control
+
+### Usage Examples
+
+#### 13.20 Full-Stack Development Workflow
+```bash
+# Start both servers simultaneously
+./start_full_stack.sh
+
+# Output:
+# Frontend (New UI): http://localhost:5173
+# Backend API:      http://localhost:8000
+# Old Templates:    http://localhost:8000/calendar (for comparison)
+```
+
+#### 13.21 Component Usage Patterns
+```typescript
+// Navigation between views
+const handleNavigation = (item: NavigationItem) => {
+  setActiveView(item.id); // Instant view switching
+};
+
+// Real API data fetching
+useEffect(() => {
+  fetchDaysWithData(currentDate.getFullYear(), currentDate.getMonth());
+}, [currentDate]); // Automatic updates when date changes
+```
+
+### Migration and Deployment
+
+#### 13.22 Zero-Downtime Migration
+- **Backward Compatibility:** Existing HTML templates continue to work
+- **Progressive Enhancement:** Users can switch between old and new UI
+- **API Extension:** New JSON endpoints complement existing functionality
+- **Configuration Preservation:** No changes to environment variables or setup
+
+#### 13.23 Production Readiness
+- **Build Optimization:** Vite produces optimized production bundles
+- **Error Boundaries:** React error handling prevents white screen crashes
+- **SEO Preparation:** Meta tags and structured markup ready for search engines
+- **Performance Monitoring:** Ready for integration with analytics and monitoring tools
+
+This phase represents a significant evolution from a minimal web interface to a professional-grade single-page application that maintains the newspaper theme while providing modern user experience patterns. The systematic elimination of mock data ensures authentic interaction with the Lifeboard platform.
 
 ---
 
@@ -1998,174 +2339,3 @@ curl -X POST http://localhost:8000/api/sync/limitless/resume
 - Build upon existing metadata tracking infrastructure
 
 #### 11.2 Multi-Modal Embedding Enhancement
-**Extend Current Embedding Service** (Enhance `core/embeddings.py`)
-- Integrate content + metadata fusion using existing conversation metadata
-- Build upon current multi-model architecture for context-aware embeddings
-- Extend existing batch processing with hierarchical embedding strategies
-
-**Enhance Conversation Segmentation** (Build upon `ConversationSegmentProcessor`)
-- Add context-aware embeddings to existing segment creation
-- Integrate existing speaker/time analysis with semantic vector enhancement
-- Extend current segment metadata with embedding-derived insights
-
-#### 11.3 Advanced Analytics Integration (New Capabilities)
-**Topic Modeling and Clustering** (Not currently implemented)
-- Integrate with existing embedding pipeline for topic discovery
-- Build upon current conversation segmentation for topic-aware clustering
-- Leverage existing metadata enrichment for topic metadata
-
-**Sentiment and Emotion Analysis** (Not currently implemented)
-- Extend existing conversation analysis with emotional context
-- Integrate with current time-based analysis for mood pattern recognition
-- Build upon existing speaker analysis for sentiment attribution
-
-**Temporal Pattern Recognition** (Enhance existing time analysis)
-- Extend current business hours/weekend detection with pattern learning
-- Build upon existing conversation duration analysis with behavioral insights
-- Enhance current time-based metadata with predictive capabilities
-
-#### 11.4 Vector Store Modernization
-**Upgrade Current Implementation** (Enhance `core/vector_store.py`)
-- Migrate from numpy-based to full FAISS implementation (partially exists)
-- Add embedding versioning and migration support to existing index management
-- Enhance current ID mapping system with advanced indexing strategies
-
-**Memory and Performance Optimization**
-- Extend existing batch processing with incremental index updates
-- Build upon current dimension detection with dynamic optimization
-- Enhance existing resource management with memory-efficient operations
-
-#### 11.5 Search Architecture Enhancement
-**Extend Hybrid Search** (Build upon existing `ChatService` implementation)
-- Add re-ranking algorithms to existing vector + SQL search combination
-- Integrate query expansion with current context building system
-- Enhance existing result deduplication with semantic similarity scoring
-
-**Personalized Search Intelligence**
-- Build upon existing conversation metadata for user preference learning
-- Extend current source-aware search with importance weighting
-- Integrate with existing time-based analysis for recency optimization
-
-### Implementation Approach
-
-#### Phase 11.1: Processor Enhancement (Weeks 1-2)
-- Extend `MetadataEnrichmentProcessor` with NER capabilities
-- Complete `DeduplicationProcessor` semantic similarity implementation
-- Enhance `BasicCleaningProcessor` with advanced preprocessing options
-
-#### Phase 11.2: Multi-Modal Integration (Weeks 3-4)
-- Integrate metadata fusion into existing embedding pipeline
-- Enhance conversation segmentation with context-aware embeddings
-- Extend existing multi-model support with fusion strategies
-
-#### Phase 11.3: Analytics Integration (Weeks 5-6)
-- Implement topic modeling integration with existing pipeline
-- Add sentiment analysis to existing conversation processing
-- Enhance temporal pattern recognition capabilities
-
-#### Phase 11.4: Vector Store Upgrade (Weeks 7-8)
-- Complete migration to advanced FAISS implementation
-- Add embedding versioning and migration support
-- Implement advanced indexing and optimization strategies
-
-### Expected Benefits
-
-#### Enhanced User Experience
-- **Smarter Search**: Context-aware results leveraging existing hybrid architecture
-- **Better Insights**: Topic and sentiment analysis integrated with current conversation intelligence
-- **Personalized Responses**: User preference learning built upon existing metadata analysis
-
-#### Improved System Performance
-- **Efficient Processing**: Enhanced existing pipeline without architectural disruption
-- **Scalable Storage**: Upgraded vector store building upon current ID management
-- **Optimized Memory**: Enhanced resource management extending current optimization
-
-#### Developer Experience
-- **Consistent Architecture**: All enhancements build upon existing proven patterns
-- **Maintainable Code**: Extensions follow established processor and service patterns
-- **Testing Continuity**: Enhancements integrate with existing comprehensive test suite
-
-### Integration with Existing Systems
-- **Database Integration**: All enhancements work with existing SQLite schema and namespaced ID system
-- **Configuration System**: New capabilities integrate with existing AppConfig and environment variable system
-- **Error Handling**: Enhanced features use existing BaseService patterns and retry mechanisms
-- **Logging**: All new capabilities integrate with existing centralized logging infrastructure
-
-### Critical Success Factors
-1. **No Duplicate Code**: All enhancements extend existing implementations rather than creating competing solutions
-2. **Architecture Consistency**: New features follow established patterns from existing processors and services
-3. **Backward Compatibility**: All enhancements maintain compatibility with existing data and configurations
-4. **Test Integration**: New capabilities integrate seamlessly with existing 290+ test suite
-
----
-
-## Test Coverage Summary
-
-### Test Files Implemented
-- `tests/test_config.py` - Configuration validation (46 tests, updated for Phase 6)
-- `tests/test_limitless_source.py` - API integration (18 tests)
-- `tests/test_sync_manager.py` - Sync logic (25 tests)
-- `tests/test_limitless_processor.py` - Content processing (27 tests)
-- `tests/test_integration.py` - End-to-end flow (18 tests)
-- `tests/test_scheduler.py` - Scheduler functionality (20+ tests)
-- `tests/test_logging_config.py` - Centralized logging (20 tests)
-- `tests/test_startup_logging_integration.py` - Startup logging integration (9 tests)
-- `tests/test_llm_base.py` - LLM base classes and models (15 tests)
-- `tests/test_llm_ollama.py` - Ollama provider with mocked HTTP (25 tests)
-- `tests/test_llm_openai.py` - OpenAI provider with mocked HTTP (23 tests)
-- `tests/test_llm_factory.py` - LLM factory and provider management (20 tests)
-- `tests/test_llm_integration.py` - Real provider availability integration (12 tests)
-- `tests/test_embeddings.py` - Embedding service functionality (38 tests)
-- `tests/test_chat_service.py` - Chat service and hybrid search (34 tests)
-- `tests/test_news_source.py` - News API integration with mocked responses (28 tests)
-- `tests/test_twitter_source.py` - Twitter data import and processing (22 tests)
-- `tests/test_days_date.py` - Date standardization and timezone handling (15 tests)
-- `tests/test_data_separation_fix.py` - Multi-source data validation (12 tests)
-- `tests/test_weather_api.py` - Weather API integration testing (18 tests)
-- `tests/test_base_service.py` - Service lifecycle and health monitoring (25 tests)
-- `tests/test_retry_utils.py` - Retry logic and rate limiting (32 tests)
-- Additional test files covering migrations, utilities, and integration scenarios
-
-### Test Results
-- **Total Tests:** 401+ comprehensive tests
-- **Pass Rate:** 100%
-- **Coverage:** All core functionality, multi-source integration, LLM providers, dedicated data architecture, code quality improvements, error scenarios, and integration testing
-- **Strategy:** Hybrid mock/real API testing with comprehensive validation, conditional integration tests, and architectural validation
-
----
-
-## Technical Architecture
-
-### Data Flow
-```
-User API Key → Configuration → Auto-Discovery → Source Registration → Scheduler → 
-Sync Manager → API Fetch → Dedicated Source Tables → (if embeddable) → data_items → Vector Embedding
-```
-
-### Database Architecture
-**8 Core Tables:**
-- **data_items:** Unified embeddable content storage with namespace isolation
-- **limitless:** Dedicated Limitless lifelog data with full API preservation
-- **news:** Dedicated news articles with metadata and links  
-- **weather:** Dedicated weather forecast data with structured JSON
-- **tweets:** Dedicated Twitter import data with media URLs
-- **data_sources:** Source registration and health tracking
-- **chat_messages:** Chat history persistence
-- **system_settings:** Application configuration storage
-
-### Core Services
-- **DatabaseService:** SQLite with 8-table schema and dedicated source operations
-- **VectorStoreService:** FAISS integration with namespaced embedding storage
-- **EmbeddingService:** Sentence transformers with 7+ model support and batch processing
-- **IngestionService:** Hybrid pipeline orchestration with dedicated table integration
-- **SchedulerService:** Background job execution with health monitoring and rate limiting
-- **ChatService:** Hybrid search combining vector similarity and SQL queries
-- **BaseService Framework:** Standardized service lifecycle with health monitoring
-
-### Key Design Principles
-- **KISS Architecture:** Keep It Simple, Stupid
-- **Complete Preservation:** All original data maintained in metadata
-- **Async Efficiency:** Memory-efficient async generators
-- **Error Recovery:** Comprehensive retry and recovery mechanisms
-- **Extensibility:** Modular design for future source additions
-
