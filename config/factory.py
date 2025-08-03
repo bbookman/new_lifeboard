@@ -52,7 +52,6 @@ def create_test_config(temp_dir: str = None) -> AppConfig:
         ),
         auto_sync=AutoSyncConfig(
             enabled=True,
-            startup_sync_enabled=False,
             startup_sync_delay_seconds=10,
             auto_register_sources=True
         ),
@@ -129,7 +128,7 @@ def create_production_config() -> AppConfig:
             language=os.getenv("USERS_LANGUAGE", "en"),
             country=os.getenv("NEWS_COUNTRY", "US"),
             unique_items_per_day=int(os.getenv("UNIQUE_NEWS_ITEMS_PER_DAY", "5")),
-            endpoint=os.getenv("NEWS_ENDPOINT", "real-time-news-data.p.rapidapi.com"),
+            endpoint=os.getenv("NEWS_ENDPOINT"),
             items_to_retrieve=int(os.getenv("NEWS_ITEMS_TO_RETRIEVE", "20")),
             max_retries=int(os.getenv("NEWS_MAX_RETRIES", "3")),
             retry_delay=float(os.getenv("NEWS_RETRY_DELAY", "1.0")),
@@ -203,7 +202,6 @@ def create_production_config() -> AppConfig:
             )
         ),
         chat=ChatConfig(
-            enabled=os.getenv("CHAT_ENABLED", "true").lower() == "true",
             history_limit=int(os.getenv("CHAT_HISTORY_LIMIT", "1000")),
             context_window=int(os.getenv("CHAT_CONTEXT_WINDOW", "4000")),
             response_timeout=float(os.getenv("CHAT_RESPONSE_TIMEOUT", "30.0"))

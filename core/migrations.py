@@ -135,38 +135,6 @@ class ChatMessagesMigration(BaseMigration):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp)")
 
 
-class NewsTableMigration(BaseMigration):
-    """Add news articles table"""
-    
-    @property
-    def version(self) -> str:
-        return "004_news_table"
-    
-    @property
-    def description(self) -> str:
-        return "Add news articles table for news ingestion"
-    
-    def up(self, conn: sqlite3.Connection) -> None:
-        """Create news table"""
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS news (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                link TEXT NOT NULL UNIQUE,
-                snippet TEXT,
-                thumbnail_url TEXT,
-                published_datetime_utc TEXT,
-                days_date TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Indexes for news table
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_news_snippet ON news(snippet)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_news_title ON news(title)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_news_days_date ON news(days_date)")
-        
 
 class WeatherTableMigration(BaseMigration):
     """Add weather table"""
@@ -243,7 +211,6 @@ class MigrationRunner:
             InitialSchemaMigration(),
             IndexesMigration(),
             ChatMessagesMigration(),
-            NewsTableMigration(),
             WeatherTableMigration(),
             LimitlessTableMigration(),
         ]

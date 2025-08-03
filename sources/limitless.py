@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 
 from .base import BaseSource, DataItem
 from config.models import LimitlessConfig
-from core.database import DatabaseService
 from core.retry_utils import (RetryExecutor, create_api_retry_config, create_enhanced_api_retry_condition, 
                               create_rate_limit_retry_config, RetryConfig, BackoffStrategy)
 from core.http_client_mixin import HTTPClientMixin
@@ -19,11 +18,10 @@ logger = logging.getLogger(__name__)
 class LimitlessSource(BaseSource, HTTPClientMixin):
     """Limitless API data source for lifelogs"""
     
-    def __init__(self, config: LimitlessConfig, db_service: DatabaseService = None):
+    def __init__(self, config: LimitlessConfig):
         BaseSource.__init__(self, "limitless")
         HTTPClientMixin.__init__(self)
         self.config = config
-        self.db_service = db_service
         self._api_key_configured = config.is_api_key_configured()
     
     def _create_client_config(self) -> Dict[str, Any]:
@@ -58,7 +56,7 @@ class LimitlessSource(BaseSource, HTTPClientMixin):
         return await super().test_connection()
     
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
-        """Fetch lifelogs with pagination, store in limitless table, then yield DataItems"""
+        """Fetch lifelogs with pagination and yield DataItems for unified processing pipeline"""
         if not self._api_key_configured:
             logger.warning("LIMITLESS_API_KEY is not configured in .env file. Skipping data fetch. Please set a valid API key.")
             return
@@ -98,21 +96,11 @@ class LimitlessSource(BaseSource, HTTPClientMixin):
             if not lifelogs:
                 break
             
-            # Store in limitless table and yield data items
+            # Yield DataItems that will go through unified processing pipeline
             for lifelog in lifelogs:
-                # Store raw data in limitless table first
-                if self.db_service:
-                    await self._store_limitless_data(lifelog)
-                    # Yield a DataItem for sync manager tracking but mark it specially
-                    data_item = self._transform_lifelog(lifelog)
-                    data_item.metadata["_stored_in_limitless_table"] = True
-                    yield data_item
-                    fetched_count += 1
-                else:
-                    # Fallback to old behavior when no db_service (for backwards compatibility)
-                    data_item = self._transform_lifelog(lifelog)
-                    yield data_item
-                    fetched_count += 1
+                data_item = self._transform_lifelog(lifelog)
+                yield data_item
+                fetched_count += 1
                 
                 if fetched_count >= limit:
                     break
@@ -125,19 +113,7 @@ class LimitlessSource(BaseSource, HTTPClientMixin):
             cursor = next_cursor
     
     async def get_item(self, source_id: str) -> Optional[DataItem]:
-        """Get specific lifelog by ID"""
-        # First try to get from limitless table if db_service is available
-        if self.db_service:
-            try:
-                limitless_item = self.db_service.get_limitless_item_by_lifelog_id(source_id)
-                if limitless_item:
-                    # Convert limitless table item to DataItem
-                    raw_lifelog = json.loads(limitless_item["raw_data"])
-                    return self._transform_lifelog(raw_lifelog)
-            except Exception as e:
-                logger.warning(f"Failed to get item from limitless table: {e}")
-        
-        # Fallback to API call
+        """Get specific lifelog by ID from API"""
         if not self._api_key_configured:
             logger.warning("LIMITLESS_API_KEY is not configured in .env file. Skipping item fetch.")
             return None
@@ -161,10 +137,6 @@ class LimitlessSource(BaseSource, HTTPClientMixin):
             
             if not lifelog:
                 return None
-            
-            # Store in limitless table if db_service is available
-            if self.db_service:
-                await self._store_limitless_data(lifelog)
             
             return self._transform_lifelog(lifelog)
             
@@ -229,63 +201,6 @@ class LimitlessSource(BaseSource, HTTPClientMixin):
             created_at=created_at,
             updated_at=updated_at
         )
-    
-    async def _store_limitless_data(self, lifelog: Dict[str, Any]) -> str:
-        """Store raw lifelog data in limitless table"""
-        try:
-            # Extract processed content (same as DataItem content)
-            content_parts = []
-            
-            # Add title
-            if lifelog.get("title"):
-                content_parts.append(lifelog["title"])
-            
-            # Extract content from structured nodes
-            if lifelog.get("contents"):
-                content_parts.extend(self._extract_content_from_nodes(lifelog["contents"]))
-            
-            # Fallback to markdown if no structured content
-            if not content_parts and lifelog.get("markdown"):
-                content_parts.append(lifelog["markdown"])
-            
-            # Combine all content
-            processed_content = "\n\n".join(filter(None, content_parts))
-            
-            # Extract days_date from start_time
-            days_date = None
-            if lifelog.get("startTime"):
-                try:
-                    dt = datetime.fromisoformat(lifelog["startTime"].replace("Z", "+00:00"))
-                    days_date = self.db_service.extract_date_from_timestamp(
-                        dt.isoformat(), 
-                        self.config.timezone
-                    )
-                except (ValueError, TypeError):
-                    pass
-            
-            # Use current date as fallback
-            if not days_date:
-                days_date = datetime.now().strftime("%Y-%m-%d")
-            
-            # Store in limitless table
-            item_id = self.db_service.store_limitless_item(
-                lifelog_id=lifelog["id"],
-                title=lifelog.get("title", ""),
-                start_time=lifelog.get("startTime", ""),
-                end_time=lifelog.get("endTime", ""),
-                is_starred=lifelog.get("isStarred", False),
-                updated_at_api=lifelog.get("updatedAt", ""),
-                processed_content=processed_content,
-                raw_data=json.dumps(lifelog),
-                days_date=days_date
-            )
-            
-            logger.debug(f"Stored limitless item: {item_id}")
-            return item_id
-            
-        except Exception as e:
-            logger.error(f"Failed to store limitless data for {lifelog.get('id', 'unknown')}: {e}")
-            raise
     
     def _extract_content_from_nodes(self, nodes: List[Dict[str, Any]]) -> List[str]:
         """Extract text content from content nodes"""

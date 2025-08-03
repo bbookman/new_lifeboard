@@ -20,9 +20,11 @@ Key features:
 The project follows a KISS multi-source memory chat application architecture with:
 
 ### Data Flow
-- Ingest raw data → store in SQLite → generate embeddings → add to FAISS with same ID
-- Search: embed query → search FAISS → retrieve top vector IDs → fetch SQLite rows → pass to LLM
-- Updates: update SQLite row → re-embed → update FAISS vector
+- All sources → DataItem objects → processor pipeline (if needed) → store in data_items table → generate embeddings → add to FAISS with same ID
+- Search: embed query → search FAISS → retrieve top vector IDs → fetch data_items rows → pass to LLM
+- Updates: update data_items row → re-embed → update FAISS vector
+
+**Unified Architecture**: All data sources yield DataItem objects that flow through the standard ingestion pipeline and are stored in the unified `data_items` table. Source-specific processing (deduplication, segmentation) is handled by processor classes where needed.
 
 ### Core Services
 - **Database Service:** SQLite operations with namespaced ID management.
@@ -68,16 +70,18 @@ CREATE TABLE chat_messages (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Stores weather data
+-- Source-specific tables (for specialized queries and caching)
+-- All data is also stored in unified data_items table
+
+-- Weather data cache for API response storage
 CREATE TABLE weather (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL UNIQUE,
-    data TEXT NOT NULL,
-    days_date TEXT NOT NULL
+    days_date TEXT NOT NULL,
+    response_json TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Stores news headlines
+-- News headlines cache for deduplication
 CREATE TABLE news (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -86,18 +90,24 @@ CREATE TABLE news (
     days_date TEXT NOT NULL,
     thumbnail_url TEXT,
     published_datetime_utc TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-
--- Stores imported tweets
-CREATE TABLE tweets (
-    tweet_id TEXT PRIMARY KEY,
-    created_at TEXT NOT NULL,
+-- Limitless lifelog data for specialized processing
+CREATE TABLE limitless (
+    id TEXT PRIMARY KEY,
+    lifelog_id TEXT NOT NULL UNIQUE,
+    title TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    is_starred BOOLEAN DEFAULT FALSE,
+    updated_at_api TEXT,
+    processed_content TEXT,
+    raw_data TEXT,
     days_date TEXT NOT NULL,
-    text TEXT,
-    media_urls TEXT
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- General application settings
@@ -241,7 +251,35 @@ Claude should:
 
 ## Development Reminders
 
-* Ensure _extract_days_date is updated as needed due to addition of new data sources and those datasource "created datetime" values are ingested. Prompt during CLI coding sessions to make it clear which variable will be added to _extract_days_date
+* **Unified Data Flow**: All sources must yield DataItem objects for consistent processing through the ingestion pipeline
+* **Source-Specific Processing**: Use processor classes (LimitlessProcessor, etc.) for specialized data handling while maintaining unified storage
+* **Calendar Integration**: Ensure all sources provide proper `days_date` extraction through `_extract_days_date` method
+* **Deduplication Strategy**: News sources implement fetch-20-select-5 unique headlines; other sources don't require deduplication
+* **Embedding Pipeline**: All DataItems stored in `data_items` table are automatically queued for embedding generation
+
+## Data Source Architecture
+
+### Source Processing Patterns
+
+**Limitless Source**:
+- Yields DataItem objects → LimitlessProcessor (deduplication, segmentation, cleanup) → data_items table
+- Also stores in dedicated `limitless` table for specialized queries
+- Full processor pipeline with markdown extraction and content enhancement
+
+**News Source**:
+- Fetches 20 headlines → selects 5 unique → yields DataItem objects → data_items table
+- Also stores in `news` table for deduplication tracking
+- Simple processing, no complex pipeline needed
+
+**Weather Source**:
+- API data → transforms to DataItem objects per forecast day → data_items table
+- Also stores raw API response in `weather` table for caching
+- No deduplication needed, minimal processing
+
+**Twitter Source**:
+- Archive import → yields DataItem objects → data_items table
+- No deduplication needed, direct DataItem creation
+- Simple processing with TwitterProcessor for metadata enhancement
 
 ## Claude Memories
 

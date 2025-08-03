@@ -212,7 +212,7 @@ class StartupService:
             if self.config.limitless.is_api_key_configured():
                 try:
                     logger.info("Registering Limitless source...")
-                    limitless_source = LimitlessSource(self.config.limitless, self.database)
+                    limitless_source = LimitlessSource(self.config.limitless)
                     self.ingestion_service.register_source(limitless_source)
                     startup_result["sources_registered"].append("limitless")
                     logger.info("Limitless source registered successfully")

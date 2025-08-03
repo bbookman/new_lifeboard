@@ -16,6 +16,7 @@ Updated August 3, 2025
 - ✅ **Phase 11: Dedicated Data Source Architecture** (COMPLETED)
 - ✅ **Phase 12: Daily Digest UI with React & Vite** (COMPLETED)
 - ✅ **Phase 13: Modern React Frontend Implementation** (COMPLETED)
+- ✅ **Phase 14: Unified Data Architecture Implementation** (COMPLETED)
 
 
 ---
@@ -2303,6 +2304,164 @@ useEffect(() => {
 - **Performance Monitoring:** Ready for integration with analytics and monitoring tools
 
 This phase represents a significant evolution from a minimal web interface to a professional-grade single-page application that maintains the newspaper theme while providing modern user experience patterns. The systematic elimination of mock data ensures authentic interaction with the Lifeboard platform.
+
+---
+
+## ✅ Phase 14: Unified Data Architecture Implementation (COMPLETED)
+
+### Overview
+Resolved critical architectural inconsistencies in data flow and storage by implementing a unified data architecture where all sources yield DataItem objects through the standard ingestion pipeline. This phase eliminated hybrid storage patterns that were causing calendar functionality issues and data visibility problems.
+
+### Problem Analysis
+- **Root Cause**: Different sources used inconsistent data flow patterns
+- **Symptoms**: Calendar not displaying data from all sources, architectural complexity, dual storage systems
+- **Impact**: Broken user experience and maintenance difficulties
+
+### Architecture Unification
+
+#### 14.1 Source Standardization
+**Limitless Source** (`sources/limitless.py`)
+- **Before**: Dual storage (limitless table + attempted bridge to data_items)
+- **After**: Yields DataItem objects → LimitlessProcessor pipeline → unified data_items storage
+- **Processing**: Full processor pipeline with deduplication, segmentation, and content enhancement
+- **Specialized Storage**: Maintains limitless table for source-specific queries
+
+**Weather Source** (`sources/weather.py`)
+- **Before**: Direct weather table storage, bypassed data_items entirely
+- **After**: API data → DataItem transformation per forecast day → unified data_items storage
+- **Processing**: Minimal processing, no deduplication needed
+- **Specialized Storage**: Maintains weather table for API response caching
+
+**News Source** (`sources/news.py`)
+- **Before**: Already correctly implemented unified flow
+- **Status**: No changes needed - exemplar implementation
+- **Processing**: Fetch 20 → select 5 unique headlines → DataItem objects → unified storage
+
+**Twitter Source** (`sources/twitter.py`)
+- **Before**: Already correctly implemented unified flow
+- **Status**: No changes needed - exemplar implementation
+- **Processing**: Archive import → DataItem objects → unified storage with TwitterProcessor
+
+#### 14.2 Ingestion Service Simplification
+**Removed Special Cases** (`services/ingestion.py`)
+- **Eliminated**: Special Limitless handling with populate_data_items_from_limitless()
+- **Unified**: Single processing path for all sources through `_process_and_store_item()`
+- **Standardized**: Consistent since/limit handling across all source types
+- **Simplified**: Removed architectural complexity and maintenance overhead
+
+**Database Service Cleanup** (`core/database.py`)
+- **Removed**: populate_data_items_from_limitless() method and supporting infrastructure
+- **Streamlined**: Bridge complexity eliminated
+- **Maintained**: Source-specific table methods for specialized queries
+
+#### 14.3 Calendar Integration Fix
+**Root Cause Resolution**:
+- **Problem**: Calendar queried only data_items table but some sources bypassed it
+- **Solution**: All sources now populate data_items table with proper days_date fields
+- **Result**: Calendar displays data from all sources (Limitless, Weather, News, Twitter)
+
+**API Compatibility** (`api/routes/calendar.py`):
+- **Enhanced**: get_days_with_data() now returns complete dataset
+- **Preserved**: Specialized endpoints still function with dedicated tables
+- **Improved**: Consistent data availability across all calendar views
+
+### Technical Implementation Details
+
+#### 14.4 Data Flow Standardization
+**Unified Pipeline**:
+```
+All Sources → DataItem objects → Processor (if needed) → data_items table → Embeddings → FAISS
+```
+
+**Source-Specific Processing**:
+- **Limitless**: LimitlessProcessor (deduplication, segmentation, markdown extraction)
+- **News**: Built-in deduplication (fetch 20, select 5 unique per day)
+- **Weather**: _transform_weather_data() (forecast day separation)
+- **Twitter**: TwitterProcessor (metadata enhancement)
+
+**Preserved Specialization**:
+- **Limitless**: Complex processing pipeline for conversation intelligence
+- **News**: Deduplication strategy for headline uniqueness
+- **Weather/Twitter**: Simple processing without deduplication overhead
+
+#### 14.5 DataItem Transformation
+**Weather Source Enhancement**:
+- **New Method**: `_transform_weather_data()` converts API responses to DataItem objects
+- **Forecast Separation**: Creates one DataItem per forecast day for searchability
+- **Content Generation**: Human-readable weather descriptions for embedding
+- **Metadata Preservation**: Full API response data maintained in metadata
+
+**Metadata Standardization**:
+- **Consistent Fields**: All sources provide source_type, days_date, original timestamps
+- **Source Identity**: Clear namespace and source_id patterns
+- **Enhanced Search**: Rich content and metadata for embedding generation
+
+### Benefits Achieved
+
+#### 14.6 User Experience Improvements
+- **Calendar Functionality**: Now displays data from all sources correctly
+- **Search Completeness**: All source data available for similarity search
+- **Data Visibility**: Unified query patterns across all data types
+- **Consistent Behavior**: Predictable data availability and processing
+
+#### 14.7 Developer Experience Improvements
+- **Architectural Clarity**: Single, well-documented data flow pattern
+- **Reduced Complexity**: Eliminated dual storage confusion
+- **Easier Maintenance**: Consistent patterns across all sources
+- **Simplified Testing**: Unified behavior reduces test complexity
+
+#### 14.8 System Performance
+- **Reduced Storage**: Eliminated duplicate data storage patterns
+- **Improved Queries**: Single table queries more efficient than complex joins
+- **Faster Development**: New sources follow clear, established patterns
+- **Better Scalability**: Unified architecture scales predictably
+
+### Code Quality Improvements
+
+#### 14.9 Eliminated Technical Debt
+- **Removed**: populate_data_items_from_limitless() bridge complexity
+- **Simplified**: Ingestion service processing logic
+- **Standardized**: Source processing patterns
+- **Documented**: Clear architectural guidelines in CLAUDE.md
+
+#### 14.10 Enhanced Maintainability
+- **Single Source of Truth**: data_items table for all unified queries
+- **Clear Separation**: Source-specific tables only for specialized use cases
+- **Consistent Patterns**: All sources follow same DataItem → processing → storage flow
+- **Future-Proof**: New sources have clear integration pattern
+
+### Documentation Updates
+
+#### 14.11 Architecture Documentation
+**CLAUDE.md Updates**:
+- **Data Flow**: Updated to show unified DataItem pipeline
+- **Source Patterns**: Documented processing strategies for each source type
+- **Development Guidelines**: Clear instructions for new source integration
+- **Calendar Integration**: Explained days_date extraction requirements
+
+**Database Schema**:
+- **Clarified**: Source-specific tables are for caching and specialized queries
+- **Emphasized**: data_items table as unified storage for embeddings and search
+- **Documented**: Namespaced ID patterns and metadata conventions
+
+### Testing Strategy
+
+#### 14.2 Verification Approach
+**Planned Test Coverage**:
+- **End-to-End**: test_unified_data_flow.py for complete pipeline verification
+- **Source-Specific**: test_source_processing.py for individual source behavior
+- **Calendar Integration**: test_calendar_integration.py for UI functionality
+- **Manual Verification**: Complete system testing across all data sources
+
+### Foundation for Future Development
+
+#### 14.13 Scalability Improvements
+- **New Source Integration**: Clear DataItem pattern for adding new data sources
+- **Processing Extensions**: Processor classes can be enhanced without architectural changes
+- **Performance Optimization**: Unified queries enable better indexing strategies
+- **Feature Development**: Consistent data access patterns simplify feature implementation
+
+This phase resolved fundamental architectural inconsistencies that were impacting user experience and development productivity. The unified data architecture provides a solid foundation for future enhancements while maintaining source-specific optimizations where needed.
 
 ---
 

@@ -200,10 +200,6 @@ Lifeboard uses environment variables for configuration. Create a `.env` file in 
 
 ### Chat Interface
 
-#### `CHAT_ENABLED`
-- **Purpose**: Enable the web chat interface
-- **Default**: `true`
-- **Example**: `CHAT_ENABLED=true`
 
 #### `CHAT_HISTORY_LIMIT`
 - **Purpose**: Maximum stored chat messages
