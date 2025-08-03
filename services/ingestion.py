@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 
 from core.base_service import BaseService
 from sources.base import DataItem, BaseSource
-from sources.limitless import LimitlessSource
 from sources.sync_manager import SyncManager
 from sources.limitless_processor import LimitlessProcessor, BaseProcessor
 from core.database import DatabaseService
@@ -107,47 +106,20 @@ class IngestionService(BaseService):
         try:
             logger.info(f"Starting ingestion from {namespace}")
             
-            # Handle Limitless source with new architecture
-            if isinstance(source, LimitlessSource):
-                # Limitless source stores in limitless table directly
-                sync_manager = SyncManager(
-                    database=self.database,
-                    app_config=self.config
-                )
-                sync_manager.register_source(source)
-                
-                # Sync data (this stores in limitless table and yields marked DataItems)
-                async for item in sync_manager.sync_source(namespace, force_full_sync=force_full_sync, limit=limit):
-                    # Check if item was stored in limitless table
-                    if item.metadata.get("_stored_in_limitless_table"):
-                        # Skip regular data_items storage, just count it
-                        result.items_processed += 1
-                        result.items_stored += 1
-                    else:
-                        # Fallback to regular processing for backward compatibility
-                        await self._process_and_store_item(item, result)
-                
-                # Populate data_items from limitless table for embedding
-                populate_result = self.database.populate_data_items_from_limitless(batch_size=limit)
-                result.embeddings_generated += populate_result["added"] + populate_result["updated"]
-                if populate_result["errors"]:
-                    result.errors.extend(populate_result["errors"])
+            # Unified source handling for all sources
+            last_sync = self.database.get_setting(f"{namespace}_last_sync")
+            since = None
+            if last_sync and not force_full_sync:
+                since = datetime.fromisoformat(last_sync)
             
-            else:
-                # Generic source handling
-                last_sync = self.database.get_setting(f"{namespace}_last_sync")
-                since = None
-                if last_sync and not force_full_sync:
-                    since = datetime.fromisoformat(last_sync)
-                
-                async for item in source.fetch_items(since=since, limit=limit):
-                    await self._process_and_store_item(item, result)
-                
-                # Update last sync time
-                self.database.set_setting(
-                    f"{namespace}_last_sync", 
-                    datetime.now(timezone.utc).isoformat()
-                )
+            async for item in source.fetch_items(since=since, limit=limit):
+                await self._process_and_store_item(item, result)
+            
+            # Update last sync time after successful processing
+            self.database.set_setting(
+                f"{namespace}_last_sync", 
+                datetime.now(timezone.utc).isoformat()
+            )
         
         except Exception as e:
             error_msg = f"Ingestion failed for {namespace}: {str(e)}"

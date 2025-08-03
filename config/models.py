@@ -104,7 +104,7 @@ class NewsConfig(BaseModel, BaseConfigMixin):
     enabled: bool = True
     country: str = "US"
     unique_items_per_day: int = 5
-    endpoint: str = "real-time-news-data.p.rapidapi.com"
+    endpoint: Optional[str] = None
     items_to_retrieve: int = 20
     max_retries: int = 3
     retry_delay: float = 1.0
@@ -277,7 +277,6 @@ class SchedulerConfig(BaseModel):
 class AutoSyncConfig(BaseModel):
     """Auto-sync configuration"""
     enabled: bool = True
-    startup_sync_enabled: bool = False
     startup_sync_delay_seconds: int = 60
     auto_register_sources: bool = True
     

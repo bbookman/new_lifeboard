@@ -31,10 +31,18 @@ class NewsSource(BaseSource, HTTPClientMixin):
         HTTPClientMixin.__init__(self)
         self.config = config
         self.db_service = db_service
-        self._api_key_configured = config.is_api_key_configured()
+        self._api_key_configured = self.config.is_api_key_configured()
+        self._endpoint_configured = self.config.is_endpoint_configured()
+
+    def is_configured(self) -> bool:
+        """Check if the source is fully configured"""
+        return self._api_key_configured and self._endpoint_configured
     
     def _create_client_config(self) -> Dict[str, Any]:
         """Create HTTP client configuration for News API"""
+        if not self.is_configured():
+            raise ValueError("News source is not configured.")
+        
         return {
             "base_url": f"https://{self.config.endpoint}",
             "headers": {
@@ -68,8 +76,8 @@ class NewsSource(BaseSource, HTTPClientMixin):
         Returns:
             True if connection is successful, False otherwise
         """
-        if not self._api_key_configured:
-            logger.warning("RAPID_API_KEY is not configured. Connection test skipped.")
+        if not self.is_configured():
+            logger.warning("News source is not configured. Connection test skipped.")
             return False
         
         return await super().test_connection()
@@ -93,8 +101,8 @@ class NewsSource(BaseSource, HTTPClientMixin):
         Yields:
             DataItem instances containing news articles
         """
-        if not self._api_key_configured:
-            logger.warning("RAPID_API_KEY is not configured. Skipping data fetch.")
+        if not self.is_configured():
+            logger.warning("News source is not configured. Skipping data fetch.")
             return
 
         # Check if we already have news data for today
@@ -373,6 +381,7 @@ class NewsSource(BaseSource, HTTPClientMixin):
         return {
             "source_type": self.get_source_type(),
             "namespace": self.namespace,
+            "is_configured": self.is_configured(),
             "api_endpoint": self.config.endpoint,
             "country": self.config.country,
             "language": self.config.language,

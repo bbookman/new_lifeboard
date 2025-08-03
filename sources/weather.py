@@ -109,15 +109,14 @@ class WeatherSource(BaseSource, HTTPClientMixin):
 
         try:
             data = response.json()
+            
+            # Store in dedicated weather table for source-specific queries
             await self._store_weather_data(data)
-            # This source does not yield DataItems directly, it stores in its own table.
-            # We will yield a single dummy item to satisfy the sync manager.
-            yield DataItem(
-                namespace=self.namespace, 
-                source_id="weather_sync", 
-                content="Weather data synced",
-                metadata={"sync_time": data['forecastDaily'].get('readTime', '')}
-            )
+            
+            # Yield DataItems for unified processing pipeline
+            weather_items = self._transform_weather_data(data)
+            for item in weather_items:
+                yield item
 
         except Exception as e:
             logger.error(f"Error processing weather response: {e}")
@@ -138,6 +137,95 @@ class WeatherSource(BaseSource, HTTPClientMixin):
                 VALUES (?, ?)
             """, (days_date, json.dumps(data)))
             conn.commit()
+
+    def _transform_weather_data(self, data: Dict[str, Any]) -> List[DataItem]:
+        """Transform weather API data into DataItems for unified processing"""
+        data_items = []
+        
+        if not data or 'forecastDaily' not in data:
+            return data_items
+        
+        forecast_daily = data['forecastDaily']
+        read_time = forecast_daily.get('readTime', '')
+        
+        # Create one DataItem per forecast day
+        for day_forecast in forecast_daily.get('days', []):
+            forecast_start = day_forecast.get('forecastStart', '')
+            
+            # Extract date for days_date
+            days_date = None
+            if forecast_start:
+                try:
+                    dt = datetime.fromisoformat(forecast_start.replace('Z', '+00:00'))
+                    days_date = dt.strftime('%Y-%m-%d')
+                except (ValueError, TypeError):
+                    pass
+            
+            # Use read_time as fallback
+            if not days_date and read_time:
+                try:
+                    dt = datetime.fromisoformat(read_time.replace('Z', '+00:00'))
+                    days_date = dt.strftime('%Y-%m-%d')
+                except (ValueError, TypeError):
+                    days_date = datetime.now().strftime('%Y-%m-%d')
+            
+            if not days_date:
+                days_date = datetime.now().strftime('%Y-%m-%d')
+            
+            # Create searchable content
+            temp_max = day_forecast.get('temperatureMax')
+            temp_min = day_forecast.get('temperatureMin')
+            condition = day_forecast.get('conditionCode', 'Unknown')
+            
+            content_parts = [
+                f"Weather forecast for {days_date}",
+                f"Condition: {condition}"
+            ]
+            
+            if temp_max is not None and temp_min is not None:
+                unit = "°F" if self.config.units == 'standard' else "°C"
+                if self.config.units == 'standard':
+                    temp_max = self._celsius_to_fahrenheit(temp_max)
+                    temp_min = self._celsius_to_fahrenheit(temp_min)
+                content_parts.append(f"Temperature: {temp_min:.1f}{unit} to {temp_max:.1f}{unit}")
+            
+            content = "\n".join(content_parts)
+            
+            # Create metadata with full forecast data
+            metadata = {
+                "forecast_start": forecast_start,
+                "condition_code": condition,
+                "temperature_max": temp_max,
+                "temperature_min": temp_min,
+                "daytime_forecast": day_forecast.get('daytimeForecast', {}),
+                "read_time": read_time,
+                "units": self.config.units,
+                "location": {
+                    "latitude": self.config.latitude,
+                    "longitude": self.config.longitude
+                }
+            }
+            
+            # Create DataItem
+            created_at = None
+            if forecast_start:
+                try:
+                    created_at = datetime.fromisoformat(forecast_start.replace('Z', '+00:00'))
+                except (ValueError, TypeError):
+                    pass
+            
+            data_item = DataItem(
+                namespace=self.namespace,
+                source_id=f"weather_{days_date}",
+                content=content,
+                metadata=metadata,
+                created_at=created_at,
+                updated_at=datetime.now(timezone.utc)
+            )
+            
+            data_items.append(data_item)
+        
+        return data_items
 
     async def get_item(self, source_id: str) -> Optional[DataItem]:
         logger.warning("Individual item fetching not supported by WeatherSource")
