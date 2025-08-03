@@ -56,11 +56,12 @@ logger.info("SERVER: Templates initialized successfully")
 # Global shutdown flag
 _shutdown_requested = False
 _server_instance = None
+_frontend_process = None
 
 # Signal handling for graceful shutdown with safety checks
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully with enhanced safety checks"""
-    global _shutdown_requested, _server_instance
+    global _shutdown_requested, _server_instance, _frontend_process
     
     # Safety check for signal number
     try:
@@ -85,6 +86,22 @@ def signal_handler(signum, frame):
             print("⏳ Shutting down services and releasing port bindings...")
         except Exception as print_error:
             logger.debug(f"SIGNAL: Error printing shutdown message: {print_error}")
+        
+        # Cleanup frontend process if running
+        if _frontend_process is not None:
+            try:
+                print("🧹 Stopping frontend server...")
+                _frontend_process.terminate()
+                import time
+                time.sleep(2)
+                if _frontend_process.poll() is None:
+                    _frontend_process.kill()
+                    time.sleep(1)
+                print("✅ Frontend server stopped")
+                logger.info("SIGNAL: Frontend process terminated successfully")
+            except Exception as frontend_error:
+                logger.warning(f"SIGNAL: Error stopping frontend process: {frontend_error}")
+                print("⚠️  Frontend cleanup encountered an issue")
         
         # Trigger uvicorn shutdown if server instance is available
         if _server_instance is not None:
@@ -435,51 +452,123 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     shutdown_success = False
+    shutdown_errors = []
+    
     try:
         logger.info("LIFESPAN: *** SHUTDOWN PHASE STARTED ***")
         logger.info("LIFESPAN: Shutting down Lifeboard API server...")
         
-        # Cancel any remaining asyncio tasks
-        logger.info("LIFESPAN: Cancelling remaining asyncio tasks...")
-        tasks = [task for task in asyncio.all_tasks() if not task.done() and task != asyncio.current_task()]
-        if tasks:
-            logger.info(f"LIFESPAN: Found {len(tasks)} tasks to cancel")
-            for task in tasks:
-                task.cancel()
-                logger.debug(f"LIFESPAN: Cancelled task: {task.get_name()}")
-            
-            # Wait for tasks to complete cancellation
+        # Step 1: Cleanup frontend process if it exists (before other shutdown)
+        global _frontend_process
+        if _frontend_process is not None:
             try:
-                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=10.0)
-                logger.info("LIFESPAN: All tasks cancelled successfully")
-            except asyncio.TimeoutError:
-                logger.warning("LIFESPAN: Timeout waiting for task cancellation - proceeding with shutdown")
-            except Exception as task_error:
-                logger.warning(f"LIFESPAN: Error during task cancellation: {task_error}")
-        else:
-            logger.info("LIFESPAN: No additional tasks to cancel")
+                logger.info("LIFESPAN: Stopping frontend process...")
+                if _frontend_process.poll() is None:  # Process is still running
+                    _frontend_process.terminate()
+                    # Give it a moment to shutdown gracefully
+                    try:
+                        # Use a simple polling approach for process termination
+                        for _ in range(50):  # 5 seconds with 0.1s intervals
+                            if _frontend_process.poll() is not None:
+                                logger.info("LIFESPAN: Frontend process terminated gracefully")
+                                break
+                            await asyncio.sleep(0.1)
+                        else:
+                            # Process didn't terminate in time
+                            logger.warning("LIFESPAN: Frontend process didn't respond to SIGTERM, using SIGKILL")
+                            _frontend_process.kill()
+                            # Wait a bit more for SIGKILL to take effect
+                            for _ in range(20):  # 2 seconds
+                                if _frontend_process.poll() is not None:
+                                    break
+                                await asyncio.sleep(0.1)
+                            else:
+                                logger.error("LIFESPAN: Frontend process couldn't be killed")
+                                shutdown_errors.append("Frontend process cleanup failed")
+                    except Exception as term_error:
+                        logger.warning(f"LIFESPAN: Error during frontend termination: {term_error}")
+                        shutdown_errors.append(f"Frontend termination error: {term_error}")
+                else:
+                    logger.info("LIFESPAN: Frontend process already terminated")
+                _frontend_process = None
+            except Exception as frontend_error:
+                logger.warning(f"LIFESPAN: Error cleaning up frontend process: {frontend_error}")
+                shutdown_errors.append(f"Frontend cleanup error: {frontend_error}")
         
-        # Shutdown application services
+        # Step 2: Cancel any remaining asyncio tasks (except current)
+        logger.info("LIFESPAN: Cancelling remaining asyncio tasks...")
+        try:
+            current_task = asyncio.current_task()
+            tasks = [task for task in asyncio.all_tasks() if not task.done() and task != current_task]
+            
+            if tasks:
+                logger.info(f"LIFESPAN: Found {len(tasks)} tasks to cancel")
+                for task in tasks:
+                    if not task.cancelled():
+                        task.cancel()
+                        logger.debug(f"LIFESPAN: Cancelled task: {task.get_name()}")
+                
+                # Wait for tasks to complete cancellation with shorter timeout
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*tasks, return_exceptions=True), 
+                        timeout=5.0
+                    )
+                    logger.info("LIFESPAN: All tasks cancelled successfully")
+                except asyncio.TimeoutError:
+                    logger.warning("LIFESPAN: Some tasks didn't cancel in time - proceeding")
+                    shutdown_errors.append("Task cancellation timeout")
+                except Exception as task_error:
+                    logger.warning(f"LIFESPAN: Error during task cancellation: {task_error}")
+                    shutdown_errors.append(f"Task cancellation error: {task_error}")
+            else:
+                logger.info("LIFESPAN: No additional tasks to cancel")
+        except Exception as task_cleanup_error:
+            logger.warning(f"LIFESPAN: Error in task cleanup phase: {task_cleanup_error}")
+            shutdown_errors.append(f"Task cleanup phase error: {task_cleanup_error}")
+        
+        # Step 3: Shutdown application services
         logger.info("LIFESPAN: Shutting down application services...")
-        from services.startup import shutdown_application
-        await asyncio.wait_for(shutdown_application(), timeout=15.0)
+        try:
+            from services.startup import shutdown_application
+            await asyncio.wait_for(shutdown_application(), timeout=10.0)
+            logger.info("LIFESPAN: Application services shutdown completed")
+        except asyncio.TimeoutError:
+            logger.warning("LIFESPAN: Application shutdown timeout")
+            shutdown_errors.append("Application shutdown timeout")
+        except Exception as app_shutdown_error:
+            logger.warning(f"LIFESPAN: Error during application shutdown: {app_shutdown_error}")
+            shutdown_errors.append(f"Application shutdown error: {app_shutdown_error}")
         
-        shutdown_success = True
-        logger.info("LIFESPAN: Application shutdown completed successfully")
+        # Determine overall success
+        if not shutdown_errors:
+            shutdown_success = True
+            logger.info("LIFESPAN: Application shutdown completed successfully")
+        else:
+            logger.warning(f"LIFESPAN: Shutdown completed with {len(shutdown_errors)} issues")
+            for error in shutdown_errors:
+                logger.warning(f"LIFESPAN: - {error}")
+                
         logger.info("LIFESPAN: Port bindings have been released")
         logger.info("=" * 60)
     
-    except asyncio.TimeoutError:
-        logger.error("LIFESPAN: Shutdown timeout - forcing cleanup")
-        logger.error("LIFESPAN: Some resources may not have been properly released")
     except Exception as e:
-        logger.error(f"LIFESPAN: Error during application shutdown: {e}")
-        logger.exception("LIFESPAN: Full shutdown exception details:")
+        logger.error(f"LIFESPAN: Critical error during shutdown: {e}")
+        logger.exception("LIFESPAN: Critical shutdown exception details:")
+        shutdown_errors.append(f"Critical shutdown error: {e}")
     finally:
         if shutdown_success:
             logger.info("LIFESPAN: Graceful shutdown completed")
         else:
             logger.warning("LIFESPAN: Shutdown completed with warnings/errors")
+            logger.warning(f"LIFESPAN: Error summary: {'; '.join(shutdown_errors) if shutdown_errors else 'Unknown errors'}")
+            
+        # Final cleanup - make sure global state is reset
+        try:
+            global _shutdown_requested
+            _shutdown_requested = True
+        except:
+            pass
 
 
 # Create FastAPI app with lifespan
@@ -1315,34 +1404,431 @@ def find_available_port(start_port: int = 8000, host: str = "0.0.0.0", max_attem
     raise RuntimeError(error_msg)
 
 
+def is_node_installed() -> bool:
+    """Check if Node.js is installed and available"""
+    try:
+        import subprocess
+        result = subprocess.run(['node', '--version'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            logger.debug(f"FRONTEND: Node.js version detected: {version}")
+            return True
+        else:
+            logger.warning(f"FRONTEND: Node.js check failed with return code {result.returncode}")
+            return False
+    except FileNotFoundError:
+        logger.warning("FRONTEND: Node.js not found in PATH")
+        return False
+    except subprocess.TimeoutExpired:
+        logger.warning("FRONTEND: Node.js version check timed out")
+        return False
+    except Exception as e:
+        logger.warning(f"FRONTEND: Error checking Node.js: {e}")
+        return False
+
+
+def check_frontend_dependencies() -> bool:
+    """Check if frontend dependencies are installed"""
+    try:
+        frontend_dir = Path(__file__).parent.parent / "frontend"
+        node_modules = frontend_dir / "node_modules"
+        package_json = frontend_dir / "package.json"
+        
+        if not frontend_dir.exists():
+            logger.error(f"FRONTEND: Frontend directory not found: {frontend_dir}")
+            return False
+            
+        if not package_json.exists():
+            logger.error(f"FRONTEND: package.json not found: {package_json}")
+            return False
+            
+        if not node_modules.exists():
+            logger.warning(f"FRONTEND: node_modules not found, dependencies may need installation")
+            return False
+            
+        logger.debug("FRONTEND: Frontend dependencies appear to be installed")
+        return True
+        
+    except Exception as e:
+        logger.error(f"FRONTEND: Error checking frontend dependencies: {e}")
+        return False
+
+
+def install_frontend_dependencies() -> bool:
+    """Install frontend dependencies if needed"""
+    try:
+        frontend_dir = Path(__file__).parent.parent / "frontend"
+        
+        logger.info("FRONTEND: Installing dependencies with npm install...")
+        import subprocess
+        
+        result = subprocess.run(
+            ['npm', 'install'], 
+            cwd=frontend_dir,
+            capture_output=True, 
+            text=True, 
+            timeout=180  # 3 minutes timeout
+        )
+        
+        if result.returncode == 0:
+            logger.info("FRONTEND: Dependencies installed successfully")
+            return True
+        else:
+            logger.error(f"FRONTEND: npm install failed with return code {result.returncode}")
+            if result.stderr:
+                logger.error(f"FRONTEND: npm install stderr: {result.stderr}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        logger.error("FRONTEND: npm install timed out after 3 minutes")
+        return False
+    except Exception as e:
+        logger.error(f"FRONTEND: Error installing frontend dependencies: {e}")
+        return False
+
+
+def kill_frontend_processes() -> bool:
+    """Kill existing frontend development server processes"""
+    try:
+        import subprocess
+        
+        # Kill Vite dev servers
+        try:
+            result = subprocess.run(['pkill', '-f', 'vite'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                logger.info("FRONTEND: Killed existing Vite processes")
+            else:
+                logger.debug("FRONTEND: No existing Vite processes found")
+        except Exception as e:
+            logger.debug(f"FRONTEND: Error killing Vite processes: {e}")
+        
+        # Kill npm processes that might be running dev servers
+        try:
+            result = subprocess.run(['pkill', '-f', 'npm.*dev'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                logger.info("FRONTEND: Killed existing npm dev processes")
+            else:
+                logger.debug("FRONTEND: No existing npm dev processes found")
+        except Exception as e:
+            logger.debug(f"FRONTEND: Error killing npm dev processes: {e}")
+            
+        # Wait a moment for processes to terminate
+        import time
+        time.sleep(2)
+        
+        return True
+        
+    except Exception as e:
+        logger.warning(f"FRONTEND: Error during process cleanup: {e}")
+        return False
+
+
+def start_frontend_server(port: int = 5173, backend_port: int = 8000) -> dict:
+    """Start the frontend development server"""
+    try:
+        frontend_dir = Path(__file__).parent.parent / "frontend"
+        
+        # Check if frontend port is available
+        import socket
+        def check_port_available(port: int, host: str = "0.0.0.0") -> bool:
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind((host, port))
+                    return True
+            except OSError:
+                return False
+                
+        if not check_port_available(port):
+            logger.warning(f"FRONTEND: Port {port} is in use, finding alternative...")
+            try:
+                port = find_available_port(port, max_attempts=50)
+                logger.info(f"FRONTEND: Using available port: {port}")
+            except RuntimeError:
+                return {
+                    'success': False,
+                    'error': f'No available ports found starting from {port}',
+                    'port': None,
+                    'process': None
+                }
+        
+        # Set environment variables for the frontend
+        env = os.environ.copy()
+        env['VITE_API_URL'] = f'http://localhost:{backend_port}'
+        env['VITE_API_BASE_URL'] = f'http://localhost:{backend_port}/api'
+        
+        logger.info(f"FRONTEND: Starting development server on port {port}")
+        logger.debug(f"FRONTEND: Backend API will be available at http://localhost:{backend_port}")
+        
+        import subprocess
+        
+        # Start the frontend dev server
+        process = subprocess.Popen(
+            ['npm', 'run', 'dev', '--', '--port', str(port), '--host', '0.0.0.0'],
+            cwd=frontend_dir,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        # Wait a moment and check if process started successfully
+        import time
+        time.sleep(3)
+        
+        if process.poll() is None:
+            # Process is still running, check if port is responding
+            try:
+                import socket
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(2)
+                    result = s.connect_ex(('localhost', port))
+                    if result == 0:
+                        logger.info(f"FRONTEND: Development server started successfully on port {port}")
+                        return {
+                            'success': True,
+                            'port': port,
+                            'process': process,
+                            'url': f'http://localhost:{port}'
+                        }
+                    else:
+                        logger.warning(f"FRONTEND: Process started but port {port} not responding yet")
+                        return {
+                            'success': True,
+                            'port': port,
+                            'process': process,
+                            'url': f'http://localhost:{port}',
+                            'warning': 'Port not immediately responsive'
+                        }
+            except Exception as e:
+                logger.warning(f"FRONTEND: Error checking port responsiveness: {e}")
+                return {
+                    'success': True,
+                    'port': port,
+                    'process': process,
+                    'url': f'http://localhost:{port}',
+                    'warning': 'Could not verify port responsiveness'
+                }
+        else:
+            # Process terminated
+            stdout, stderr = process.communicate(timeout=5)
+            error_msg = f"Frontend server failed to start"
+            if stderr:
+                error_msg += f": {stderr.strip()}"
+            logger.error(f"FRONTEND: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg,
+                'port': port,
+                'process': None,
+                'stdout': stdout,
+                'stderr': stderr
+            }
+            
+    except Exception as e:
+        logger.error(f"FRONTEND: Error starting frontend server: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'port': None,
+            'process': None
+        }
+
+
+def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port: int = 5173, 
+                   debug: bool = False, kill_existing: bool = False, 
+                   no_auto_port: bool = False, no_frontend: bool = False) -> None:
+    """Run the full stack application with both frontend and backend servers"""
+    
+    print("\n🚀 Starting Lifeboard Full Stack Application...")
+    print("=" * 60)
+    
+    frontend_info = None
+    backend_started = False
+    
+    try:
+        # Step 1: Handle existing processes
+        if kill_existing:
+            print("🧹 Cleaning up existing processes...")
+            kill_frontend_processes()
+            # The existing backend kill logic is handled in run_server()
+        
+        # Step 2: Resolve backend port
+        backend_port = port
+        if not no_auto_port:
+            try:
+                backend_port = find_available_port(port, host)
+                if backend_port != port:
+                    print(f"🔄 Backend port {port} was in use, using: {backend_port}")
+                else:
+                    print(f"✅ Backend using requested port: {backend_port}")
+            except RuntimeError as e:
+                print(f"❌ Backend auto-port failed: {e}")
+                if not no_frontend:
+                    print("💡 Try --no-frontend to start backend only")
+                exit(1)
+        else:
+            print(f"🎯 Backend using exact port: {backend_port} (auto-port disabled)")
+        
+        # Step 3: Handle frontend setup (unless disabled)
+        if not no_frontend:
+            print("\n📦 Checking frontend environment...")
+            
+            # Check Node.js
+            if not is_node_installed():
+                print("❌ Node.js is not installed or not available in PATH")
+                print("💡 Install Node.js or use --no-frontend to start backend only")
+                exit(1)
+            
+            # Check and install dependencies if needed
+            if not check_frontend_dependencies():
+                print("📦 Frontend dependencies not found, installing...")
+                if not install_frontend_dependencies():
+                    print("❌ Failed to install frontend dependencies")
+                    print("💡 Try running 'npm install' in the frontend directory manually")
+                    print("💡 Or use --no-frontend to start backend only")
+                    exit(1)
+            
+            # Resolve frontend port
+            resolved_frontend_port = frontend_port
+            if not no_auto_port:
+                # Check if frontend port is available using the existing backend function
+                import socket
+                def check_port_available(port: int, host: str = "0.0.0.0") -> bool:
+                    try:
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.bind((host, port))
+                            return True
+                    except OSError:
+                        return False
+                
+                if not check_port_available(frontend_port):
+                    print(f"🔄 Frontend port {frontend_port} is in use, finding alternative...")
+                    try:
+                        resolved_frontend_port = find_available_port(frontend_port, max_attempts=50)
+                        print(f"✅ Frontend using available port: {resolved_frontend_port}")
+                    except RuntimeError as e:
+                        print(f"❌ Frontend auto-port failed: {e}")
+                        print("💡 Try --no-frontend to start backend only")
+                        exit(1)
+                else:
+                    print(f"✅ Frontend using requested port: {resolved_frontend_port}")
+            else:
+                # Check if port is available for exact port mode
+                import socket
+                def check_port_available(port: int, host: str = "0.0.0.0") -> bool:
+                    try:
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.bind((host, port))
+                            return True
+                    except OSError:
+                        return False
+                
+                if not check_port_available(frontend_port):
+                    print(f"❌ Frontend port {frontend_port} is in use (auto-port disabled)")
+                    print("💡 Use a different --frontend-port or enable auto-port")
+                    exit(1)
+                print(f"🎯 Frontend using exact port: {resolved_frontend_port} (auto-port disabled)")
+            
+            # Start frontend server
+            print(f"\n🌐 Starting frontend development server...")
+            frontend_info = start_frontend_server(resolved_frontend_port, backend_port)
+            
+            if not frontend_info['success']:
+                print(f"❌ Frontend server failed to start: {frontend_info['error']}")
+                print("💡 Check the error above or use --no-frontend to start backend only")
+                exit(1)
+            else:
+                print(f"✅ Frontend server started successfully!")
+                if 'warning' in frontend_info:
+                    print(f"⚠️  {frontend_info['warning']}")
+        
+        # Step 4: Start backend server
+        print(f"\n🔧 Starting backend API server...")
+        
+        # Store frontend process for cleanup
+        if frontend_info:
+            global _frontend_process
+            _frontend_process = frontend_info['process']
+        
+        # Start backend (this will block)
+        backend_started = True
+        run_server(host=host, port=backend_port, debug=debug, kill_existing=kill_existing)
+        
+    except KeyboardInterrupt:
+        print("\n\n⏹️  Shutting down application...")
+    except Exception as e:
+        print(f"\n❌ Application startup failed: {e}")
+        logger.error(f"FULLSTACK: Application startup failed: {e}")
+    finally:
+        # Cleanup frontend process if it was started
+        if frontend_info and frontend_info.get('process'):
+            try:
+                print("🧹 Stopping frontend server...")
+                frontend_info['process'].terminate()
+                import time
+                time.sleep(2)
+                if frontend_info['process'].poll() is None:
+                    frontend_info['process'].kill()
+                print("✅ Frontend server stopped")
+            except Exception as e:
+                logger.warning(f"FRONTEND: Error stopping frontend process: {e}")
+        
+        print("👋 Lifeboard application stopped")
+
+
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="Lifeboard API Server")
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser = argparse.ArgumentParser(description="Lifeboard Full Stack Application")
+    
+    # Server configuration
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind backend to")
+    parser.add_argument("--port", type=int, default=8000, help="Backend API port")
+    parser.add_argument("--frontend-port", type=int, default=5173, help="Frontend development server port")
+    
+    # Port management
     parser.add_argument("--no-auto-port", action="store_true", 
-                       help="Disable automatic port finding (use exact port specified)")
+                       help="Disable automatic port finding (use exact ports specified)")
+    
+    # Application modes
+    parser.add_argument("--no-frontend", action="store_true", 
+                       help="Start backend API only (no frontend development server)")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--kill-existing", action="store_true", 
                        help="Kill existing server processes before starting")
     
+    # Legacy compatibility
+    parser.add_argument("--backend-only", action="store_true", 
+                       help="Alias for --no-frontend (for compatibility)")
+    
     args = parser.parse_args()
     
-    port = args.port
-    if not args.no_auto_port:
-        # Auto-port is the default behavior
-        try:
-            port = find_available_port(args.port, args.host)
-            if port != args.port:
-                print(f"🔄 Port {args.port} was in use, using available port: {port} on host {args.host}")
-            else:
-                print(f"✅ Using requested port: {port} on host {args.host}")
-        except RuntimeError as e:
-            print(f"❌ Auto-port failed: {e}")
-            print(f"💡 Try using --no-auto-port to use exact port {args.port} (may fail if in use)")
-            exit(1)
-    else:
-        print(f"🎯 Using exact port: {port} on host {args.host} (auto-port disabled)")
+    # Handle legacy flag
+    if args.backend_only:
+        args.no_frontend = True
     
-    run_server(host=args.host, port=port, debug=args.debug, kill_existing=args.kill_existing)
+    # Show startup configuration
+    if not args.no_frontend:
+        print("\n🎯 Lifeboard Full Stack Mode")
+        print(f"   Frontend: http://{args.host}:{args.frontend_port} (development)")
+        print(f"   Backend:  http://{args.host}:{args.port} (API)")
+        if not args.no_auto_port:
+            print("   Port conflicts will be automatically resolved")
+    else:
+        print("\n🎯 Lifeboard Backend Only Mode")
+        print(f"   Backend:  http://{args.host}:{args.port} (API)")
+        print("   Frontend: Disabled")
+    
+    # Start the application
+    run_full_stack(
+        host=args.host, 
+        port=args.port, 
+        frontend_port=args.frontend_port,
+        debug=args.debug, 
+        kill_existing=args.kill_existing,
+        no_auto_port=args.no_auto_port,
+        no_frontend=args.no_frontend
+    )

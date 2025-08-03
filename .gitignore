@@ -6,7 +6,7 @@ __pycache__/
 .DS_store
 *.db
 supporting_documents/daily-digest-canvas
-
+logs/
 
 # C extensions
 *.so
