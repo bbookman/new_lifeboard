@@ -12,7 +12,7 @@ export const NewspaperMasthead = () => {
         <div className="text-center">
           <h1>LIFEBOARD</h1>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', fontSize: '0.875rem', fontWeight: '500' }}>
-            <span>{currentDate}</span>
+            <span>Infinite opportunity for discovery, clarity, gratitude and wonder</span>
           </div>
         </div>
       </div>
