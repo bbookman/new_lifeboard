@@ -50,7 +50,7 @@ start_backend() {
     cd "$(dirname "$0")"
     
     # Start backend in background
-    python api/server.py --port 8000 > logs/backend.log 2>&1 &
+    python -m uvicorn api.server:app --reload --port 8000 > logs/backend.log 2>&1 &
     BACKEND_PID=$!
     
     # Wait a moment and check if it started successfully

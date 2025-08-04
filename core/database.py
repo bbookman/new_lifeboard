@@ -2,6 +2,7 @@ import sqlite3
 import json
 import os
 import logging
+import re
 from typing import List, Dict, Optional, Any
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -361,38 +362,63 @@ class DatabaseService:
     
     def get_markdown_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> str:
         """Extract and combine markdown content from metadata for a specific date"""
+        logger.info(f"[MARKDOWN DEBUG] Getting markdown for date: {date}, namespaces: {namespaces}")
         markdown_parts = []
         
         # Use unified data_items table for all namespaces
         data_items = self.get_data_items_by_date(date, namespaces)
+        logger.info(f"[MARKDOWN DEBUG] Found {len(data_items)} data items for date {date}")
         
-        for item in data_items:
+        for i, item in enumerate(data_items):
+            logger.info(f"[MARKDOWN DEBUG] Processing item {i+1}/{len(data_items)}: {item.get('id', 'unknown')}")
+            
             if item.get('metadata'):
                 metadata = item['metadata']
                 markdown_content = None
+                fallback_used = None
                 
                 if isinstance(metadata, dict):
                     # First, try to get pre-generated cleaned markdown
                     markdown_content = metadata.get('cleaned_markdown')
+                    if markdown_content:
+                        fallback_used = "cleaned_markdown"
+                        logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Using cleaned_markdown (length: {len(markdown_content)})")
+                        logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Cleaned markdown preview: {repr(markdown_content[:100])}")
+                        # Check if it has headers
+                        has_headers = bool(re.search(r'^#+\s', markdown_content, re.MULTILINE))
+                        logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Has headers: {has_headers}")
                     
                     # If no cleaned markdown, try original approaches for backward compatibility
                     if not markdown_content:
                         # Try to get markdown directly
                         markdown_content = metadata.get('markdown')
+                        if markdown_content:
+                            fallback_used = "metadata.markdown"
+                            logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Using metadata.markdown")
                         
                         # If no direct markdown, try to get from original_lifelog
                         if not markdown_content and 'original_lifelog' in metadata:
                             original = metadata['original_lifelog']
                             if isinstance(original, dict):
                                 markdown_content = original.get('markdown')
+                                if markdown_content:
+                                    fallback_used = "original_lifelog.markdown"
+                                    logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Using original_lifelog.markdown")
                         
                         # If still no markdown, construct from content
                         if not markdown_content:
+                            fallback_used = "constructed_from_title_content"
                             title = metadata.get('title', '')
+                            logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Constructing from title: '{title}'")
+                            
                             if title:
+                                # Always ensure we have a proper header
                                 markdown_content = f"# {title}\n\n{item.get('content', '')}"
                             else:
-                                markdown_content = item.get('content', '')
+                                # Create a generic header even if no title
+                                markdown_content = f"# Entry {item.get('source_id', 'Unknown')}\n\n{item.get('content', '')}"
+                            
+                            logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Constructed markdown preview: {repr(markdown_content[:100])}")
                             
                             # Add timestamp if available (only for fallback case)
                             if markdown_content:
@@ -401,18 +427,41 @@ class DatabaseService:
                                     try:
                                         # Parse and format timestamp
                                         dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                                        timestamp_info = f"*{dt.strftime('%I:%M %p')}*\n\n"
-                                        markdown_content = f"{timestamp_info}{markdown_content}"
-                                    except:
-                                        pass
+                                        timestamp_info = f"*{dt.strftime('%I:%M %p')}*"
+                                        # Insert timestamp after the header
+                                        lines = markdown_content.split('\n')
+                                        if lines and lines[0].startswith('#'):
+                                            lines.insert(1, timestamp_info)
+                                            lines.insert(2, '')  # Add blank line
+                                            markdown_content = '\n'.join(lines)
+                                        else:
+                                            markdown_content = f"{timestamp_info}\n\n{markdown_content}"
+                                        logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Added timestamp to constructed content")
+                                    except Exception as e:
+                                        logger.warning(f"[MARKDOWN DEBUG] Item {i+1}: Failed to parse timestamp: {e}")
                 
                 if markdown_content:
+                    logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Adding content using fallback: {fallback_used}")
                     markdown_parts.append(markdown_content)
+                else:
+                    logger.warning(f"[MARKDOWN DEBUG] Item {i+1}: No markdown content found for item")
+            else:
+                logger.warning(f"[MARKDOWN DEBUG] Item {i+1}: No metadata found")
         
         # Combine all markdown with separators
         if markdown_parts:
-            return "\n\n---\n\n".join(markdown_parts)
+            combined_markdown = "\n\n---\n\n".join(markdown_parts)
+            logger.info(f"[MARKDOWN DEBUG] Final combined markdown length: {len(combined_markdown)}")
+            logger.info(f"[MARKDOWN DEBUG] Final markdown preview: {repr(combined_markdown[:200])}")
+            
+            # Check for headers in final output
+            has_final_headers = bool(re.search(r'^#+\s', combined_markdown, re.MULTILINE))
+            logger.info(f"[MARKDOWN DEBUG] Final markdown has headers: {has_final_headers}")
+            
+            return combined_markdown
         else:
-            return f"# {date}\n\nNo data available for this date."
+            fallback_content = f"# {date}\n\nNo data available for this date."
+            logger.info(f"[MARKDOWN DEBUG] No content found, returning fallback: {repr(fallback_content)}")
+            return fallback_content
 
     

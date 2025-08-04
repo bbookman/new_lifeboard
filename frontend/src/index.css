@@ -17,7 +17,7 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Playfair Display', serif;
-  color:#fcfaf8;
+  color: #1a1a1a;
 } 
 
 /* Newspaper-specific styling */
@@ -1088,4 +1088,419 @@ h1, h2, h3, h4, h5, h6 {
   }
   
   /* Note: Dark mode styles would be implemented here */
+}
+
+/* ============================================================================
+   PROSE STYLES FOR REACT MARKDOWN
+   ============================================================================ */
+
+/* Base prose styles for ReactMarkdown content */
+.prose {
+  color: #1a1a1a;
+  max-width: none;
+  line-height: 1.7;
+}
+
+.prose [class~="lead"] {
+  color: #4b5563;
+  font-size: 1.25em;
+  line-height: 1.6;
+  margin-top: 1.2em;
+  margin-bottom: 1.2em;
+}
+
+/* Typography Scale */
+.prose h1 {
+  color: #1a1a1a !important;
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 900 !important;
+  font-size: 2.25em !important;
+  margin-top: 0 !important;
+  margin-bottom: 0.8888889em !important;
+  line-height: 1.1111111 !important;
+  border-bottom: 3px solid #007bff !important;
+  padding-bottom: 0.5em !important;
+}
+
+.prose h2 {
+  color: #1a1a1a !important;
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 700 !important;
+  font-size: 1.875em !important;
+  margin-top: 2em !important;
+  margin-bottom: 1em !important;
+  line-height: 1.3333333 !important;
+  border-bottom: 2px solid #ddd !important;
+  padding-bottom: 0.3em !important;
+}
+
+.prose h3 {
+  color: #1a1a1a !important;
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 600 !important;
+  font-size: 1.5em !important;
+  margin-top: 1.6em !important;
+  margin-bottom: 0.6em !important;
+  line-height: 1.6 !important;
+}
+
+.prose h4 {
+  color: #1a1a1a !important;
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 600 !important;
+  font-size: 1.25em !important;
+  margin-top: 1.5em !important;
+  margin-bottom: 0.5em !important;
+  line-height: 1.5 !important;
+}
+
+.prose h5 {
+  color: #1a1a1a !important;
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 600 !important;
+  font-size: 1.125em !important;
+  margin-top: 1.5em !important;
+  margin-bottom: 0.5em !important;
+  line-height: 1.5 !important;
+}
+
+.prose h6 {
+  color: #1a1a1a !important;
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 600 !important;
+  font-size: 1em !important;
+  margin-top: 1.5em !important;
+  margin-bottom: 0.5em !important;
+  line-height: 1.5 !important;
+}
+
+/* Paragraph and text styling */
+.prose p {
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+  font-family: 'Inter', sans-serif;
+  line-height: 1.7;
+}
+
+.prose a {
+  color: #007bff;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.prose a:hover {
+  color: #0056b3;
+  text-decoration-style: solid;
+}
+
+.prose strong {
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.prose em {
+  color: #374151;
+  font-style: italic;
+}
+
+/* Lists */
+.prose ol,
+.prose ul {
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+  padding-left: 1.625em;
+}
+
+.prose li {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.7;
+}
+
+.prose ol > li {
+  padding-left: 0.375em;
+}
+
+.prose ul > li {
+  padding-left: 0.375em;
+}
+
+.prose ul > li::marker {
+  color: #9ca3af;
+}
+
+.prose ol > li::marker {
+  color: #6b7280;
+  font-size: 0.875em;
+  font-weight: 400;
+}
+
+/* Nested lists */
+.prose ul ul,
+.prose ul ol,
+.prose ol ul,
+.prose ol ol {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+/* Blockquotes */
+.prose blockquote {
+  font-weight: 500;
+  font-style: italic;
+  color: #1a1a1a;
+  border-left: 0.25rem solid #007bff;
+  quotes: "\201C""\201D""\2018""\2019";
+  margin-top: 1.6em;
+  margin-bottom: 1.6em;
+  padding-left: 1em;
+  background-color: #f8f9fa;
+  padding: 1.25em 1.5em;
+  border-radius: 0.375rem;
+}
+
+.prose blockquote p:first-of-type::before {
+  content: open-quote;
+}
+
+.prose blockquote p:last-of-type::after {
+  content: close-quote;
+}
+
+/* Code */
+.prose code {
+  color: #1a1a1a;
+  font-weight: 600;
+  font-size: 0.875em;
+  background-color: #f3f4f6;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.prose pre {
+  color: #1a1a1a;
+  background-color: #f8f9fa;
+  overflow-x: auto;
+  font-weight: 400;
+  font-size: 0.875em;
+  line-height: 1.7142857;
+  margin-top: 1.7142857em;
+  margin-bottom: 1.7142857em;
+  border-radius: 0.375rem;
+  padding: 1.1428571em 1.1428571em;
+  border: 1px solid #e5e7eb;
+}
+
+.prose pre code {
+  background-color: transparent;
+  border-width: 0;
+  border-radius: 0;
+  padding: 0;
+  font-weight: inherit;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+/* Tables */
+.prose table {
+  width: 100%;
+  table-layout: auto;
+  text-align: left;
+  margin-top: 2em;
+  margin-bottom: 2em;
+  font-size: 0.875em;
+  line-height: 1.7142857;
+  border-collapse: collapse;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.prose thead {
+  background-color: #f9fafb;
+  border-bottom: 1px solid #d1d5db;
+}
+
+.prose thead th {
+  color: #1a1a1a;
+  font-weight: 600;
+  vertical-align: bottom;
+  padding: 0.8571429em 0.8571429em 0.8571429em 0;
+  border-right: 1px solid #e5e7eb;
+}
+
+.prose thead th:last-child {
+  border-right: none;
+}
+
+.prose tbody tr {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.prose tbody tr:last-child {
+  border-bottom: none;
+}
+
+.prose tbody td {
+  vertical-align: baseline;
+  padding: 0.8571429em 0.8571429em 0.8571429em 0;
+  border-right: 1px solid #f3f4f6;
+}
+
+.prose tbody td:last-child {
+  border-right: none;
+}
+
+/* Horizontal Rules */
+.prose hr {
+  border-color: #d1d5db;
+  border-top-width: 1px;
+  margin-top: 3em;
+  margin-bottom: 3em;
+  border-style: solid;
+  border-width: 0;
+  border-top-width: 1px;
+}
+
+/* Images */
+.prose img {
+  margin-top: 2em;
+  margin-bottom: 2em;
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Figure and figcaption */
+.prose figure {
+  margin-top: 2em;
+  margin-bottom: 2em;
+}
+
+.prose figcaption {
+  color: #6b7280;
+  font-size: 0.875em;
+  line-height: 1.4285714;
+  margin-top: 0.8571429em;
+  text-align: center;
+  font-style: italic;
+}
+
+/* Small text modifier */
+.prose.prose-sm {
+  font-size: 0.875rem;
+  line-height: 1.7142857;
+}
+
+.prose.prose-sm h1 {
+  font-size: 2em;
+  margin-top: 0;
+  margin-bottom: 0.8em;
+  line-height: 1.2;
+}
+
+.prose.prose-sm h2 {
+  font-size: 1.7142857em;
+  margin-top: 1.8666667em;
+  margin-bottom: 1.0666667em;
+  line-height: 1.4666667;
+}
+
+.prose.prose-sm h3 {
+  font-size: 1.2857143em;
+  margin-top: 1.5555556em;
+  margin-bottom: 0.4444444em;
+  line-height: 1.5555556;
+}
+
+/* Maximum width override */
+.prose.max-w-none {
+  max-width: none;
+}
+
+/* Special formatting for timestamps and metadata */
+.prose em[style*="italic"] {
+  color: #6b7280;
+  font-size: 0.9em;
+  display: block;
+  margin: 0.5em 0 1em 0;
+  text-align: left;
+  border-bottom: 1px solid #f3f4f6;
+  padding-bottom: 0.5em;
+}
+
+/* First paragraph after headers gets special treatment */
+.prose h1 + p,
+.prose h2 + p,
+.prose h3 + p {
+  margin-top: 0.5em;
+}
+
+/* Newspaper-style drop caps for first paragraph */
+.prose > p:first-of-type::first-letter {
+  font-family: 'Playfair Display', serif;
+  float: left;
+  font-size: 3.5em;
+  line-height: 0.8;
+  margin: 0.1em 0.1em 0 0;
+  color: #007bff;
+  font-weight: 700;
+}
+
+/* Mobile responsive prose */
+@media (max-width: 768px) {
+  .prose {
+    font-size: 0.9rem;
+  }
+  
+  .prose h1 {
+    font-size: 1.875em !important;
+  }
+  
+  .prose h2 {
+    font-size: 1.5em !important;
+  }
+  
+  .prose h3 {
+    font-size: 1.25em !important;
+  }
+  
+  .prose > p:first-of-type::first-letter {
+    font-size: 2.5em;
+  }
+  
+  .prose pre {
+    padding: 0.75em;
+    font-size: 0.8em;
+  }
+  
+  .prose blockquote {
+    padding: 1em;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+/* Print styles for prose */
+@media print {
+  .prose {
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+  
+  .prose h1,
+  .prose h2,
+  .prose h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  
+  .prose blockquote,
+  .prose pre,
+  .prose table {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }
