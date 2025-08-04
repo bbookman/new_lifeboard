@@ -53,8 +53,8 @@ class TestMarkdownProcessor(unittest.TestCase):
         self.assertIn("This is a sample meeting about project planning.", result)
         self.assertIn("We discussed the upcoming milestones", result)
         
-        # Should have proper separators
-        self.assertIn("---", result)
+        # Should NOT have separators (those are added at database level when combining items)
+        self.assertNotIn("---", result)
     
     def test_generate_cleaned_markdown_no_title(self):
         """Test markdown generation when title is missing"""
@@ -155,18 +155,25 @@ class TestMarkdownProcessor(unittest.TestCase):
     
     def test_process_method_integration(self):
         """Test the main process method integrates markdown generation"""
-        # Mock the parent class process method
-        with patch.object(self.processor.__class__.__bases__[0], 'process') as mock_parent:
-            mock_parent.return_value = {"processed": "data"}
-            
-            result = self.processor.process(self.sample_lifelog)
-            
-            # Should call parent process
-            mock_parent.assert_called_once_with(self.sample_lifelog)
-            
-            # Should add cleaned_markdown to result
-            self.assertIn("cleaned_markdown", result)
-            self.assertIn("# Sample Meeting", result["cleaned_markdown"])
+        # Test with a proper DataItem object
+        from sources.base import DataItem
+        from datetime import datetime
+        
+        test_item = DataItem(
+            namespace='limitless',
+            source_id='test_001',
+            content='test content',
+            metadata={'original_lifelog': self.sample_lifelog},
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+        
+        result = self.processor.process(test_item)
+        
+        # Should add cleaned_markdown to metadata
+        self.assertIn("cleaned_markdown", result.metadata)
+        self.assertIn("# Sample Meeting", result.metadata["cleaned_markdown"])
+        self.assertIn("processing_history", result.metadata)
     
     def test_markdown_generation_with_starred_content(self):
         """Test that starred content is properly formatted"""

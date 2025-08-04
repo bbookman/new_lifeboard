@@ -369,7 +369,7 @@ class DatabaseService:
         data_items = self.get_data_items_by_date(date, namespaces)
         logger.info(f"[MARKDOWN DEBUG] Found {len(data_items)} data items for date {date}")
         
-        for i, item in enumerate(data_items):
+        for i, item in enumerate(data_items, 1):
             logger.info(f"[MARKDOWN DEBUG] Processing item {i+1}/{len(data_items)}: {item.get('id', 'unknown')}")
             
             if item.get('metadata'):
@@ -391,19 +391,53 @@ class DatabaseService:
                     # If no cleaned markdown, try original approaches for backward compatibility
                     if not markdown_content:
                         # Try to get markdown directly
-                        markdown_content = metadata.get('markdown')
-                        if markdown_content:
+                        direct_markdown = metadata.get('markdown')
+                        if direct_markdown:
                             fallback_used = "metadata.markdown"
                             logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Using metadata.markdown")
+                            
+                            # Check if we need to deduplicate with title
+                            title = metadata.get('title', '')
+                            if title:
+                                title_header = f"# {title}"
+                                # If the direct markdown doesn't start with our title, prepend it and deduplicate
+                                if not direct_markdown.strip().startswith(title_header):
+                                    deduplicated_content = self._remove_duplicate_headers(direct_markdown, title_header)
+                                    markdown_content = f"{title_header}\n\n{deduplicated_content}"
+                                else:
+                                    # Just remove any duplicate instances
+                                    markdown_content = self._remove_duplicate_headers(direct_markdown, title_header)
+                                    # Ensure we have at least one title header at the start
+                                    if not markdown_content.strip().startswith(title_header):
+                                        markdown_content = f"{title_header}\n\n{markdown_content}"
+                            else:
+                                markdown_content = direct_markdown
                         
                         # If no direct markdown, try to get from original_lifelog
                         if not markdown_content and 'original_lifelog' in metadata:
                             original = metadata['original_lifelog']
                             if isinstance(original, dict):
-                                markdown_content = original.get('markdown')
-                                if markdown_content:
+                                original_markdown = original.get('markdown')
+                                if original_markdown:
                                     fallback_used = "original_lifelog.markdown"
                                     logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Using original_lifelog.markdown")
+                                    
+                                    # Check if we need to deduplicate with title
+                                    title = metadata.get('title', '')
+                                    if title:
+                                        title_header = f"# {title}"
+                                        # If the original markdown doesn't start with our title, prepend it and deduplicate
+                                        if not original_markdown.strip().startswith(title_header):
+                                            deduplicated_content = self._remove_duplicate_headers(original_markdown, title_header)
+                                            markdown_content = f"{title_header}\n\n{deduplicated_content}"
+                                        else:
+                                            # Just remove any duplicate instances
+                                            markdown_content = self._remove_duplicate_headers(original_markdown, title_header)
+                                            # Ensure we have at least one title header at the start
+                                            if not markdown_content.strip().startswith(title_header):
+                                                markdown_content = f"{title_header}\n\n{markdown_content}"
+                                    else:
+                                        markdown_content = original_markdown
                         
                         # If still no markdown, construct from content
                         if not markdown_content:
@@ -411,12 +445,18 @@ class DatabaseService:
                             title = metadata.get('title', '')
                             logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Constructing from title: '{title}'")
                             
+                            content = item.get('content', '')
+                            
                             if title:
-                                # Always ensure we have a proper header
-                                markdown_content = f"# {title}\n\n{item.get('content', '')}"
+                                title_header = f"# {title}"
+                                # Remove any duplicate headers from content before adding our own
+                                deduplicated_content = self._remove_duplicate_headers(content, title_header)
+                                markdown_content = f"{title_header}\n\n{deduplicated_content}"
                             else:
                                 # Create a generic header even if no title
-                                markdown_content = f"# Entry {item.get('source_id', 'Unknown')}\n\n{item.get('content', '')}"
+                                generic_header = f"# Entry {item.get('source_id', 'Unknown')}"
+                                deduplicated_content = self._remove_duplicate_headers(content, generic_header)
+                                markdown_content = f"{generic_header}\n\n{deduplicated_content}"
                             
                             logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Constructed markdown preview: {repr(markdown_content[:100])}")
                             
@@ -463,5 +503,31 @@ class DatabaseService:
             fallback_content = f"# {date}\n\nNo data available for this date."
             logger.info(f"[MARKDOWN DEBUG] No content found, returning fallback: {repr(fallback_content)}")
             return fallback_content
+    
+    def _remove_duplicate_headers(self, content: str, target_header: str) -> str:
+        """Remove duplicate instances of a header from content"""
+        if not content or not target_header:
+            return content
+        
+        lines = content.split('\n')
+        filtered_lines = []
+        target_header_clean = target_header.strip()
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # If we find a matching header
+            if line == target_header_clean:
+                # Skip this line and any immediately following empty lines
+                i += 1
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                continue
+            else:
+                filtered_lines.append(lines[i])
+                i += 1
+        
+        return '\n'.join(filtered_lines)
 
     
