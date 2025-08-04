@@ -325,8 +325,8 @@ class DatabaseService:
         """Get list of days that have data (for calendar indicators)"""
         with self.get_connection() as conn:
             query = """
-                SELECT DISTINCT days_date 
-                FROM data_items 
+                SELECT DISTINCT days_date
+                FROM data_items
                 WHERE days_date IS NOT NULL
             """
             params = []
@@ -336,65 +336,48 @@ class DatabaseService:
                 query += f" AND namespace IN ({placeholders})"
                 params.extend(namespaces)
             
+            query += " ORDER BY days_date DESC"
+            
+            logger.info(f"[CALENDAR DEBUG] Executing query: {query}")
+            logger.info(f"[CALENDAR DEBUG] Query params: {params}")
+            
             cursor = conn.execute(query, params)
-            return sorted([row['days_date'] for row in cursor.fetchall()])
+            results = [row['days_date'] for row in cursor.fetchall()]
+            
+            logger.info(f"[CALENDAR DEBUG] Query returned {len(results)} results")
+            logger.info(f"[CALENDAR DEBUG] First 10 results: {results[:10] if results else 'None'}")
+            
+            # Also check total count of data_items for debugging
+            count_cursor = conn.execute("SELECT COUNT(*) as count FROM data_items")
+            total_count = count_cursor.fetchone()['count']
+            logger.info(f"[CALENDAR DEBUG] Total data_items in database: {total_count}")
+            
+            # Check how many have days_date populated
+            date_cursor = conn.execute("SELECT COUNT(*) as count FROM data_items WHERE days_date IS NOT NULL")
+            date_count = date_cursor.fetchone()['count']
+            logger.info(f"[CALENDAR DEBUG] Data items with days_date populated: {date_count}")
+            
+            return results
     
     def get_markdown_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> str:
         """Extract and combine markdown content from metadata for a specific date"""
         markdown_parts = []
         
-        # Handle limitless namespace specially - use dedicated limitless table
-        if namespaces and namespaces == ['limitless']:
-            limitless_items = self.get_limitless_items_by_date(date)
-            
-            for item in limitless_items:
-                try:
-                    # Parse raw_data to get original lifelog
-                    raw_lifelog = json.loads(item['raw_data'])
+        # Use unified data_items table for all namespaces
+        data_items = self.get_data_items_by_date(date, namespaces)
+        
+        for item in data_items:
+            if item.get('metadata'):
+                metadata = item['metadata']
+                markdown_content = None
+                
+                if isinstance(metadata, dict):
+                    # First, try to get pre-generated cleaned markdown
+                    markdown_content = metadata.get('cleaned_markdown')
                     
-                    # Extract markdown content
-                    markdown_content = None
-                    
-                    # First, try to get markdown directly from original lifelog
-                    if raw_lifelog.get('markdown'):
-                        markdown_content = raw_lifelog['markdown']
-                    else:
-                        # Construct from processed content with title
-                        if item.get('title'):
-                            markdown_content = f"# {item['title']}\n\n{item['processed_content']}"
-                        else:
-                            markdown_content = item['processed_content']
-                    
-                    # Add timestamp if available
-                    if markdown_content and item.get('start_time'):
-                        timestamp_info = ""
-                        try:
-                            # Parse and format timestamp
-                            dt = datetime.fromisoformat(item['start_time'].replace('Z', '+00:00'))
-                            timestamp_info = f"*{dt.strftime('%I:%M %p')}*\n\n"
-                        except:
-                            pass
-                        
-                        markdown_parts.append(f"{timestamp_info}{markdown_content}")
-                    elif markdown_content:
-                        markdown_parts.append(markdown_content)
-                        
-                except Exception as e:
-                    logger.warning(f"Failed to process limitless item for markdown: {e}")
-                    continue
-        else:
-            # Use regular data_items table for other namespaces
-            data_items = self.get_data_items_by_date(date, namespaces)
-            
-            for item in data_items:
-                if item.get('metadata'):
-                    metadata = item['metadata']
-                    
-                    # Extract markdown from different possible locations in metadata
-                    markdown_content = None
-                    
-                    # First, try to get markdown directly
-                    if isinstance(metadata, dict):
+                    # If no cleaned markdown, try original approaches for backward compatibility
+                    if not markdown_content:
+                        # Try to get markdown directly
                         markdown_content = metadata.get('markdown')
                         
                         # If no direct markdown, try to get from original_lifelog
@@ -410,21 +393,21 @@ class DatabaseService:
                                 markdown_content = f"# {title}\n\n{item.get('content', '')}"
                             else:
                                 markdown_content = item.get('content', '')
-                    
-                    # Add timestamp if available
-                    if markdown_content:
-                        timestamp_info = ""
-                        if isinstance(metadata, dict):
-                            start_time = metadata.get('start_time')
-                            if start_time:
-                                try:
-                                    # Parse and format timestamp
-                                    dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                                    timestamp_info = f"*{dt.strftime('%I:%M %p')}*\n\n"
-                                except:
-                                    pass
-                        
-                        markdown_parts.append(f"{timestamp_info}{markdown_content}")
+                            
+                            # Add timestamp if available (only for fallback case)
+                            if markdown_content:
+                                start_time = metadata.get('start_time')
+                                if start_time:
+                                    try:
+                                        # Parse and format timestamp
+                                        dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                                        timestamp_info = f"*{dt.strftime('%I:%M %p')}*\n\n"
+                                        markdown_content = f"{timestamp_info}{markdown_content}"
+                                    except:
+                                        pass
+                
+                if markdown_content:
+                    markdown_parts.append(markdown_content)
         
         # Combine all markdown with separators
         if markdown_parts:
@@ -432,64 +415,4 @@ class DatabaseService:
         else:
             return f"# {date}\n\nNo data available for this date."
 
-    
-    def store_limitless_item(self, lifelog_id: str, title: str, start_time: str, 
-                           end_time: str, is_starred: bool, updated_at_api: str,
-                           processed_content: str, raw_data: str, days_date: str) -> str:
-        """Store Limitless lifelog data and return the generated ID"""
-        item_id = f"limitless:{lifelog_id}"
-        
-        with self.get_connection() as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO limitless 
-                (id, lifelog_id, title, start_time, end_time, is_starred, 
-                 updated_at_api, processed_content, raw_data, days_date, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (item_id, lifelog_id, title, start_time, end_time, is_starred,
-                  updated_at_api, processed_content, raw_data, days_date))
-            conn.commit()
-        
-        return item_id
-    
-    def get_limitless_items(self, limit: int = 100) -> List[Dict]:
-        """Get Limitless lifelog items"""
-        with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT id, lifelog_id, title, start_time, end_time, is_starred,
-                       updated_at_api, processed_content, raw_data, days_date,
-                       created_at, updated_at
-                FROM limitless
-                ORDER BY start_time DESC
-                LIMIT ?
-            """, (limit,))
-            
-            return [dict(row) for row in cursor.fetchall()]
-    
-    def get_limitless_item_by_lifelog_id(self, lifelog_id: str) -> Optional[Dict]:
-        """Get specific Limitless item by lifelog ID"""
-        with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT id, lifelog_id, title, start_time, end_time, is_starred,
-                       updated_at_api, processed_content, raw_data, days_date,
-                       created_at, updated_at
-                FROM limitless
-                WHERE lifelog_id = ?
-            """, (lifelog_id,))
-            
-            row = cursor.fetchone()
-            return dict(row) if row else None
-    
-    def get_limitless_items_by_date(self, date: str) -> List[Dict]:
-        """Get Limitless items for a specific date"""
-        with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT id, lifelog_id, title, start_time, end_time, is_starred,
-                       updated_at_api, processed_content, raw_data, days_date,
-                       created_at, updated_at
-                FROM limitless
-                WHERE days_date = ?
-                ORDER BY start_time ASC
-            """, (date,))
-            
-            return [dict(row) for row in cursor.fetchall()]
     

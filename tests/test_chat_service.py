@@ -48,7 +48,7 @@ class TestChatService:
         """Mock configuration"""
         config = create_test_config()
         # Override with Ollama config for testing
-        config.llm = LLMProviderConfig(
+        config.llm_provider = LLMProviderConfig(
             provider="ollama",
             ollama=OllamaConfig(
                 base_url="http://localhost:11434",

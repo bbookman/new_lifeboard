@@ -399,6 +399,149 @@ class ConversationSegmentProcessor(BaseProcessor):
             return None
 
 
+class MarkdownProcessor(BaseProcessor):
+    """Generate cleaned markdown from original lifelog data for display purposes"""
+    
+    def process(self, item) -> DataItem:
+        """Process item to generate cleaned markdown"""
+        # Handle both DataItem objects and raw dictionaries for testing
+        if hasattr(item, 'metadata'):
+            # DataItem object
+            cleaned_markdown = self._generate_cleaned_markdown(item)
+            
+            if cleaned_markdown:
+                item.metadata['cleaned_markdown'] = cleaned_markdown
+            
+            # Track processing
+            if 'processing_history' not in item.metadata:
+                item.metadata['processing_history'] = []
+            
+            item.metadata['processing_history'].append({
+                'processor': self.get_processor_name(),
+                'timestamp': datetime.now().isoformat(),
+                'changes': 'cleaned_markdown_generation'
+            })
+            
+            return item
+        else:
+            # For testing with raw dictionaries - create a mock DataItem-like object
+            from sources.base import DataItem
+            mock_item = DataItem(
+                id='test',
+                namespace='test',
+                content='',
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                metadata={'original_lifelog': item}
+            )
+            processed_item = self.process(mock_item)
+            # Return the result in a format the test expects
+            return processed_item
+    
+    def _generate_cleaned_markdown(self, item) -> Optional[str]:
+        """Generate cleaned markdown from original lifelog data"""
+        # Handle both DataItem objects and raw dictionaries for backward compatibility
+        if hasattr(item, 'metadata'):
+            # DataItem object
+            original_lifelog = item.metadata.get('original_lifelog', {})
+        else:
+            # Raw dictionary - treat as lifelog data directly
+            original_lifelog = item
+        
+        if not original_lifelog:
+            return None
+        
+        markdown_parts = []
+        
+        # Add title if available, with fallback
+        title = original_lifelog.get('title')
+        if title:
+            markdown_parts.append(f"# {title}")
+        elif not title and original_lifelog.get('contents'):
+            # Only add fallback title if there's content
+            markdown_parts.append("# Untitled Entry")
+        
+        # Extract and format content
+        markdown_content = self._extract_markdown_content(original_lifelog)
+        if markdown_content:
+            markdown_parts.append(markdown_content)
+        
+        # Add timestamp if available - check both startTime and start_time fields
+        start_time = original_lifelog.get('startTime') or original_lifelog.get('start_time')
+        if start_time:
+            try:
+                dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                timestamp_info = f"*{dt.strftime('%I:%M %p')}*"
+                return f"{timestamp_info}\n\n" + "\n\n".join(markdown_parts)
+            except (ValueError, TypeError):
+                pass
+        
+        return "\n\n".join(markdown_parts) if markdown_parts else None
+    
+    def _extract_markdown_content(self, lifelog: Dict[str, Any]) -> Optional[str]:
+        """Extract markdown content from lifelog data"""
+        # First, try to get markdown directly from lifelog
+        if lifelog.get('markdown'):
+            return lifelog['markdown']
+        
+        # Try processed_content field
+        if lifelog.get('processed_content'):
+            return lifelog['processed_content']
+        
+        # If no direct markdown, construct from structured content nodes
+        contents = lifelog.get('contents', [])
+        if contents:
+            return self._construct_markdown_from_contents(contents)
+        
+        # Fallback to raw_data if available
+        raw_data = lifelog.get('raw_data')
+        if raw_data:
+            try:
+                import json
+                parsed_data = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                contents = parsed_data.get('contents', [])
+                if contents:
+                    return self._construct_markdown_from_contents(contents)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        return None
+    
+    def _construct_markdown_from_contents(self, contents: List[Dict[str, Any]]) -> str:
+        """Construct markdown from content nodes"""
+        markdown_parts = []
+        
+        for node in contents:
+            node_content = node.get('content', '') or ''
+            node_content = node_content.strip()
+            if not node_content:
+                continue
+            
+            # Handle different content types
+            node_type = node.get('type', '')
+            speaker_name = node.get('speakerName')
+            speaker_id = node.get('speakerIdentifier')
+            
+            if node_type == 'blockquote' and speaker_name:
+                # Format as quoted speech
+                speaker_label = f"{speaker_name} (You)" if speaker_id == 'user' else speaker_name
+                markdown_parts.append(f"> **{speaker_label}:** {node_content}")
+            elif node_type.startswith('heading'):
+                # Format as appropriate heading level
+                level = int(node_type.replace('heading', '') or '2')
+                heading_prefix = '#' * min(level, 6)
+                markdown_parts.append(f"{heading_prefix} {node_content}")
+            else:
+                # Regular paragraph content
+                if speaker_name and node_type != 'paragraph':
+                    speaker_label = f"{speaker_name} (You)" if speaker_id == 'user' else speaker_name
+                    markdown_parts.append(f"**{speaker_label}:** {node_content}")
+                else:
+                    markdown_parts.append(node_content)
+        
+        return '\n\n'.join(markdown_parts) if markdown_parts else ''
+
+
 class DeduplicationProcessor(BaseProcessor):
     """Remove or mark duplicate content (placeholder for future implementation)"""
     
@@ -431,7 +574,7 @@ class DeduplicationProcessor(BaseProcessor):
 class LimitlessProcessor:
     """Main processor for Limitless content with configurable pipeline"""
     
-    def __init__(self, enable_segmentation: bool = True):
+    def __init__(self, enable_segmentation: bool = True, enable_markdown_generation: bool = True):
         self.processors: List[BaseProcessor] = []
         
         # Always include basic processors
@@ -441,6 +584,10 @@ class LimitlessProcessor:
         # Optional processors
         if enable_segmentation:
             self.processors.append(ConversationSegmentProcessor())
+        
+        # Add markdown processor for cleaned markdown generation
+        if enable_markdown_generation:
+            self.processors.append(MarkdownProcessor())
         
         # Placeholder for future processors
         self.processors.append(DeduplicationProcessor())

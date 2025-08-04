@@ -14,7 +14,7 @@ def db_service():
 
 @pytest.fixture
 def weather_service(db_service):
-    return WeatherService(db_service)
+    return WeatherService(db_service, MagicMock())
 
 @pytest.fixture
 def client(weather_service):

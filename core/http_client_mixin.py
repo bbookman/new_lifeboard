@@ -22,7 +22,7 @@ class HTTPClientMixin(ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._client: Optional[httpx.AsyncClient] = None
-        self._client_lock = asyncio.Lock()
+        self._client_lock: Optional[asyncio.Lock] = None
     
     @abstractmethod
     def _create_client_config(self) -> Dict[str, Any]:
@@ -58,6 +58,8 @@ class HTTPClientMixin(ABC):
             httpx.AsyncClient: The configured async HTTP client
         """
         if self._client is None:
+            if self._client_lock is None:
+                self._client_lock = asyncio.Lock()
             async with self._client_lock:
                 if self._client is None:
                     config = self._create_client_config()

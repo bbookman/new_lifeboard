@@ -118,21 +118,38 @@ async def get_days_with_data(
     database: DatabaseService = Depends(get_database_service)
 ) -> Dict[str, List[str]]:
     """Get list of dates that have data available"""
+    logger.info(f"[CALENDAR API] Request received - year: {year}, month: {month}")
+    
     try:
         # Get all days with data
+        logger.info("[CALENDAR API] Calling database.get_days_with_data()")
         all_days = database.get_days_with_data()
+        logger.info("[CALENDAR API] Calling database.get_days_with_data(namespaces=['twitter'])")
         twitter_days = database.get_days_with_data(namespaces=['twitter'])
+        
+        logger.info(f"[CALENDAR DEBUG] Raw all_days from database: {all_days[:10] if all_days else 'Empty'}")
+        logger.info(f"[CALENDAR DEBUG] Total all_days count: {len(all_days) if all_days else 0}")
+        logger.info(f"[CALENDAR DEBUG] Twitter days count: {len(twitter_days) if twitter_days else 0}")
         
         # Filter by year/month if specified
         if year is not None and month is not None:
             target_prefix = f"{year:04d}-{month:02d}"
+            logger.info(f"[CALENDAR DEBUG] Filtering with target_prefix: {target_prefix}")
             filtered_days = [day for day in all_days if day.startswith(target_prefix)]
             filtered_twitter_days = [day for day in twitter_days if day.startswith(target_prefix)]
-            return {"all": filtered_days, "twitter": filtered_twitter_days}
+            logger.info(f"[CALENDAR DEBUG] Filtered all_days: {filtered_days}")
+            logger.info(f"[CALENDAR DEBUG] Filtered twitter_days: {filtered_twitter_days}")
+            result = {"all": filtered_days, "twitter": filtered_twitter_days}
+        else:
+            result = {"all": all_days, "twitter": twitter_days}
         
-        return {"all": all_days, "twitter": twitter_days}
+        logger.info(f"[CALENDAR API] Returning response: {result}")
+        return result
+        
     except Exception as e:
-        logger.error(f"Error getting days with data: {e}")
+        logger.error(f"[CALENDAR API] Error getting days with data: {e}")
+        logger.error(f"[CALENDAR DEBUG] Exception details: {str(e)}")
+        logger.exception("[CALENDAR API] Full exception traceback:")
         raise HTTPException(status_code=500, detail="Failed to get calendar data")
 
 
@@ -146,8 +163,8 @@ async def get_day_details(date: str, database: DatabaseService = Depends(get_dat
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        # Get limitless items from dedicated table
-        limitless_items = database.get_limitless_items_by_date(date)
+        # Get limitless data items from unified table
+        limitless_items = database.get_data_items_by_date(date, namespaces=['limitless'])
         
         # Get markdown content from limitless items
         markdown_content = database.get_markdown_by_date(date, namespaces=['limitless'])
@@ -184,7 +201,7 @@ async def get_enhanced_day_data(
         
         # Get basic day details
         markdown_content = database.get_markdown_by_date(date, namespaces=['limitless'])
-        limitless_items = database.get_limitless_items_by_date(date)
+        limitless_items = database.get_data_items_by_date(date, namespaces=['limitless'])
         
         # Get 5-day weather forecast starting from this date
         weather_data = weather_service.get_weather_for_date_range(date, 5)
@@ -215,8 +232,8 @@ async def get_enhanced_day_data(
                 "has_data": len(limitless_items) > 0 or bool(markdown_content)
             },
             "summary": {
-                "total_items": len(data_items),
-                "has_any_data": len(data_items) > 0 or len(weather_data) > 0 or len(news_data) > 0
+                "total_items": len(limitless_items),
+                "has_any_data": len(limitless_items) > 0 or len(weather_data) > 0 or len(news_data) > 0
             }
         }
     except HTTPException:
