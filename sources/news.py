@@ -3,14 +3,21 @@ import asyncio
 import logging
 import urllib.parse
 import json
+import hashlib
 from typing import List, Dict, Any, Optional, AsyncIterator
 from datetime import datetime, timezone
 
 from .base import BaseSource, DataItem
 from config.models import NewsConfig
 from core.database import DatabaseService
-from core.retry_utils import (RetryExecutor, create_api_retry_config, create_enhanced_api_retry_condition, 
-                              create_rate_limit_retry_config, RetryConfig, BackoffStrategy)
+from core.retry_utils import (
+    RetryExecutor,
+    create_api_retry_config,
+    create_enhanced_api_retry_condition,
+    create_rate_limit_retry_config,
+    RetryConfig,
+    BackoffStrategy,
+)
 from core.http_client_mixin import HTTPClientMixin
 
 logger = logging.getLogger(__name__)
@@ -228,8 +235,8 @@ class NewsSource(BaseSource, HTTPClientMixin):
                 except (ValueError, TypeError) as e:
                     logger.warning(f"Failed to parse datetime '{published_datetime}': {e}")
             
-            # Use link as source_id since API doesn't provide unique IDs
-            source_id = link
+            # Use a hash of the link as the source_id for a stable, unique identifier
+            source_id = hashlib.sha1(link.encode()).hexdigest()
             
             return DataItem(
                 namespace=self.namespace,
@@ -243,6 +250,7 @@ class NewsSource(BaseSource, HTTPClientMixin):
         except Exception as e:
             logger.error(f"Error transforming article: {e}")
             return None
+
     
     async def _make_request_with_retry(
         self, 
