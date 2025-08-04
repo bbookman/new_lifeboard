@@ -427,8 +427,8 @@ class MarkdownProcessor(BaseProcessor):
             # For testing with raw dictionaries - create a mock DataItem-like object
             from sources.base import DataItem
             mock_item = DataItem(
-                id='test',
                 namespace='test',
+                source_id='test',
                 content='',
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
@@ -453,16 +453,27 @@ class MarkdownProcessor(BaseProcessor):
         
         markdown_parts = []
         
-        # Add title if available, with fallback
+        # Extract and format content first
+        markdown_content = self._extract_markdown_content(original_lifelog)
+        
+        # Add title if available, with fallback - but avoid duplication
         title = original_lifelog.get('title')
+        title_header = None
         if title:
-            markdown_parts.append(f"# {title}")
+            title_header = f"# {title}"
         elif not title and original_lifelog.get('contents'):
             # Only add fallback title if there's content
-            markdown_parts.append("# Untitled Entry")
+            title_header = "# Untitled Entry"
         
-        # Extract and format content
-        markdown_content = self._extract_markdown_content(original_lifelog)
+        # Check if the extracted content already contains the same title header
+        if title_header and markdown_content:
+            markdown_content = self._remove_duplicate_headers(markdown_content, title_header)
+        
+        # Add the title header if we have one
+        if title_header:
+            markdown_parts.append(title_header)
+        
+        # Add the deduplicated content
         if markdown_content:
             markdown_parts.append(markdown_content)
         
@@ -487,6 +498,32 @@ class MarkdownProcessor(BaseProcessor):
                 pass
         
         return "\n\n".join(markdown_parts) if markdown_parts else None
+    
+    def _remove_duplicate_headers(self, content: str, target_header: str) -> str:
+        """Remove duplicate instances of a header from content"""
+        if not content or not target_header:
+            return content
+        
+        lines = content.split('\n')
+        filtered_lines = []
+        target_header_clean = target_header.strip()
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # If we find a matching header
+            if line == target_header_clean:
+                # Skip this line and any immediately following empty lines
+                i += 1
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                continue
+            else:
+                filtered_lines.append(lines[i])
+                i += 1
+        
+        return '\n'.join(filtered_lines)
     
     def _extract_markdown_content(self, lifelog: Dict[str, Any]) -> Optional[str]:
         """Extract markdown content from lifelog data"""

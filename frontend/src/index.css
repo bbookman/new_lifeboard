@@ -1032,7 +1032,7 @@ h1, h2, h3, h4, h5, h6 {
   
   .newspaper-masthead {
     background: white !important;
-    color: black !important;
+    color: white !important;
     border-bottom: 3px solid black;
   }
   
@@ -1438,7 +1438,8 @@ h1, h2, h3, h4, h5, h6 {
   margin-top: 0.5em;
 }
 
-/* Newspaper-style drop caps for first paragraph */
+/* Newspaper-style drop caps for first paragraph - DISABLED to prevent numbers from being styled */
+/*
 .prose > p:first-of-type::first-letter {
   font-family: 'Playfair Display', serif;
   float: left;
@@ -1448,6 +1449,7 @@ h1, h2, h3, h4, h5, h6 {
   color: #007bff;
   font-weight: 700;
 }
+*/
 
 /* Mobile responsive prose */
 @media (max-width: 768px) {

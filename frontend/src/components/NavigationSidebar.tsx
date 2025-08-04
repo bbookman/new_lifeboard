@@ -33,7 +33,7 @@ export const NavigationSidebar = ({
           </p>
         </div>
         
-        <div className="flex">
+        <div>
           {items.map((item) => (
             <button
               key={item.id}
