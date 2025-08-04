@@ -6,9 +6,8 @@ This module contains endpoints for application settings and configuration manage
 
 import logging
 import shutil
-from fastapi import APIRouter, Request, Depends, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
 
 from services.sync_manager_service import SyncManagerService
 from sources.twitter import TwitterSource
@@ -18,20 +17,29 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["settings"])
 
-# Templates will be set by the main server
-templates = None
+# Settings API - JSON endpoints only
+# HTML settings page removed - frontend now uses React
 
+from pydantic import BaseModel
+from typing import Dict, Any
 
-def set_templates(template_instance):
-    """Set the templates instance from main server"""
-    global templates
-    templates = template_instance
+class SettingsResponse(BaseModel):
+    settings: Dict[str, Any]
 
+class SettingsUpdateRequest(BaseModel):
+    settings: Dict[str, Any]
 
-@router.get("/settings", response_class=HTMLResponse)
-async def settings_view(request: Request):
-    """Serve the main settings page"""
-    return templates.TemplateResponse("settings.html", {"request": request})
+@router.get("/settings")
+async def get_settings() -> SettingsResponse:
+    """Get application settings"""
+    # For now, return empty settings - this can be expanded later
+    return SettingsResponse(settings={})
+
+@router.put("/settings") 
+async def update_settings(request: SettingsUpdateRequest) -> Dict[str, bool]:
+    """Update application settings"""
+    # For now, just return success - this can be expanded later
+    return {"success": True}
 
 
 def get_twitter_source() -> TwitterSource:

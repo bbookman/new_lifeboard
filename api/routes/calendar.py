@@ -9,9 +9,7 @@ import os
 import re
 from datetime import datetime, date, timezone
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, HTTPException, Depends
 import pytz
 
 from services.startup import StartupService
@@ -25,14 +23,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
-# Templates will be set by the main server
-templates = None
-
-
-def set_templates(template_instance):
-    """Set the templates instance (called from main server)"""
-    global templates
-    templates = template_instance
+# Calendar API - JSON endpoints only
 
 
 def get_database_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> DatabaseService:
@@ -79,37 +70,8 @@ def get_user_timezone_aware_now(startup_service: StartupService) -> datetime:
         return datetime.now(timezone.utc)
 
 
-@router.get("/", response_class=HTMLResponse)
-async def calendar_month_view(
-    request: Request,
-    database: DatabaseService = Depends(get_database_service),
-    startup_service: StartupService = Depends(lambda: get_startup_service_dependency())
-):
-    """Serve the calendar month view HTML template"""
-    try:
-        # Get current date in user's timezone for default view
-        current_date = get_user_timezone_aware_now(startup_service)
-        current_month = current_date.strftime("%Y-%m")
-        
-        # Get days with data for initial load
-        days_with_data = database.get_days_with_data()
-        days_with_twitter_data = database.get_days_with_data(namespaces=['twitter'])
-        
-        logger.info(f"Calendar displaying current date: {current_date.strftime('%Y-%m-%d')} "
-                   f"({current_date.strftime('%A, %B %d, %Y')})")
-        
-        return templates.TemplateResponse("calendar.html", {
-            "request": request,
-            "current_month": current_month,
-            "current_year": current_date.year,
-            "current_month_name": current_date.strftime("%B"),
-            "current_date": current_date.strftime("%Y-%m-%d"),
-            "days_with_data": days_with_data,
-            "days_with_twitter_data": days_with_twitter_data
-        })
-    except Exception as e:
-        logger.error(f"Error serving calendar template: {e}")
-        raise HTTPException(status_code=500, detail="Failed to load calendar")
+# Calendar HTML endpoints removed - frontend now uses React
+# Use /calendar/api/days-with-data for calendar data
 
 
 @router.get("/api/days-with-data")
@@ -244,26 +206,8 @@ async def get_enhanced_day_data(
         raise HTTPException(status_code=500, detail="Failed to get enhanced day data")
 
 
-@router.get("/day/{date}", response_class=HTMLResponse)
-async def day_view(
-    request: Request, 
-    date: str, 
-    database: DatabaseService = Depends(get_database_service)
-):
-    """Serve the day view HTML template"""
-    try:
-        # Get day details
-        day_details = await get_day_details(date, database)
-        
-        return templates.TemplateResponse("day_view.html", {
-            "request": request,
-            **day_details
-        })
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error serving day view for {date}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to load day view")
+# Day view HTML endpoint removed - frontend now uses React
+# Use /calendar/api/day/{date} for day data
 
 
 
