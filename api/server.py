@@ -19,7 +19,6 @@ sys.path.insert(0, str(project_root))
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from datetime import datetime
@@ -35,24 +34,8 @@ from api.routes import health, sync, chat, embeddings, system, calendar, weather
 
 logger = logging.getLogger(__name__)
 
-# Initialize templates with absolute path
-templates_dir = project_root / "templates"
-logger.info(f"SERVER: Templates directory: {templates_dir}")
-logger.info(f"SERVER: Templates directory exists: {templates_dir.exists()}")
-
-if not templates_dir.exists():
-    logger.error(f"SERVER: Templates directory not found: {templates_dir}")
-    raise FileNotFoundError(f"Templates directory not found: {templates_dir}")
-
-templates = Jinja2Templates(directory=str(templates_dir))
-
-# Verify critical template files exist
-chat_template = templates_dir / "chat.html"
-if not chat_template.exists():
-    logger.error(f"SERVER: chat.html template not found: {chat_template}")
-    raise FileNotFoundError(f"chat.html template not found: {chat_template}")
-
-logger.info("SERVER: Templates initialized successfully")
+# Templates are no longer used - backend serves JSON API only
+logger.info("SERVER: Running in API-only mode (no HTML templates)")
 
 # Global shutdown flag
 _shutdown_requested = False
@@ -247,16 +230,8 @@ def configure_route_dependencies():
     registry.register_chat_service_provider(lambda startup_service: startup_service.chat_service)
     logger.info("ROUTE_CONFIG: Dependency providers registered successfully")
     
-    # Configure templates for routes that need them
-    logger.info("ROUTE_CONFIG: Configuring templates...")
-    try:
-        chat.set_templates(templates)
-        calendar.set_templates(templates)
-        settings.set_templates(templates)
-        logger.info("ROUTE_CONFIG: Templates configured successfully")
-    except Exception as template_error:
-        logger.error(f"ROUTE_CONFIG: Failed to configure templates: {template_error}")
-        raise
+    # Templates no longer needed - API-only mode
+    logger.info("ROUTE_CONFIG: Templates skipped (API-only mode)")
     
     logger.info("ROUTE_CONFIG: Route dependency configuration completed")
 
@@ -631,9 +606,8 @@ app.include_router(settings.router)
 
 @app.get("/")
 async def root():
-    """Redirect to today's calendar day view"""
-    today = datetime.now().strftime("%Y-%m-%d")
-    return RedirectResponse(url=f"/calendar/day/{today}")
+    """Root endpoint - API status"""
+    return {"message": "Lifeboard API", "status": "running", "version": "1.0.0"}
 
 
 # Global error handlers
@@ -1818,6 +1792,8 @@ def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port: int =
 
 if __name__ == "__main__":
     import argparse
+    
+    kill_existing_processes()
     
     parser = argparse.ArgumentParser(description="Lifeboard Full Stack Application")
     

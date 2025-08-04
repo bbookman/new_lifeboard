@@ -95,7 +95,6 @@ show_servers() {
     echo ""
     echo -e "${GREEN}Frontend (New UI):${NC} http://localhost:5173"
     echo -e "${BLUE}Backend API:${NC}      http://localhost:8000"
-    echo -e "${YELLOW}Old Templates:${NC}    http://localhost:8000/calendar (for comparison)"
     echo ""
     print_status "Press Ctrl+C to stop both servers"
     echo ""
