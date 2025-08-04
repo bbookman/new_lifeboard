@@ -3,6 +3,7 @@ import { NewspaperLayout } from './components/NewspaperLayout'
 import { NavigationSidebar, type NavigationItem } from './components/NavigationSidebar'
 import { SectionHeader } from './components/SectionHeader'
 import { CalendarView } from './components/CalendarView'
+import { DayView } from './components/DayView'
 import { ChatView } from './components/ChatView'
 import { SettingsView } from './components/SettingsView'
 
@@ -15,15 +16,31 @@ const navigationItems = [
 
 function App() {
   const [activeView, setActiveView] = useState('day');
+  const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
 
   const handleNavigation = (item: NavigationItem) => {
     setActiveView(item.id);
+    // Clear selected date when navigating away from day view
+    if (item.id !== 'day') {
+      setSelectedDate(undefined);
+    }
+  };
+
+  const handleDateSelect = (date: string) => {
+    setSelectedDate(date);
+    setActiveView('day');
+  };
+
+  const handleDateChange = (date: string) => {
+    setSelectedDate(date);
   };
 
   const renderMainContent = () => {
     switch (activeView) {
+      case 'day':
+        return <DayView selectedDate={selectedDate} onDateChange={handleDateChange} />;
       case 'calendar':
-        return <CalendarView />;
+        return <CalendarView onDateSelect={handleDateSelect} />;
       case 'chat':
         return <ChatView />;
       case 'settings':

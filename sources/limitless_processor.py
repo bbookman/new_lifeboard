@@ -468,11 +468,21 @@ class MarkdownProcessor(BaseProcessor):
         
         # Add timestamp if available - check both startTime and start_time fields
         start_time = original_lifelog.get('startTime') or original_lifelog.get('start_time')
-        if start_time:
+        if start_time and markdown_parts:
             try:
                 dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
                 timestamp_info = f"*{dt.strftime('%I:%M %p')}*"
-                return f"{timestamp_info}\n\n" + "\n\n".join(markdown_parts)
+                # Insert timestamp after the title (first element) if it exists
+                if len(markdown_parts) > 0:
+                    # Check if first part is a title (starts with #)
+                    if markdown_parts[0].startswith('#'):
+                        # Insert timestamp after title
+                        markdown_parts.insert(1, timestamp_info)
+                    else:
+                        # Insert timestamp at the beginning
+                        markdown_parts.insert(0, timestamp_info)
+                else:
+                    markdown_parts.append(timestamp_info)
             except (ValueError, TypeError):
                 pass
         

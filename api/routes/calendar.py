@@ -6,6 +6,7 @@ Provides calendar interface with month view navigation and day detail views.
 
 import logging
 import os
+import re
 from datetime import datetime, date, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
@@ -298,3 +299,134 @@ async def get_month_data(
     except Exception as e:
         logger.error(f"Error getting month data for {year}-{month}: {e}")
         raise HTTPException(status_code=500, detail="Failed to get month data")
+
+
+@router.get("/debug/markdown/{date}")
+async def debug_markdown_content(
+    date: str,
+    namespaces: Optional[str] = "limitless",
+    database: DatabaseService = Depends(get_database_service)
+) -> Dict[str, Any]:
+    """
+    Debug endpoint to inspect raw markdown content from database for a specific date.
+    Useful for troubleshooting markdown rendering issues.
+    """
+    try:
+        logger.info(f"[MARKDOWN DEBUG API] Debugging markdown for date: {date}")
+        
+        # Parse namespaces parameter
+        namespace_list = None
+        if namespaces:
+            namespace_list = [ns.strip() for ns in namespaces.split(",")]
+        
+        # Get raw data items
+        data_items = database.get_data_items_by_date(date, namespace_list)
+        
+        # Get processed markdown
+        markdown_content = database.get_markdown_by_date(date, namespace_list)
+        
+        # Analyze each item
+        item_analysis = []
+        for i, item in enumerate(data_items):
+            metadata = item.get('metadata', {})
+            
+            analysis = {
+                'item_index': i + 1,
+                'id': item.get('id', 'unknown'),
+                'namespace': item.get('namespace'),
+                'source_id': item.get('source_id'),
+                'content_length': len(item.get('content', '')),
+                'content_preview': item.get('content', '')[:100] + '...' if item.get('content', '') else None,
+                'has_metadata': bool(metadata),
+                'metadata_keys': list(metadata.keys()) if isinstance(metadata, dict) else [],
+                'has_cleaned_markdown': 'cleaned_markdown' in metadata if isinstance(metadata, dict) else False,
+                'has_title': 'title' in metadata if isinstance(metadata, dict) else False,
+                'title': metadata.get('title') if isinstance(metadata, dict) else None,
+                'cleaned_markdown_preview': None,
+                'cleaned_markdown_has_headers': False
+            }
+            
+            # Analyze cleaned markdown if present
+            if isinstance(metadata, dict) and 'cleaned_markdown' in metadata:
+                cleaned_md = metadata['cleaned_markdown']
+                analysis['cleaned_markdown_preview'] = cleaned_md[:200] + '...' if len(cleaned_md) > 200 else cleaned_md
+                analysis['cleaned_markdown_length'] = len(cleaned_md)
+                analysis['cleaned_markdown_has_headers'] = bool(re.search(r'^#+\s', cleaned_md, re.MULTILINE))
+                
+                # Count header types
+                header_counts = {}
+                for level in range(1, 7):
+                    pattern = f"^{'#' * level} .+$"
+                    matches = re.findall(pattern, cleaned_md, re.MULTILINE)
+                    if matches:
+                        header_counts[f'h{level}'] = len(matches)
+                        analysis[f'h{level}_headers'] = matches[:3]  # First 3 headers of each type
+                
+                analysis['header_counts'] = header_counts
+            
+            item_analysis.append(analysis)
+        
+        # Analyze final markdown output
+        final_analysis = {
+            'total_length': len(markdown_content),
+            'preview': markdown_content[:300] + '...' if len(markdown_content) > 300 else markdown_content,
+            'has_headers': bool(re.search(r'^#+\s', markdown_content, re.MULTILINE)),
+            'line_count': len(markdown_content.split('\n')),
+            'contains_separators': '---' in markdown_content
+        }
+        
+        # Count final header types
+        final_header_counts = {}
+        for level in range(1, 7):
+            pattern = f"^{'#' * level} .+$"
+            matches = re.findall(pattern, markdown_content, re.MULTILINE)
+            if matches:
+                final_header_counts[f'h{level}'] = len(matches)
+                final_analysis[f'h{level}_headers'] = matches[:5]  # First 5 headers of each type
+        
+        final_analysis['header_counts'] = final_header_counts
+        
+        return {
+            'debug_info': {
+                'date': date,
+                'namespaces_requested': namespace_list,
+                'timestamp': datetime.now().isoformat()
+            },
+            'data_items': {
+                'count': len(data_items),
+                'analysis': item_analysis
+            },
+            'final_markdown': final_analysis,
+            'raw_markdown_content': markdown_content  # Full content for debugging
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in markdown debug endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Debug endpoint error: {str(e)}")
+
+
+@router.get("/debug/markdown/{date}/raw")
+async def debug_markdown_raw(
+    date: str,
+    namespaces: Optional[str] = "limitless",
+    database: DatabaseService = Depends(get_database_service)
+) -> Dict[str, str]:
+    """
+    Get raw markdown content only (for easy copying/testing)
+    """
+    try:
+        namespace_list = None
+        if namespaces:
+            namespace_list = [ns.strip() for ns in namespaces.split(",")]
+        
+        markdown_content = database.get_markdown_by_date(date, namespace_list)
+        
+        return {
+            'date': date,
+            'namespaces': namespaces,
+            'markdown': markdown_content
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in raw markdown debug endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Debug endpoint error: {str(e)}")
