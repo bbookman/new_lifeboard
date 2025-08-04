@@ -13,8 +13,6 @@ export const NewspaperMasthead = () => {
           <h1>LIFEBOARD</h1>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', fontSize: '0.875rem', fontWeight: '500' }}>
             <span>{currentDate}</span>
-            <span>•</span>
-            <span>Your Personal Digital History</span>
           </div>
         </div>
       </div>

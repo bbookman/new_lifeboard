@@ -21,18 +21,6 @@ export const NavigationSidebar = ({
   return (
     <nav className={`nav-sidebar ${className || ''}`}>
       <div>
-        <div 
-          className="nav-header"
-          style={{ borderBottom: '1px solid #e5e5e5', paddingBottom: '1rem', marginBottom: '1rem' }}
-        >
-          <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '0.25rem' }}>
-            Navigation
-          </h3>
-          <p className="text-sm text-muted">
-            Browse your digital life
-          </p>
-        </div>
-        
         <div>
           {items.map((item) => (
             <button
