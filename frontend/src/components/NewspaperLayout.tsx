@@ -23,7 +23,7 @@ export const NewspaperLayout = ({
         <footer style={{ marginTop: '3rem', paddingTop: '2rem', borderTop: '1px solid #ddd' }}>
           <div className="text-center">
             <p className="text-sm text-muted">
-              Lifeboard • Your Personal Digital History
+              Lifeboard
             </p>
             <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
               Curated from your conversations, activities, and daily moments

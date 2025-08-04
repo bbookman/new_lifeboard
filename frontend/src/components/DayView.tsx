@@ -15,6 +15,8 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
   
   // Default to today if no date provided
   const currentDate = selectedDate || new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0];
+  const isFutureDate = currentDate >= today;
   
   const fetchDayData = async (date: string) => {
     try {
@@ -99,8 +101,7 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
   return (
     <div className="day-view">
       <SectionHeader 
-        title={`Day View - ${formatDate(currentDate)}`}
-        subtitle="Your digital life for this day"
+        title={formatDate(currentDate)}
         accentColor="border-news-accent"
       />
       
@@ -126,13 +127,15 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
               </button>
             </div>
             
-            <button 
-              onClick={() => navigateDate('next')}
-              className="button button-outline"
-              style={{ padding: '0.5rem 1rem' }}
-            >
-              Next Day →
-            </button>
+            <div style={{ visibility: isFutureDate ? 'hidden' : 'visible' }}>
+              <button 
+                onClick={() => navigateDate('next')}
+                className="button button-outline"
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                Next Day →
+              </button>
+            </div>
           </div>
         </div>
       </div>
