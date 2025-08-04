@@ -536,21 +536,11 @@ Comprehensive LLM provider abstraction layer with multi-provider support (Ollama
   OPENAI_TEMPERATURE=0.7
   
   # Chat Interface Configuration
-  CHAT_ENABLED=true
+  
   CHAT_HISTORY_LIMIT=1000
   CHAT_CONTEXT_WINDOW=4000
   CHAT_RESPONSE_TIMEOUT=30.0
-  
-  # Insights Generation
-  INSIGHTS_ENABLED=true
-  INSIGHTS_SCHEDULE=daily
-  INSIGHTS_MAX_HISTORY=100
-  
-  # Data Enhancement
-  ENHANCEMENT_ENABLED=true
-  ENHANCEMENT_SCHEDULE=nightly
-  ENHANCEMENT_BATCH_SIZE=100
-  ENHANCEMENT_MAX_CONCURRENT_JOBS=2
+
   ```
 
 ### Technical Implementation
@@ -1927,7 +1917,6 @@ Create `.env` file with the following settings:
 - `OPENAI_TEMPERATURE` - Response creativity setting 0.0-2.0 (*Optional, default: 0.7*)
 
 **Chat Interface Configuration**
-- `CHAT_ENABLED` - Enable web chat interface (*Optional, default: true*)
 - `CHAT_HISTORY_LIMIT` - Maximum stored chat messages (*Optional, default: 1000*)
 - `CHAT_CONTEXT_WINDOW` - Maximum context size for LLM (*Optional, default: 4000*)
 - `CHAT_RESPONSE_TIMEOUT` - Chat response timeout in seconds (*Optional, default: 30.0*)
@@ -1972,7 +1961,6 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=mistral:latest
 
 # Chat Interface
-CHAT_ENABLED=true
 CHAT_HISTORY_LIMIT=1000
 
 # Embedding System
@@ -2497,4 +2485,4 @@ This phase resolved fundamental architectural inconsistencies that were impactin
 - Integrate with existing embedding service for similarity computations
 - Build upon existing metadata tracking infrastructure
 
-#### 11.2 Multi-Modal Embedding Enhancement
+#### 11.2 Multi-Modal Embedding Enhancements

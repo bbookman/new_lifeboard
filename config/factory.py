@@ -168,7 +168,6 @@ def create_production_config() -> AppConfig:
         ),
         auto_sync=AutoSyncConfig(
             enabled=os.getenv("AUTO_SYNC_ENABLED", "true").lower() == "true",
-            startup_sync_enabled=os.getenv("STARTUP_SYNC_ENABLED", "false").lower() == "true",
             startup_sync_delay_seconds=int(os.getenv("STARTUP_SYNC_DELAY_SECONDS", "60")),
             auto_register_sources=os.getenv("AUTO_REGISTER_SOURCES", "true").lower() == "true"
         ),

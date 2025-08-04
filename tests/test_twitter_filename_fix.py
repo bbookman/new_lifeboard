@@ -21,7 +21,7 @@ class TestTwitterFilenameDiscovery:
     
     def setup_method(self):
         """Set up test fixtures."""
-        self.twitter_source = TwitterSource()
+        self.twitter_source = TwitterSource(config=MagicMock(), db_service=MagicMock())
         self.mock_logger = MagicMock()
     
     def create_test_archive_with_tweets_js(self) -> io.BytesIO:

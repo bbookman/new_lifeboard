@@ -75,9 +75,8 @@ class StartupService:
                 await self._initialize_sync_services(startup_result)
                 await self._start_auto_sync(startup_result)
                 
-                # 5. Perform startup sync if enabled
-                if self.config.auto_sync.startup_sync_enabled:
-                    await self._perform_startup_sync(startup_result)
+                # 5. Perform startup sync (always enabled)
+                await self._perform_startup_sync(startup_result)
             
             # 6. Perform startup health check
             health_status = await self._perform_startup_health_check()

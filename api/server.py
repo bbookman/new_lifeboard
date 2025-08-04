@@ -20,6 +20,7 @@ sys.path.insert(0, str(project_root))
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from datetime import datetime
 
@@ -578,6 +579,42 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Add CORS middleware to allow frontend access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server default
+        "http://localhost:3000",  # Common React dev server
+        "http://127.0.0.1:5173",  # Alternative localhost
+        "http://127.0.0.1:3000",  # Alternative localhost
+        "http://localhost:8080",  # Common dev server port
+        "http://localhost:8000",  # Backend access
+        "http://127.0.0.1:8000",  # Backend access via 127.0.0.1
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# Add request logging middleware for debugging
+from fastapi import Request, Response
+import time
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all HTTP requests for debugging"""
+    start_time = time.time()
+    client_ip = request.client.host if request.client else "unknown"
+    
+    logger.info(f"HTTP REQUEST: {request.method} {request.url} from {client_ip}")
+    
+    response = await call_next(request)
+    
+    process_time = time.time() - start_time
+    logger.info(f"HTTP RESPONSE: {request.method} {request.url} -> {response.status_code} ({process_time:.3f}s)")
+    
+    return response
 
 # Route dependencies will be configured after services are initialized in lifespan
 
@@ -1785,7 +1822,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Lifeboard Full Stack Application")
     
     # Server configuration
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind backend to")
+    parser.add_argument("--host", default="localhost", help="Host to bind backend to")
     parser.add_argument("--port", type=int, default=8000, help="Backend API port")
     parser.add_argument("--frontend-port", type=int, default=5173, help="Frontend development server port")
     
