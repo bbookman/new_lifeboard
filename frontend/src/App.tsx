@@ -50,7 +50,6 @@ function App() {
           <>
             <SectionHeader 
               title="Welcome to Lifeboard"
-              subtitle="Your personal digital history, beautifully organized"
               accentColor="border-news-accent"
             />
             
