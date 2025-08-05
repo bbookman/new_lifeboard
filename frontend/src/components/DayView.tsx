@@ -68,10 +68,50 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
       if (response.ok) {
         const data = await response.json();
         console.log('[DAY VIEW] Received data:', data);
-        
+
         setMarkdownContent(data.limitless?.markdown_content || '');
         setWeatherData(data.weather || null);
-        setNewsData(data.news || null);
+
+        // Normalize news payload defensively to avoid silent rendering issues
+        const rawNews = data.news;
+        let normalizedNews: NewsData | null = null;
+
+        try {
+          if (Array.isArray(rawNews)) {
+            // Backend returned a bare array; wrap it
+            normalizedNews = {
+              articles: rawNews,
+              count: rawNews.length,
+              has_data: rawNews.length > 0,
+            };
+          } else if (rawNews && typeof rawNews === 'object') {
+            const articles = Array.isArray((rawNews as any).articles)
+              ? (rawNews as any).articles
+              : [];
+            const count = typeof (rawNews as any).count === 'number' ? (rawNews as any).count : articles.length;
+            const has_data =
+              typeof (rawNews as any).has_data === 'boolean'
+                ? (rawNews as any).has_data
+                : articles.length > 0;
+
+            normalizedNews = {
+              articles,
+              count,
+              has_data,
+            };
+          } else if (rawNews == null) {
+            normalizedNews = { articles: [], count: 0, has_data: false };
+          } else {
+            console.error('[DAY VIEW] Unexpected news payload type:', typeof rawNews);
+            normalizedNews = { articles: [], count: 0, has_data: false };
+          }
+        } catch (e) {
+          console.error('[DAY VIEW] Error normalizing news payload:', e, rawNews);
+          normalizedNews = { articles: [], count: 0, has_data: false };
+        }
+
+        console.log('[DAY VIEW] Normalized news:', normalizedNews);
+        setNewsData(normalizedNews);
 
       } else {
         console.error('[DAY VIEW] HTTP Error:', response.status, response.statusText);
@@ -272,14 +312,16 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
             
             {/* Breaking News content */}
             <div>
+              {console.log('[DAY VIEW] Render check. Loading:', loading, 'News data:', newsData)}
               {loading && (
                 <div className="text-center py-4 text-gray-600">
                   Loading news...
                 </div>
               )}
               
-              {!loading && newsData && newsData.has_data && (
+              {!loading && newsData && (newsData.articles?.length ?? 0) > 0 && (
                 <div className="space-y-6">
+                  {console.log(`[DAY VIEW] Rendering ${newsData.articles.length} news articles.`)}
                   {newsData.articles.map((article, index) => (
                     <div key={article.id || index} className={`overflow-hidden hover:shadow-lg transition-shadow ${index === 0 ? 'border-l-4 border-l-red-500 pl-4' : ''}`}>
                       {article.thumbnail_url && (
@@ -328,7 +370,7 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
                 </div>
               )}
               
-              {!loading && (!newsData || !newsData.has_data) && (
+              {!loading && (!newsData || (newsData.articles?.length ?? 0) === 0) && (
                 <div className="text-center py-4 text-gray-600">
                   No news available for this date
                 </div>

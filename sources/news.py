@@ -205,6 +205,7 @@ class NewsSource(BaseHTTPSource, BaseSource):
             DataItem instance or None if transformation fails
         """
         try:
+            logger.debug(f"Transforming article with title: '{article.get('title')}'")
             # Extract required fields
             title = article.get("title", "")
             link = article.get("link", "")
@@ -213,7 +214,7 @@ class NewsSource(BaseHTTPSource, BaseSource):
             published_datetime = article.get("published_datetime_utc", "")
             
             if not title or not link:
-                logger.warning("Skipping article missing title or link")
+                logger.warning(f"Skipping article missing title or link: {article}")
                 return None
             
             # Create searchable content combining title and snippet
