@@ -35,18 +35,14 @@ class StartupService:
         self.startup_complete = False
         self.logging_setup_result: Optional[Dict[str, Any]] = None
         
-    async def initialize_application(self, enable_auto_sync: Optional[bool] = None) -> Dict[str, Any]:
+    async def initialize_application(self) -> Dict[str, Any]:
         """Initialize all application services and components"""
-        # Use config setting if not explicitly overridden
-        if enable_auto_sync is None:
-            enable_auto_sync = self.config.auto_sync.enabled
-            
         startup_result = {
             "success": False,
             "services_initialized": [],
             "sources_registered": [],
-            "auto_sync_enabled": enable_auto_sync,
-            "auto_register_sources": self.config.auto_sync.auto_register_sources,
+            "auto_sync_enabled": True,
+            "auto_register_sources": True,
             "errors": [],
             "startup_time": datetime.now(timezone.utc).isoformat()
         }
@@ -66,17 +62,15 @@ class StartupService:
             # 2.5. Initialize chat service (Phase 7)
             await self._initialize_chat_service(startup_result)
             
-            # 3. Register data sources (if auto-register is enabled)
-            if self.config.auto_sync.auto_register_sources:
-                await self._register_data_sources(startup_result)
+            # 3. Register data sources
+            await self._register_data_sources(startup_result)
             
-            # 4. Initialize scheduler and sync management (if enabled)
-            if enable_auto_sync:
-                await self._initialize_sync_services(startup_result)
-                await self._start_auto_sync(startup_result)
-                
-                # 5. Perform startup sync (always enabled)
-                await self._perform_startup_sync(startup_result)
+            # 4. Initialize scheduler and sync management
+            await self._initialize_sync_services(startup_result)
+            await self._start_auto_sync(startup_result)
+            
+            # 5. Perform startup sync
+            await self._perform_startup_sync(startup_result)
             
             # 6. Perform startup health check
             health_status = await self._perform_startup_health_check()
@@ -350,8 +344,8 @@ class StartupService:
     async def _perform_startup_sync(self, startup_result: Dict[str, Any]):
         """Perform initial sync on startup if configured"""
         try:
-            logger.info(f"Waiting {self.config.auto_sync.startup_sync_delay_seconds}s before startup sync...")
-            await asyncio.sleep(self.config.auto_sync.startup_sync_delay_seconds)
+            logger.info("Waiting 60s before startup sync...")
+            await asyncio.sleep(60)
             
             logger.info("Starting startup sync...")
             
@@ -616,29 +610,15 @@ def set_startup_service(startup_service: StartupService):
     _startup_service = startup_service
 
 
-async def initialize_application(config: AppConfig, enable_auto_sync: bool = True) -> Dict[str, Any]:
+async def initialize_application(config: AppConfig) -> Dict[str, Any]:
     """Initialize the application with the given configuration"""
-    import os
-    
     logger.info("STARTUP: *** BEGINNING APPLICATION INITIALIZATION ***")
-    
-    # Check for test mode environment variable
-    test_mode = os.getenv("LIFEBOARD_TEST_MODE", "false").lower() == "true"
-    disable_sync = os.getenv("LIFEBOARD_DISABLE_SYNC", "false").lower() == "true"
-    
-    if test_mode or disable_sync:
-        logger.warning("STARTUP: *** TEST MODE ENABLED - DISABLING AUTO-SYNC ***")
-        enable_auto_sync = False
-    
-    logger.info(f"STARTUP: enable_auto_sync = {enable_auto_sync}")
-    logger.info(f"STARTUP: test_mode = {test_mode}")
-    logger.info(f"STARTUP: disable_sync = {disable_sync}")
     
     startup_service = StartupService(config)
     set_startup_service(startup_service)
     
     logger.info("STARTUP: Starting service initialization...")
-    result = await startup_service.initialize_application(enable_auto_sync)
+    result = await startup_service.initialize_application()
     
     logger.info(f"STARTUP: Initialization completed with result: {result.get('success', False)}")
     logger.info("STARTUP: *** APPLICATION INITIALIZATION FINISHED ***")
