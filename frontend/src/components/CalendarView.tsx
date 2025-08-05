@@ -169,11 +169,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   
   return (
     <div className="calendar-view">
-      <SectionHeader 
-        title="Editorial Calendar"
-        subtitle="Your digital life, organized by date"
-        accentColor="border-news-accent"
-      />
+
       
       {/* Calendar Header */}
       <div className="card mb-8">
