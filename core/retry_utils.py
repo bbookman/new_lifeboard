@@ -318,7 +318,7 @@ class RetryExecutor:
         
         for attempt in range(self.config.max_retries + 1):  # +1 for initial attempt
             try:
-                logger.debug(f"Retry attempt {attempt + 1}/{self.config.max_retries + 1} for {func.__name__}")
+                logger.debug(f"Retry attempt {attempt + 1}/{self.config.max_retries + 1} for {getattr(func, '__name__', 'unknown_function')}")
                 
                 # Apply timeout if configured
                 if self.config.timeout:
@@ -327,7 +327,7 @@ class RetryExecutor:
                     result = await func(*args, **kwargs)
                 
                 total_time = time.time() - start_time
-                logger.debug(f"Operation {func.__name__} succeeded on attempt {attempt + 1}")
+                logger.debug(f"Operation {getattr(func, '__name__', 'unknown_function')} succeeded on attempt {attempt + 1}")
                 
                 return RetryResult(
                     success=True,
@@ -348,12 +348,12 @@ class RetryExecutor:
                     if isinstance(self.retry_condition, RateLimitRetryCondition) and hasattr(e, 'response'):
                         rate_limit_info = parse_rate_limit_headers(e.response) if hasattr(e, 'response') else {}
                         logger.warning(
-                            f"Rate limited on attempt {attempt + 1} for {func.__name__}: {str(e)}. "
+                            f"Rate limited on attempt {attempt + 1} for {getattr(func, '__name__', 'unknown_function')}: {str(e)}. "
                             f"Rate limit info: {rate_limit_info}. Retrying in {delay:.2f} seconds..."
                         )
                     else:
                         logger.warning(
-                            f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. "
+                            f"Attempt {attempt + 1} failed for {getattr(func, '__name__', 'unknown_function')}: {str(e)}. "
                             f"Retrying in {delay:.2f} seconds..."
                         )
                     await asyncio.sleep(delay)
@@ -361,9 +361,9 @@ class RetryExecutor:
                 else:
                     # No more retries or non-retryable error
                     if attempt >= self.config.max_retries:
-                        logger.error(f"All {self.config.max_retries + 1} attempts failed for {func.__name__}")
+                        logger.error(f"All {self.config.max_retries + 1} attempts failed for {getattr(func, '__name__', 'unknown_function')}")
                     else:
-                        logger.error(f"Non-retryable error in {func.__name__}: {str(e)}")
+                        logger.error(f"Non-retryable error in {getattr(func, '__name__', 'unknown_function')}: {str(e)}")
                     
                     return RetryResult(
                         success=False,
@@ -387,11 +387,11 @@ class RetryExecutor:
         
         for attempt in range(self.config.max_retries + 1):
             try:
-                logger.debug(f"Retry attempt {attempt + 1}/{self.config.max_retries + 1} for {func.__name__}")
+                logger.debug(f"Retry attempt {attempt + 1}/{self.config.max_retries + 1} for {getattr(func, '__name__', 'unknown_function')}")
                 
                 result = func(*args, **kwargs)
                 total_time = time.time() - start_time
-                logger.debug(f"Operation {func.__name__} succeeded on attempt {attempt + 1}")
+                logger.debug(f"Operation {getattr(func, '__name__', 'unknown_function')} succeeded on attempt {attempt + 1}")
                 
                 return RetryResult(
                     success=True,
@@ -411,21 +411,21 @@ class RetryExecutor:
                     if isinstance(self.retry_condition, RateLimitRetryCondition) and hasattr(e, 'response'):
                         rate_limit_info = parse_rate_limit_headers(e.response) if hasattr(e, 'response') else {}
                         logger.warning(
-                            f"Rate limited on attempt {attempt + 1} for {func.__name__}: {str(e)}. "
+                            f"Rate limited on attempt {attempt + 1} for {getattr(func, '__name__', 'unknown_function')}: {str(e)}. "
                             f"Rate limit info: {rate_limit_info}. Retrying in {delay:.2f} seconds..."
                         )
                     else:
                         logger.warning(
-                            f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. "
+                            f"Attempt {attempt + 1} failed for {getattr(func, '__name__', 'unknown_function')}: {str(e)}. "
                             f"Retrying in {delay:.2f} seconds..."
                         )
                     time.sleep(delay)
                     continue
                 else:
                     if attempt >= self.config.max_retries:
-                        logger.error(f"All {self.config.max_retries + 1} attempts failed for {func.__name__}")
+                        logger.error(f"All {self.config.max_retries + 1} attempts failed for {getattr(func, '__name__', 'unknown_function')}")
                     else:
-                        logger.error(f"Non-retryable error in {func.__name__}: {str(e)}")
+                        logger.error(f"Non-retryable error in {getattr(func, '__name__', 'unknown_function')}: {str(e)}")
                     
                     return RetryResult(
                         success=False,
@@ -461,7 +461,7 @@ def with_retry(config: RetryConfig = None, retry_condition: RetryCondition = Non
             else:
                 raise result.exception
         
-        wrapper.__name__ = func.__name__
+        wrapper.__name__ = getattr(func, '__name__', 'unknown_function')
         wrapper.__doc__ = func.__doc__
         return wrapper
     
@@ -485,7 +485,7 @@ def with_retry_sync(config: RetryConfig = None, retry_condition: RetryCondition 
             else:
                 raise result.exception
         
-        wrapper.__name__ = func.__name__
+        wrapper.__name__ = getattr(func, '__name__', 'unknown_function')
         wrapper.__doc__ = func.__doc__
         return wrapper
     

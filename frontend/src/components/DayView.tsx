@@ -13,9 +13,25 @@ interface WeatherData {
   forecast_days: any[];
 }
 
+interface NewsArticle {
+  id: number;
+  title: string;
+  link?: string;
+  snippet?: string;
+  thumbnail_url?: string;
+  published_datetime_utc?: string;
+}
+
+interface NewsData {
+  articles: NewsArticle[];
+  count: number;
+  has_data: boolean;
+}
+
 export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
   const [markdownContent, setMarkdownContent] = useState<string>('');
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  const [newsData, setNewsData] = useState<NewsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [today, setToday] = useState<string>('');
@@ -55,6 +71,7 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
         
         setMarkdownContent(data.limitless?.markdown_content || '');
         setWeatherData(data.weather || null);
+        setNewsData(data.news || null);
 
       } else {
         console.error('[DAY VIEW] HTTP Error:', response.status, response.statusText);
@@ -204,34 +221,119 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
         </div>
       </div>
       
-      {/* Content */}
-      <div className="card">
-        <div className="card-content">
-          {loading && (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-              Loading day data...
+      {/* Main content flexbox layout */}
+      <div className="flex gap-8">
+        {/* Left column - Daily Reflection (70% width) */}
+        <div className="flex-[5] border-r border-gray-200 pr-8">
+          <div className="space-y-6">
+            {/* Daily Reflection header */}
+            <div className="border-b-2 border-blue-500 pb-2">
+              <h2 className="text-3xl font-bold text-gray-800">Daily Reflection</h2>
             </div>
-          )}
-          
-          {error && (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#d32f2f' }}>
-              {error}
+            
+            {/* Daily Reflection content */}
+            <div>
+              {loading && (
+                <div className="text-center py-8 text-gray-600">
+                  Loading day data...
+                </div>
+              )}
+              
+              {error && (
+                <div className="text-center py-8 text-red-600">
+                  {error}
+                </div>
+              )}
+              
+              {!loading && !error && !markdownContent && (
+                <div className="text-center py-8 text-gray-600">
+                  No reflection data found for {formatDate(currentDate)}
+                </div>
+              )}
+              
+              {!loading && !error && markdownContent && (
+                <div className="prose prose-lg max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {markdownContent}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
-          )}
-          
-          {!loading && !error && !markdownContent && (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-              No data found for {formatDate(currentDate)}
+          </div>
+        </div>
+        
+        {/* Right column - Breaking News (30% width) */}
+        <div className="flex-[7] space-y-6">
+            {/* Breaking News header */}
+            <div className="border-b-2 border-red-500 pb-2">
+              <h2 className="text-2xl font-bold text-gray-800">Breaking News</h2>
+              <p className="text-sm text-gray-600 mt-1">Latest updates from around the world</p>
             </div>
-          )}
-          
-          {!loading && !error && markdownContent && (
-            <div className="prose prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {markdownContent}
-              </ReactMarkdown>
+            
+            {/* Breaking News content */}
+            <div>
+              {loading && (
+                <div className="text-center py-4 text-gray-600">
+                  Loading news...
+                </div>
+              )}
+              
+              {!loading && newsData && newsData.has_data && (
+                <div className="space-y-6">
+                  {newsData.articles.map((article, index) => (
+                    <div key={article.id || index} className={`overflow-hidden hover:shadow-lg transition-shadow ${index === 0 ? 'border-l-4 border-l-red-500 pl-4' : ''}`}>
+                      {article.thumbnail_url && (
+                        <div className="mb-3">
+                          <img 
+                            src={article.thumbnail_url} 
+                            alt={article.title}
+                            className="w-full h-40 object-cover rounded-lg"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      )}
+                      <h3 className="font-semibold text-base text-gray-800 leading-tight mb-2 hover:text-blue-600">
+                        {article.link ? (
+                          <a 
+                            href={article.link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="transition-colors"
+                          >
+                            {article.title}
+                          </a>
+                        ) : (
+                          article.title
+                        )}
+                      </h3>
+                      {article.snippet && (
+                        <p className="text-sm text-gray-600 leading-relaxed mb-3">
+                          {article.snippet}
+                        </p>
+                      )}
+                      {article.published_datetime_utc && (
+                        <div className="text-xs text-gray-500 border-b border-gray-200 pb-4 mb-4 last:border-b-0 last:pb-0 last:mb-0">
+                          {new Date(article.published_datetime_utc).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {!loading && (!newsData || !newsData.has_data) && (
+                <div className="text-center py-4 text-gray-600">
+                  No news available for this date
+                </div>
+              )}
             </div>
-          )}
         </div>
       </div>
     </div>

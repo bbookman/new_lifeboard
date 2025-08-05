@@ -155,7 +155,7 @@ class BaseService(ABC):
                 self.logger.info(f"Successfully shutdown {self.service_name} service")
                 return True
             else:
-                self.logger.error(f"Failed to shutdown {self.service_name} service cleanly")
+                self._record_error(f"Failed to shutdown {self.service_name} service cleanly")
                 return False
                 
         except Exception as e:

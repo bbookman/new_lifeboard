@@ -1,0 +1,53 @@
+{
+  "name": "lifeboard",
+  "version": "1.0.0",
+  "description": "An interactive reflection space and AI-powered planning assistant that transforms daily digital history into a personal newspaper",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cd frontend && npm run dev -- --port 5173 --host 0.0.0.0",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "python -m uvicorn api.server:app --reload --port 8000",
+    "dev:full": "./start_full_stack.sh",
+    "build": "cd frontend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "preview": "cd frontend && npm run preview",
+    "lint": "cd frontend && npm run lint",
+    "install:frontend": "cd frontend && npm install",
+    "clean": "cd frontend && rm -rf node_modules dist && cd .. && rm -rf __pycache__ .pytest_cache",
+    "test": "python -m pytest tests/",
+    "test:watch": "python -m pytest tests/ -f",
+    "setup": "pip install -r requirements.txt && npm run install:frontend"
+  },
+  "workspaces": [
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "."
+  },
+  "keywords": [
+    "lifeboard",
+    "ai",
+    "planning",
+    "reflection",
+    "personal-data",
+    "newspaper",
+    "chat",
+    "fastapi",
+    "react",
+    "vite"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "optionalDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
