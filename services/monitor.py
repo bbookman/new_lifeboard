@@ -101,6 +101,9 @@ class HealthMonitor:
         """Check core service health"""
         services = health_report["services"]
         
+        # Check network binding health
+        await self._check_network_health(health_report)
+        
         # Database health
         try:
             db_stats = self.database.get_database_stats()
@@ -161,6 +164,55 @@ class HealthMonitor:
             services["scheduler"] = {
                 "status": HealthStatus.CRITICAL.value,
                 "error": str(e)
+            }
+    
+    async def _check_network_health(self, health_report: Dict[str, Any]):
+        """Check network binding and connectivity health"""
+        try:
+            from services.port_state_service import PortStateService
+            import os
+            
+            # Get the port the server should be running on
+            server_port = int(os.getenv('SERVER_PORT', '8000'))
+            server_host = os.getenv('SERVER_HOST', '127.0.0.1')
+            
+            port_service = PortStateService()
+            
+            # Validate server binding
+            network_validation = await port_service.validate_server_binding(server_host, server_port)
+            
+            services = health_report["services"]
+            
+            if network_validation['is_healthy']:
+                services["network"] = {
+                    "status": HealthStatus.HEALTHY.value,
+                    "port": server_port,
+                    "host": server_host,
+                    "state": network_validation.get('state'),
+                    "response_time_ms": network_validation.get('response_time_ms')
+                }
+            else:
+                # Network issues detected
+                services["network"] = {
+                    "status": HealthStatus.CRITICAL.value,
+                    "port": server_port,
+                    "host": server_host,
+                    "state": network_validation.get('state'),
+                    "issues": network_validation.get('issues', [])
+                }
+                
+                # Add network issues to main health report
+                for issue in network_validation.get('issues', []):
+                    self._add_issue(health_report, f"network_{issue['type']}", 
+                                  HealthStatus.CRITICAL if issue['severity'] == 'critical' else HealthStatus.WARNING,
+                                  None, f"Network issue: {issue['message']}", issue.get('details'))
+                
+        except Exception as e:
+            logger.error(f"Network health check failed: {e}")
+            services = health_report["services"]
+            services["network"] = {
+                "status": HealthStatus.UNKNOWN.value,
+                "error": f"Network health check failed: {str(e)}"
             }
     
     async def _check_sync_health(self, health_report: Dict[str, Any]):
