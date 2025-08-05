@@ -81,7 +81,7 @@ async def initialize_system():
     from services.startup import initialize_application
     
     config = create_production_config()
-    result = await initialize_application(config, enable_auto_sync=True)
+    result = await initialize_application(config)
     
     return SystemResponse(
         success=result["success"],

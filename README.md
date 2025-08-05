@@ -57,12 +57,6 @@ Lifeboard uses environment variables for configuration. Create a `.env` file in 
 
 ### Data Synchronization
 
-#### `AUTO_SYNC_ENABLED`
-- **Purpose**: Enable automatic data synchronization from Limitless
-- **Default**: `true`
-- **Recommended**: `true`
-- **Example**: `AUTO_SYNC_ENABLED=true`
-
 #### `LIMITLESS_SYNC_INTERVAL_HOURS`
 - **Purpose**: Hours between automatic data syncs (how often to fetch new data)
 - **Default**: `6`
@@ -249,7 +243,6 @@ TIME_ZONE=UTC
 # Core settings
 LIMITLESS_API_KEY=your_actual_api_key_here
 TIME_ZONE=America/New_York
-AUTO_SYNC_ENABLED=true
 LIMITLESS_SYNC_INTERVAL_HOURS=1
 
 # Search Configuration
@@ -326,6 +319,7 @@ Lifeboard uses a 3-way hybrid search system:
 
 ## Architecture Notes
 
+- **Always-On Sync**: Data synchronization is always enabled and runs automatically in the background
 - **3-Way Hybrid Search**: Combines real-time Limitless API search, local semantic search, and keyword search for comprehensive results
 - **Startup Embedding Burst**: Processes 150 most recent items on startup for immediate semantic search capability
 - **Intelligent Fallback**: Chat works immediately with API + keyword search, enhanced by local vector search as embeddings are processed

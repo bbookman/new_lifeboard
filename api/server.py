@@ -298,7 +298,7 @@ async def lifespan(app: FastAPI):
         startup_diagnostics.append("Calling initialize_application...")
         
         try:
-            result = await initialize_application(config, enable_auto_sync=True)
+            result = await initialize_application(config)
             logger.info(f"LIFESPAN: Initialize_application returned: {result}")
             startup_diagnostics.append(f"Initialize result: {result}")
         except Exception as init_error:
