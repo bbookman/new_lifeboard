@@ -80,23 +80,50 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Navigation */
 .nav-sidebar {
-  width: 16rem;
+  width: 10rem!important;
   background: #fafafa;
   border-right: 1px solid #e5e5e5;
-  padding: 1rem;
+  padding: 0.5rem 0.25rem!important;
+  margin: 0!important;
+}
+
+.nav-sidebar > div {
+  padding: 0!important;
+  margin: 0!important;
+}
+
+.nav-sidebar > div > div {
+  padding: 0!important;
+  margin: 0!important;
 }
 
 .nav-button {
   display: block;
   width: 100%;
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.375rem!important;
+  margin: 0!important;
+  margin-bottom: 0.25rem!important;
   background: transparent;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
   text-align: left;
   cursor: pointer;
   transition: background-color 0.2s;
+  font-size: 0.875rem!important;
+  line-height: 1.2!important;
+  min-height: auto!important;
+  height: auto!important;
+}
+
+.nav-button span {
+  margin-right: 0.375rem!important;
+  font-size: 1.1em!important;
+}
+
+.nav-label {
+  margin: 0!important;
+  padding: 0!important;
+  line-height: 1.2!important;
 }
 
 .nav-button:hover {
@@ -349,15 +376,15 @@ h1, h2, h3, h4, h5, h6 {
   opacity: 0.5;
 }
 
-.hover\\:bg-primary\\/90:hover {
+.hover\:bg-primary\/90:hover {
   background-color: rgba(26, 26, 26, 0.9);
 }
 
-.hover\\:bg-secondary\\/80:hover {
+.hover\:bg-secondary\/80:hover {
   background-color: rgba(245, 245, 245, 0.8);
 }
 
-.hover\\:bg-destructive\\/90:hover {
+.hover\:bg-destructive\/90:hover {
   background-color: rgba(220, 38, 38, 0.9);
 }
 

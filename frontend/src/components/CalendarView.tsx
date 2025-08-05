@@ -256,9 +256,6 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       {/* Legend */}
       <div className="mt-6">
         <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Legend</h3>
-          </div>
           <div className="card-content">
             <div className="flex gap-6">
               <div className="flex items-center gap-2">

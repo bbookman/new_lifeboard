@@ -410,10 +410,17 @@ class SyncManagerService(BaseService):
                 logger.warning(f"Timestamp is not a string for {namespace}: {type(last_sync_setting)} = {last_sync_setting}, triggering sync")
                 return True
             
-            last_sync_time = datetime.fromisoformat(last_sync_setting)
+            # Parse timestamp with better error handling for timezone issues
+            last_sync_time = datetime.fromisoformat(last_sync_setting.replace('Z', '+00:00'))
+            
+            # Ensure timezone awareness
+            if last_sync_time.tzinfo is None:
+                logger.info(f"Adding UTC timezone to naive datetime for {namespace}")
+                last_sync_time = last_sync_time.replace(tzinfo=timezone.utc)
+                
         except (ValueError, TypeError) as e:
-            # Invalid last sync time, should sync
-            logger.warning(f"Invalid last sync time for {namespace}: {{'raw_value': {last_sync_setting}}} - Error: {e}, triggering sync")
+            # Invalid last sync time, should sync - Fixed logging format
+            logger.warning(f"Invalid last sync time for {namespace}: '{last_sync_setting}' - Error: {e}, triggering sync")
             return True
         
         # Determine sync interval based on source type
