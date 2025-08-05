@@ -74,6 +74,27 @@ def get_user_timezone_aware_now(startup_service: StartupService) -> datetime:
 # Use /calendar/api/days-with-data for calendar data
 
 
+@router.get("/api/today")
+async def get_today_date(
+    startup_service: StartupService = Depends(get_startup_service_dependency)
+) -> Dict[str, str]:
+    """Get today's date in the server's configured timezone"""
+    try:
+        today = get_user_timezone_aware_now(startup_service)
+        today_str = today.strftime("%Y-%m-%d")
+        
+        logger.debug(f"[CALENDAR API] Today's date in configured timezone: {today_str}")
+        
+        return {
+            "today": today_str,
+            "timezone": os.getenv('TIME_ZONE', 'America/New_York'),
+            "timestamp": today.isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[CALENDAR API] Error getting today's date: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get today's date")
+
+
 @router.get("/api/days-with-data")
 async def get_days_with_data(
     year: Optional[int] = None,

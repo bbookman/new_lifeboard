@@ -169,7 +169,7 @@ class NewsConfig(BaseModel, BaseConfigMixin):
 class WeatherConfig(BaseModel, BaseConfigMixin):
     """Weather API configuration"""
     api_key: Optional[str] = Field(None, env="RAPID_API_KEY")
-    endpoint: str = Field("easy-weather1.p.rapidapi.com/daily/5", env="WEATHER_ENDPOINT")
+    endpoint: Optional[str] = Field(None, env="WEATHER_ENDPOINT")
     latitude: str = Field("34.0522", env="USER_HOME_LATITUDE")
     longitude: str = Field("-118.2437", env="USER_HOME_LOGITUDE")
     units: str = Field("metric", env="UNITS")
@@ -220,12 +220,11 @@ class WeatherConfig(BaseModel, BaseConfigMixin):
         if not self.endpoint.strip():
             return False
         
-        # Check against common placeholder patterns and default fallback values
+        # Check against common placeholder patterns
         endpoint_lower = self.endpoint.lower().strip()
         placeholders = {
             "null", "none", "endpoint_here", "your_endpoint_here",
-            "weather_endpoint_here", "example.com", "api.example.com",
-            "easy-weather1.p.rapidapi.com/daily/5"  # Default fallback endpoint
+            "weather_endpoint_here", "example.com", "api.example.com"
         }
         return endpoint_lower not in placeholders
 

@@ -9,16 +9,15 @@ from .base import BaseSource, DataItem
 from config.models import WeatherConfig
 from core.database import DatabaseService
 from core.retry_utils import RetryExecutor, create_enhanced_api_retry_condition, RetryConfig, BackoffStrategy
-from core.http_client_mixin import HTTPClientMixin
+from core.http_client_mixin import BaseHTTPSource
 
 logger = logging.getLogger(__name__)
 
-class WeatherSource(BaseSource, HTTPClientMixin):
+class WeatherSource(BaseHTTPSource, BaseSource):
     """RapidAPI Weather source"""
 
     def __init__(self, config: WeatherConfig, db_service: DatabaseService):
-        BaseSource.__init__(self, "weather")
-        HTTPClientMixin.__init__(self)
+        super().__init__(config, "weather")
         self.config = config
         self.db_service = db_service
         self._api_key_configured = config.is_api_key_configured()
@@ -65,6 +64,8 @@ class WeatherSource(BaseSource, HTTPClientMixin):
             return row['count'] > 0 if row else False
 
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 1) -> AsyncIterator[DataItem]:
+        logger.info(f"Starting weather fetch - API key configured: {self._api_key_configured}, endpoint: {self.config.endpoint}")
+        
         if not self._api_key_configured:
             logger.warning("RAPID_API_KEY is not configured for weather. Skipping data fetch.")
             return
@@ -72,11 +73,13 @@ class WeatherSource(BaseSource, HTTPClientMixin):
         # Check if endpoint is properly configured
         if not self.config.is_endpoint_configured():
             logger.warning("WEATHER_ENDPOINT is not configured for weather. Skipping data fetch.")
+            logger.warning(f"Current endpoint value: '{self.config.endpoint}'")
             return
         
         # Check if weather service is fully configured and enabled
         if not self.config.is_fully_configured():
             logger.warning("Weather service is not fully configured or disabled. Skipping data fetch.")
+            logger.warning(f"Enabled: {self.config.enabled}, API key: {self._api_key_configured}, Endpoint: {self.config.is_endpoint_configured()}")
             return
 
         # Check if we already have weather data for today
@@ -99,7 +102,7 @@ class WeatherSource(BaseSource, HTTPClientMixin):
             "units": self.config.units
         }
 
-        logger.info(f"Fetching weather data from API")
+        logger.info(f"Fetching weather data from API with params: {params}")
 
         response = await self._make_request_with_retry(client, "", params)
 
@@ -108,14 +111,18 @@ class WeatherSource(BaseSource, HTTPClientMixin):
             return
 
         try:
+            logger.debug(f"Weather API response status: {response.status_code}")
             data = response.json()
+            logger.debug(f"Weather API response keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
             
             # Store in dedicated weather table for source-specific queries
             await self._store_weather_data(data)
             
             # Yield DataItems for unified processing pipeline
             weather_items = self._transform_weather_data(data)
+            logger.info(f"Generated {len(weather_items)} weather data items")
             for item in weather_items:
+                logger.debug(f"Yielding weather item: {item.source_id}")
                 yield item
 
         except Exception as e:
@@ -146,28 +153,34 @@ class WeatherSource(BaseSource, HTTPClientMixin):
             return data_items
         
         forecast_daily = data['forecastDaily']
-        read_time = forecast_daily.get('readTime', '')
+        read_time = forecast_daily.get('readTime')
         
         # Create one DataItem per forecast day
         for day_forecast in forecast_daily.get('days', []):
-            forecast_start = day_forecast.get('forecastStart', '')
+            forecast_start = day_forecast.get('forecastStart')
             
             # Extract date for days_date
             days_date = None
-            if forecast_start:
+            if forecast_start and isinstance(forecast_start, str):
                 try:
                     dt = datetime.fromisoformat(forecast_start.replace('Z', '+00:00'))
                     days_date = dt.strftime('%Y-%m-%d')
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid forecast_start format: {forecast_start} - {e}")
+            elif forecast_start:
+                logger.warning(f"forecast_start is not a string: {type(forecast_start)} = {forecast_start}")
             
             # Use read_time as fallback
-            if not days_date and read_time:
+            if not days_date and read_time and isinstance(read_time, str):
                 try:
                     dt = datetime.fromisoformat(read_time.replace('Z', '+00:00'))
                     days_date = dt.strftime('%Y-%m-%d')
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid read_time format: {read_time} - {e}")
                     days_date = datetime.now().strftime('%Y-%m-%d')
+            elif not days_date and read_time:
+                logger.warning(f"read_time is not a string: {type(read_time)} = {read_time}")
+                days_date = datetime.now().strftime('%Y-%m-%d')
             
             if not days_date:
                 days_date = datetime.now().strftime('%Y-%m-%d')
@@ -208,7 +221,7 @@ class WeatherSource(BaseSource, HTTPClientMixin):
             
             # Create DataItem
             created_at = None
-            if forecast_start:
+            if forecast_start and isinstance(forecast_start, str):
                 try:
                     created_at = datetime.fromisoformat(forecast_start.replace('Z', '+00:00'))
                 except (ValueError, TypeError):
@@ -346,7 +359,10 @@ class WeatherSource(BaseSource, HTTPClientMixin):
                         if 'forecastStart' in day_forecast:
                             try:
                                 forecast_date_str = day_forecast['forecastStart']
-                                forecast_date = datetime.fromisoformat(forecast_date_str.replace('Z', '+00:00'))
+                                if forecast_date_str and isinstance(forecast_date_str, str):
+                                    forecast_date = datetime.fromisoformat(forecast_date_str.replace('Z', '+00:00'))
+                                else:
+                                    continue
                                 forecast_date_only = forecast_date.date()
                                 
                                 if forecast_date_only == target_datetime:

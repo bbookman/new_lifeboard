@@ -68,9 +68,27 @@ class SyncManager:
         timestamp_str = self.database.get_setting(key)
         if timestamp_str:
             try:
+                # Log the raw value we received for debugging
+                logger.debug(f"Retrieved timestamp for {namespace}: {type(timestamp_str)} = {timestamp_str}")
+                
+                # Handle case where timestamp_str might be a JSON object due to json_utils processing
+                if isinstance(timestamp_str, dict):
+                    if 'raw_value' in timestamp_str:
+                        actual_timestamp = timestamp_str['raw_value']
+                        logger.info(f"Extracting timestamp from raw_value structure for {namespace}: {actual_timestamp}")
+                        timestamp_str = actual_timestamp
+                    else:
+                        logger.warning(f"Invalid timestamp structure for {namespace}: {timestamp_str}")
+                        return None
+                
+                # Ensure we have a string before parsing
+                if not isinstance(timestamp_str, str):
+                    logger.warning(f"Timestamp is not a string for {namespace}: {type(timestamp_str)} = {timestamp_str}")
+                    return None
+                
                 return datetime.fromisoformat(timestamp_str)
-            except (ValueError, TypeError):
-                logger.warning(f"Invalid last sync timestamp for {namespace}: {timestamp_str}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid last sync timestamp for {namespace}: {{'raw_value': {timestamp_str}}} - Error: {e}")
         return None
 
     async def set_last_sync_time(self, namespace: str, timestamp: datetime):

@@ -197,15 +197,41 @@ class TestCalendarAPIUnified(unittest.TestCase):
             
             response = self.client.get("/calendar/")
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 404)  # Old endpoint removed
         
-        # Verify that get_days_with_data was called (unified method)
-        self.assertEqual(self.mock_db.get_days_with_data.call_count, 2)
+        # Note: get_days_with_data not called since endpoint doesn't exist
+    
+    def test_get_today_date_endpoint(self):
+        """Test the new /api/today endpoint returns server timezone date"""
+        # Mock startup service and its components
+        mock_startup_service = Mock()
+        mock_startup_service.database = self.mock_db
         
-        # Verify calls were made correctly
-        calls = self.mock_db.get_days_with_data.call_args_list
-        self.assertEqual(calls[0][1], {})  # First call with no namespaces (all data)
-        self.assertEqual(calls[1][1], {'namespaces': ['twitter']})  # Second call for twitter
+        # Override the dependency
+        from api.routes.calendar import get_startup_service_dependency
+        self.app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        
+        with patch('api.routes.calendar.get_user_timezone_aware_now') as mock_time, \
+             patch.dict('os.environ', {'TIME_ZONE': 'America/New_York'}):
+            
+            # Mock current time in user timezone
+            mock_now = datetime(2024, 1, 15, 12, 0, 0)
+            mock_time.return_value = mock_now
+            
+            response = self.client.get("/calendar/api/today")
+            
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            
+            self.assertEqual(data['today'], '2024-01-15')
+            self.assertEqual(data['timezone'], 'America/New_York')
+            self.assertIn('timestamp', data)
+            
+            # Verify timezone function was called
+            mock_time.assert_called_once_with(mock_startup_service)
+        
+        # Clean up dependency override
+        self.app.dependency_overrides.clear()
     
     def test_get_days_with_data_api_endpoint(self):
         """Test GET /calendar/api/days-with-data endpoint uses unified approach"""

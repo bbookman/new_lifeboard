@@ -16,6 +16,34 @@ class JSONMetadataParser:
     """Utility class for safe JSON metadata parsing and serialization"""
     
     @staticmethod
+    def _is_valid_iso_timestamp(timestamp_str: str) -> bool:
+        """
+        Check if a string is a valid ISO timestamp format
+        
+        Args:
+            timestamp_str: String to check
+            
+        Returns:
+            True if it looks like a valid ISO timestamp
+        """
+        try:
+            # Basic format check for ISO timestamp patterns
+            if not timestamp_str or len(timestamp_str) < 10:
+                return False
+            
+            # Check for common ISO timestamp patterns
+            import re
+            iso_pattern = r'^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$'
+            if re.match(iso_pattern, timestamp_str):
+                # Try to actually parse it to be sure
+                from datetime import datetime
+                datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                return True
+        except (ValueError, TypeError, ImportError):
+            pass
+        return False
+    
+    @staticmethod
     def parse_metadata(metadata_str: Optional[str]) -> Optional[Dict[str, Any]]:
         """
         Safely parse JSON metadata string to dictionary
@@ -58,6 +86,12 @@ class JSONMetadataParser:
             # DEFENSIVE FIX: Handle raw strings that aren't valid JSON
             # Common case: raw timestamp strings like "2025-07-31T02:51:57.519"
             # being passed instead of proper JSON
+            
+            # Check if this is a valid ISO timestamp before wrapping
+            if JSONMetadataParser._is_valid_iso_timestamp(cleaned_str):
+                logger.debug(f"Detected valid ISO timestamp string, returning as-is: {cleaned_str}")
+                return cleaned_str
+            
             if "Extra data" in str(e) and e.pos == 4:
                 # This is likely a raw string being passed to the JSON parser
                 # Return the string as-is, wrapped in a simple structure
@@ -73,6 +107,11 @@ class JSONMetadataParser:
             
             # Try to detect if this is a raw string and handle it gracefully
             if not cleaned_str.startswith(('{', '[', '"')) and not cleaned_str.endswith(('}', ']', '"')):
+                # Check again if this looks like a timestamp before wrapping
+                if JSONMetadataParser._is_valid_iso_timestamp(cleaned_str):
+                    logger.debug(f"Detected valid ISO timestamp, returning as string: {cleaned_str}")
+                    return cleaned_str
+                
                 # This looks like a raw string, wrap it properly
                 logger.info(f"Detected raw string input, wrapping as JSON-compatible: {cleaned_str[:50]}...")
                 return {"raw_value": cleaned_str}

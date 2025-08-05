@@ -132,7 +132,7 @@ def create_production_config() -> AppConfig:
         ),
         weather=WeatherConfig(
             api_key=os.getenv("RAPID_API_KEY"),
-            endpoint=os.getenv("WEATHER_ENDPOINT", "easy-weather1.p.rapidapi.com/daily/5"),
+            endpoint=os.getenv("WEATHER_ENDPOINT"),
             latitude=os.getenv("USER_HOME_LATITUDE", "34.0522"),
             longitude=os.getenv("USER_HOME_LOGITUDE", "-118.2437"),
             units=os.getenv("UNITS", "metric"),

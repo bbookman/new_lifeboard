@@ -18,12 +18,12 @@ from core.retry_utils import (
     RetryConfig,
     BackoffStrategy,
 )
-from core.http_client_mixin import HTTPClientMixin
+from core.http_client_mixin import BaseHTTPSource
 
 logger = logging.getLogger(__name__)
 
 
-class NewsSource(BaseSource, HTTPClientMixin):
+class NewsSource(BaseHTTPSource, BaseSource):
     """Real-time News Data API source for news articles"""
     
     def __init__(self, config: NewsConfig, db_service: DatabaseService = None):
@@ -34,8 +34,7 @@ class NewsSource(BaseSource, HTTPClientMixin):
             config: NewsConfig instance containing API configuration
             db_service: DatabaseService instance for data operations
         """
-        BaseSource.__init__(self, "news")
-        HTTPClientMixin.__init__(self)
+        super().__init__(config, "news")
         self.config = config
         self.db_service = db_service
         self._api_key_configured = self.config.is_api_key_configured()
@@ -108,8 +107,11 @@ class NewsSource(BaseSource, HTTPClientMixin):
         Yields:
             DataItem instances containing news articles
         """
+        logger.info(f"Starting news fetch - configured: {self.is_configured()}, endpoint: {self.config.endpoint}")
+        
         if not self.is_configured():
             logger.warning("News source is not configured. Skipping data fetch.")
+            logger.warning(f"API key configured: {self._api_key_configured}, Endpoint configured: {self._endpoint_configured}")
             return
 
         # Check if we already have news data for today
@@ -127,6 +129,7 @@ class NewsSource(BaseSource, HTTPClientMixin):
         
         # Use unique_items_per_day as the actual limit instead of the limit parameter
         actual_limit = self.config.unique_items_per_day
+        logger.debug(f"Fetching up to {actual_limit} unique news items for {today}")
         client = await self._ensure_client()
         
         # Build request parameters
@@ -139,6 +142,7 @@ class NewsSource(BaseSource, HTTPClientMixin):
         logger.info(f"Fetching up to {actual_limit} news items from API (retrieving {self.config.items_to_retrieve})")
         
         # Make API request with retries
+        logger.debug(f"Making API request to /top-headlines with params: {params}")
         response = await self._make_request_with_retry(client, "/top-headlines", params)
         
         if not response:
@@ -146,11 +150,16 @@ class NewsSource(BaseSource, HTTPClientMixin):
             return
         
         try:
+            logger.debug(f"API response status: {response.status_code}")
             data = response.json()
+            logger.debug(f"API response data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+            
             articles = data.get("data", [])
+            logger.info(f"API returned {len(articles)} articles")
             
             if not articles:
                 logger.info("No news articles returned from API")
+                logger.debug(f"Full API response: {data}")
                 return
             
             # Yield up to unique_items_per_day articles
@@ -225,7 +234,7 @@ class NewsSource(BaseSource, HTTPClientMixin):
             
             # Parse published datetime
             created_at = None
-            if published_datetime:
+            if published_datetime and isinstance(published_datetime, str):
                 try:
                     # Handle ISO format datetime
                     if published_datetime.endswith('Z'):
@@ -234,6 +243,8 @@ class NewsSource(BaseSource, HTTPClientMixin):
                         created_at = datetime.fromisoformat(published_datetime)
                 except (ValueError, TypeError) as e:
                     logger.warning(f"Failed to parse datetime '{published_datetime}': {e}")
+            elif published_datetime:
+                logger.warning(f"published_datetime is not a string: {type(published_datetime)} = {published_datetime}")
             
             # Use a hash of the link as the source_id for a stable, unique identifier
             source_id = hashlib.sha1(link.encode()).hexdigest()

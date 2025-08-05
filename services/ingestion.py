@@ -110,7 +110,25 @@ class IngestionService(BaseService):
             last_sync = self.database.get_setting(f"{namespace}_last_sync")
             since = None
             if last_sync and not force_full_sync:
-                since = datetime.fromisoformat(last_sync)
+                try:
+                    # Handle case where last_sync might be a JSON object due to json_utils processing
+                    if isinstance(last_sync, dict):
+                        if 'raw_value' in last_sync:
+                            actual_timestamp = last_sync['raw_value']
+                            logger.debug(f"Extracting timestamp from raw_value structure for {namespace}: {actual_timestamp}")
+                            last_sync = actual_timestamp
+                        else:
+                            logger.warning(f"Invalid timestamp structure for {namespace}: {last_sync}")
+                            last_sync = None
+                    
+                    # Ensure we have a string before parsing
+                    if last_sync and isinstance(last_sync, str):
+                        since = datetime.fromisoformat(last_sync)
+                    elif last_sync:
+                        logger.warning(f"Timestamp is not a string for {namespace}: {type(last_sync)} = {last_sync}")
+                        
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to parse last sync time for {namespace}: {last_sync} - {e}")
             
             async for item in source.fetch_items(since=since, limit=limit):
                 await self._process_and_store_item(item, result)
