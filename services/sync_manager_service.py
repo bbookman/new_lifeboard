@@ -395,10 +395,25 @@ class SyncManagerService(BaseService):
             return True
         
         try:
+            # Handle case where last_sync_setting might be a JSON object due to json_utils processing
+            if isinstance(last_sync_setting, dict):
+                if 'raw_value' in last_sync_setting:
+                    actual_timestamp = last_sync_setting['raw_value']
+                    logger.info(f"Extracting timestamp from raw_value structure for {namespace}: {actual_timestamp}")
+                    last_sync_setting = actual_timestamp
+                else:
+                    logger.warning(f"Invalid timestamp structure for {namespace}: {last_sync_setting}, triggering sync")
+                    return True
+            
+            # Ensure we have a string before parsing
+            if not isinstance(last_sync_setting, str):
+                logger.warning(f"Timestamp is not a string for {namespace}: {type(last_sync_setting)} = {last_sync_setting}, triggering sync")
+                return True
+            
             last_sync_time = datetime.fromisoformat(last_sync_setting)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
             # Invalid last sync time, should sync
-            logger.warning(f"Invalid last sync time for {namespace}: {last_sync_setting}, triggering sync")
+            logger.warning(f"Invalid last sync time for {namespace}: {{'raw_value': {last_sync_setting}}} - Error: {e}, triggering sync")
             return True
         
         # Determine sync interval based on source type

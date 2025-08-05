@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { SectionHeader } from './SectionHeader';
+import { getTodayYYYYMMDD } from '../lib/utils';
 
 interface CalendarDay {
   date: number;
@@ -21,6 +22,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [daysWithData, setDaysWithData] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [serverToday, setServerToday] = useState<string>('');
   
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -28,6 +30,15 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   ];
   
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  // Initialize server today on component mount
+  useEffect(() => {
+    const initializeServerToday = async () => {
+      const today = await getTodayYYYYMMDD();
+      setServerToday(today);
+    };
+    initializeServerToday();
+  }, []);
   
   // Fetch days with data from the API
   const fetchDaysWithData = async (year: number, month: number, signal?: AbortSignal) => {
@@ -91,7 +102,6 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   const generateCalendarDays = (): CalendarDay[] => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    const today = new Date();
     
     const firstDayOfMonth = new Date(year, month, 1);
     const lastDayOfMonth = new Date(year, month + 1, 0);
@@ -112,13 +122,9 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     
     // Current month's days
     for (let day = 1; day <= daysInMonth; day++) {
-      const isToday =
-        year === today.getFullYear() &&
-        month === today.getMonth() &&
-        day === today.getDate();
-      
-      // Check if this day has data in the database
+      // Check if this day matches the server's today and has data
       const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const isToday = dateString === serverToday;
       const hasEvents = daysWithData.has(dateString);
       
       days.push({
