@@ -1016,9 +1016,15 @@ def kill_existing_processes(graceful_timeout: int = 10):
         return True
 
 # Development server runner
-def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False, kill_existing: bool = False):
+async def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False, kill_existing: bool = False):
     """Run the development server with enhanced port conflict detection and cleanup"""
     import socket
+    from services.port_state_service import PortStateService
+    
+    # Initialize port state service and session manager
+    port_service = PortStateService()
+    from services.session_lock_manager import SessionLockManager
+    session_manager = SessionLockManager()
     
     # Kill existing processes if requested
     if kill_existing:
@@ -1031,90 +1037,76 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False, kil
         else:
             print("✅ Existing server processes cleaned up successfully")
     
-    # Check if port is already in use with enhanced error handling
-    def is_port_in_use(port: int, host: str = host) -> bool:
-        """Check if a port is in use on the specified host with detailed error reporting"""
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                # Set socket options for better reliability
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                
-                try:
-                    s.bind((host, port))
-                    logger.debug(f"PORT: Port {port} is available on {host}")
-                    return False
-                except OSError as bind_error:
-                    # More specific error handling
-                    if bind_error.errno == 48:  # Address already in use (macOS/BSD)
-                        logger.debug(f"PORT: Port {port} is in use on {host} (Address already in use)")
-                    elif bind_error.errno == 98:  # Address already in use (Linux)
-                        logger.debug(f"PORT: Port {port} is in use on {host} (Address already in use)")
-                    elif bind_error.errno == 13:  # Permission denied
-                        logger.warning(f"PORT: Permission denied for port {port} on {host} (may need elevated privileges)")
-                    elif bind_error.errno == 99:  # Cannot assign requested address
-                        logger.warning(f"PORT: Cannot assign requested address {host}:{port} (invalid host?)")
-                    else:
-                        logger.debug(f"PORT: Port {port} unavailable on {host}: {bind_error} (errno: {bind_error.errno})")
-                    return True
-        except Exception as e:
-            logger.warning(f"PORT: Error checking port {port} on {host}: {e}")
-            return True  # Assume port is in use if we can't check
+    # Session lock management
+    print("🔒 Acquiring session lock...")
+    session_result = await session_manager.acquire_session_lock(host, port)
     
-    # Check for port conflicts with enhanced diagnostics
-    if is_port_in_use(port, host):
-        logger.error(f"UVICORN: Port {port} is already in use on host {host}!")
+    if not session_result['success']:
+        print("❌ Failed to acquire session lock")
+        
+        if session_result.get('existing_session'):
+            existing = session_result['existing_session']
+            print(f"   Existing session: {existing['session_id']}")
+            print(f"   PID: {existing['pid']}, Port: {existing['port']}")
+            print(f"   State: {existing['state']}")
+            
+            conflict = session_result.get('conflict_resolution', {})
+            print(f"   Conflict type: {conflict.get('type', 'unknown')}")
+            
+            print("\n💡 Recommendations:")
+            for rec in session_result.get('recommendations', []):
+                print(f"   • {rec['description']}")
+                if 'command' in rec:
+                    print(f"     Command: {rec['command']}")
+        
+        return
+    else:
+        print(f"✅ Session lock acquired: {session_result['session_id']}")
+    
+    # Pre-startup port validation using PortStateService
+    print("🔍 Validating port availability...")
+    port_validation = await port_service.validate_port_binding(host, port, validate_connectivity=False)
+    
+    if port_validation.state.value != "available":
+        logger.error(f"UVICORN: Port {port} validation failed - State: {port_validation.state.value}")
+        
+        # Display detailed validation results
+        print(f"❌ Port {port} is not available")
+        print(f"   State: {port_validation.state.value}")
+        print(f"   Status: {port_validation.binding_status.value}")
+        
+        if port_validation.error_message:
+            print(f"   Error: {port_validation.error_message}")
+        
+        # Show process information if available
+        if port_validation.process_info:
+            process_info = port_validation.process_info
+            print(f"\n📋 Process using port {port}:")
+            print(f"   PID: {process_info.get('pid')}")
+            print(f"   Command: {process_info.get('command')}")
+            print(f"   User: {process_info.get('user')}")
+            
+            if process_info.get('is_our_server'):
+                print("   🔍 This appears to be another instance of our server")
+                print("\n💡 Suggestions for existing server processes:")
+                print("  • Use --kill-existing to automatically clean up old processes")
+                print("  • Run: python -m api.server --kill-existing")
+                print(f"  • Manual cleanup: kill {process_info.get('pid')}")
+            else:
+                print("   🔍 This is an external application")
+                print("\n💡 Suggestions for external application conflict:")
+                print(f"  • Stop the service using port {port} if not needed")
+                print(f"  • Use a different port: --port {port + 1}")
         
         # Enhanced port conflict diagnostics
         port_diagnostics = diagnose_port_conflict(port, host)
+        if port_diagnostics.get('common_service'):
+            print(f"   ℹ️  Port {port} is commonly used by: {port_diagnostics['common_service']}")
         
-        # Show what's using the port
-        try:
-            import subprocess
-            result = subprocess.run(['lsof', '-i', f':{port}'], 
-                                 capture_output=True, text=True, timeout=5)
-            if result.stdout:
-                logger.error(f"UVICORN: Processes using port {port}:")
-                for line in result.stdout.strip().split('\n'):
-                    if line.strip():  # Skip empty lines
-                        logger.error(f"UVICORN:   {line}")
-                
-                # Try to detect if it's one of our server processes
-                server_pids = find_server_processes()
-                if server_pids:
-                    logger.warning(f"UVICORN: Detected {len(server_pids)} existing server processes")
-                    print("\n💡 Suggestions for existing server processes:")
-                    print("  • Use --kill-existing to automatically clean up old processes")
-                    print("  • Use --auto-port to automatically find an available port")
-                    print(f"  • Use --port {port + 1} to try a different port")
-                    print("  • Run: ./start_server.sh --kill-existing")
-                    print(f"  • Manual cleanup: kill {' '.join(map(str, server_pids))}")
-                else:
-                    logger.error(f"UVICORN: Port {port} is used by another application")
-                    print("\n💡 Suggestions for external application conflict:")
-                    print(f"  • Use --port {port + 1} to try a different port")
-                    print("  • Use --auto-port to automatically find an available port")
-                    if port_diagnostics.get('common_service'):
-                        print(f"  • Port {port} is commonly used by: {port_diagnostics['common_service']}")
-                    print(f"  • Stop the service using port {port} if it's not needed")
-        except subprocess.TimeoutExpired:
-            logger.warning("UVICORN: Timeout checking port usage with lsof")
-            print("\n💡 Basic suggestions:")
-            print("  • Use --kill-existing to clean up any old server processes")
-            print("  • Use --auto-port to automatically find an available port")
-            print(f"  • Use --port {port + 1} to try a different port")
-        except FileNotFoundError:
-            logger.debug("UVICORN: lsof command not available")
-            print("\n💡 Suggestions (lsof unavailable):")
-            print("  • Use --kill-existing to clean up any old server processes")
-            print("  • Use --auto-port to automatically find an available port")
-            print(f"  • Use --port {port + 1} to try a different port")
-            print("  • Check manually: netstat -an | grep :8000")
-        except Exception as e:
-            logger.debug(f"UVICORN: Error checking port usage: {e}")
-            print("\n💡 Suggestions:")
-            print("  • Use --kill-existing to clean up any old server processes")
-            print("  • Use --auto-port to automatically find an available port")
-            print(f"  • Use --port {port + 1} to try a different port")
+        print("\n💡 General suggestions:")
+        print("  • Use --kill-existing to clean up any old server processes")
+        print(f"  • Use --port {port + 1} to try a different port")
+        print("  • Check running processes: ps aux | grep server")
         
         return
     
@@ -1249,8 +1241,36 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False, kil
             logger.error(f"UVICORN: Failed to install SIGTERM handler: {e}")
         
         try:
-            server.run()
+            # Start server in a background task to allow post-startup validation
+            import threading
+            server_thread = threading.Thread(target=server.run, daemon=True)
+            server_thread.start()
+            
+            # Wait a moment for server to start
+            await asyncio.sleep(3)
+            
+            # Post-startup validation
+            print("🔍 Validating server binding...")
+            post_startup_validation = await port_service.validate_server_binding(host, port)
+            
+            if post_startup_validation['is_healthy']:
+                print("✅ Server binding validation successful")
+                if post_startup_validation.get('response_time_ms'):
+                    print(f"   Response time: {post_startup_validation['response_time_ms']:.1f}ms")
+            else:
+                print("⚠️  Server binding validation failed")
+                for issue in post_startup_validation.get('issues', []):
+                    print(f"   Issue: {issue['message']}")
+                for recommendation in post_startup_validation.get('recommendations', []):
+                    print(f"   💡 {recommendation['description']}")
+            
+            # Wait for server thread to complete
+            server_thread.join()
         finally:
+            # Release session lock
+            print("🔓 Releasing session lock...")
+            await session_manager.release_session_lock()
+            
             # Restore original handlers with error handling
             try:
                 if original_sigint_handler is not None:
@@ -1648,9 +1668,9 @@ def start_frontend_server(port: int = 5173, backend_port: int = 8000) -> dict:
         }
 
 
-def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port: int = 5173, 
-                   debug: bool = False, kill_existing: bool = False, 
-                   no_auto_port: bool = False, no_frontend: bool = False) -> None:
+async def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port: int = 5173, 
+                         debug: bool = False, kill_existing: bool = False, 
+                         no_auto_port: bool = False, no_frontend: bool = False) -> None:
     """Run the full stack application with both frontend and backend servers"""
     
     print("\n🚀 Starting Lifeboard Full Stack Application...")
@@ -1766,7 +1786,7 @@ def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port: int =
         
         # Start backend (this will block)
         backend_started = True
-        run_server(host=host, port=backend_port, debug=debug, kill_existing=kill_existing)
+        await run_server(host=host, port=backend_port, debug=debug, kill_existing=kill_existing)
         
     except KeyboardInterrupt:
         print("\n\n⏹️  Shutting down application...")
@@ -1836,7 +1856,7 @@ if __name__ == "__main__":
         print("   Frontend: Disabled")
     
     # Start the application
-    run_full_stack(
+    asyncio.run(run_full_stack(
         host=args.host, 
         port=args.port, 
         frontend_port=args.frontend_port,
@@ -1844,4 +1864,4 @@ if __name__ == "__main__":
         kill_existing=args.kill_existing,
         no_auto_port=args.no_auto_port,
         no_frontend=args.no_frontend
-    )
+    ))
