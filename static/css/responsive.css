@@ -1,0 +1,164 @@
+/* Responsive CSS - Desktop and tablet optimizations only */
+
+/* Tablet adjustments */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .nav-sidebar {
+        width: 12rem !important;
+    }
+    
+    .flex.gap-8 {
+        gap: 1.5rem;
+    }
+    
+    .container {
+        padding: 0 1.5rem;
+    }
+    
+    .newspaper-masthead h1 {
+        font-size: 3rem;
+    }
+    
+    .chat-container {
+        height: calc(100vh - 250px);
+        min-height: 500px;
+    }
+}
+
+/* Large screen optimizations */
+@media (min-width: 1200px) {
+    .container {
+        max-width: 1400px;
+    }
+    
+    .calendar-day {
+        min-height: 100px;
+    }
+    
+    .chat-container {
+        height: calc(100vh - 350px);
+        min-height: 700px;
+    }
+    
+    .newspaper-masthead h1 {
+        font-size: 4.5rem;
+    }
+}
+
+/* Print styles for newspaper theme */
+@media print {
+    .nav-sidebar,
+    .chat-input-container,
+    .settings-actions {
+        display: none;
+    }
+    
+    .newspaper-masthead {
+        background: white !important;
+        color: black !important;
+        border-bottom: 3px solid black;
+    }
+    
+    .newspaper-masthead h1 {
+        color: black !important;
+    }
+    
+    .card {
+        border: 1px solid black;
+        box-shadow: none;
+        break-inside: avoid;
+    }
+    
+    .card-header {
+        border-bottom: 1px solid black;
+    }
+    
+    .calendar-day {
+        min-height: 60px;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .card {
+        border-width: 2px;
+    }
+    
+    .nav-button.active {
+        background: black;
+        color: white;
+    }
+    
+    .calendar-day.today {
+        border-width: 3px;
+    }
+    
+    .button-primary {
+        background: black;
+    }
+    
+    .button-outline {
+        border-width: 2px;
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .button,
+    .nav-button,
+    .calendar-day,
+    .sample-question {
+        transition: none;
+    }
+    
+    .typing-indicator span {
+        animation: none;
+        opacity: 1;
+    }
+    
+    .loading-spinner {
+        animation: none;
+    }
+}
+
+/* Dark mode support (basic implementation) */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-color: #1a1a1a;
+        --text-color: #f5f5f5;
+        --card-bg: #2a2a2a;
+        --border-color: #404040;
+    }
+    
+    body {
+        background-color: var(--bg-color);
+        color: var(--text-color);
+    }
+    
+    .card {
+        background: white;
+        border-color: var(--border-color);
+        color: var(--text-color);
+    }
+    
+    .nav-sidebar {
+        background: white;
+        border-color: var(--border-color);
+    }
+    
+    .button-outline {
+        border-color: var(--border-color);
+        color: var(--text-color);
+    }
+    
+    .button-outline:hover {
+        background: #404040;
+    }
+    
+    input,
+    textarea,
+    select {
+        background: var(--card-bg);
+        border-color: var(--border-color);
+        color: var(--text-color);
+    }
+}

@@ -32,8 +32,18 @@ python3 -m api.server
 # =========================================
 #           ACCESS INSTRUCTIONS
 # =========================================
-# The Lifeboard web UI is accessible at:
-#  • http://localhost:8000
+# Lifeboard provides two user interface options:
+#
+# 1. React Frontend (Full-featured, modern):
+#    • http://localhost:5173 (development)
+#    • Requires Node.js and npm install in frontend/
+#    • Full-stack mode: python3 -m api.server
+#
+# 2. Simple HTML UI (Lightweight alternative):
+#    • http://localhost:8000/simple
+#    • No build process required
+#    • Always available when backend is running
+#    • API-only mode: python3 -m api.server --no-frontend
 
 # If you need to use a different port, stop the service
 # and run: python3 -m api.server --port [PORT_NUMBER]
