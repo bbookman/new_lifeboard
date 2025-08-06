@@ -1,4 +1,3 @@
-import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
@@ -7,8 +6,9 @@ from enum import Enum
 from services.sync_manager_service import SyncManagerService
 from services.ingestion import IngestionService
 from core.database import DatabaseService
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class HealthStatus(Enum):

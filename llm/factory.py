@@ -3,14 +3,14 @@ LLM provider factory for creating and managing LLM provider instances
 """
 
 from typing import Dict, Any, Optional
-import logging
 
 from .base import BaseLLMProvider, LLMError
 from .ollama_provider import OllamaProvider
 from .openai_provider import OpenAIProvider
 from config.models import LLMProviderConfig
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LLMProviderFactory:

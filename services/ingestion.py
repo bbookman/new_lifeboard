@@ -1,5 +1,3 @@
-import asyncio
-import logging
 from typing import Dict, Any, List, Optional, AsyncIterator
 from datetime import datetime, timezone
 
@@ -12,8 +10,9 @@ from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from core.ids import NamespacedIDManager
 from config.models import AppConfig
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class IngestionResult:

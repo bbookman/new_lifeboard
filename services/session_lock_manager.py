@@ -7,7 +7,6 @@ from running simultaneously and manages graceful session handover.
 
 import asyncio
 import json
-import logging
 import os
 import signal
 import time
@@ -17,7 +16,9 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from enum import Enum
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class SessionState(Enum):

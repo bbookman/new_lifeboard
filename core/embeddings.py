@@ -3,14 +3,14 @@ Real embedding service using sentence transformers for semantic search
 """
 
 import numpy as np
-import logging
 from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer
 import torch
 
 from .base_service import BaseService
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EmbeddingService(BaseService):

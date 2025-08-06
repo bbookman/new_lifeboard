@@ -5,7 +5,6 @@ Provides hybrid data access (vector search + SQL queries) and LLM integration
 for the minimal chat interface.
 """
 
-import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
@@ -16,8 +15,9 @@ from llm.factory import create_llm_provider
 from llm.base import LLMResponse, LLMError
 from config.models import AppConfig
 from core.exception_handling import handle_service_exceptions, safe_operation
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

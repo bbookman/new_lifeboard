@@ -5,12 +5,13 @@ This module provides reusable exception handling patterns to eliminate
 duplicate try-catch blocks across the application.
 """
 
-import logging
 import functools
 from typing import Any, Callable, Dict, Optional, Union, TypeVar, Awaitable
 from datetime import datetime, timezone
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 F = TypeVar('F', bound=Callable[..., Any])
 

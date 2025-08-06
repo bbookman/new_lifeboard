@@ -7,7 +7,6 @@ and comprehensive reporting for network-related issues.
 
 import asyncio
 import json
-import logging
 import subprocess
 import time
 from pathlib import Path
@@ -17,8 +16,9 @@ from dataclasses import dataclass, asdict
 
 from services.port_state_service import PortStateService
 from services.session_lock_manager import SessionLockManager
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

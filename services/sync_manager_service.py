@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
@@ -11,8 +10,9 @@ from sources.limitless import LimitlessSource
 from sources.news import NewsSource
 from sources.weather import WeatherSource
 from config.models import AppConfig
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SyncManagerService(BaseService):

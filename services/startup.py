@@ -1,5 +1,3 @@
-import asyncio
-import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
@@ -14,10 +12,10 @@ from sources.twitter import TwitterSource
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
-from core.logging_config import setup_application_logging
+from core.logging_config import setup_application_logging, get_logger
 from config.models import AppConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class StartupService:

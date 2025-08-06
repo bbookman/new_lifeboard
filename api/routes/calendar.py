@@ -4,7 +4,6 @@ Calendar API routes for Lifeboard
 Provides calendar interface with month view navigation and day detail views.
 """
 
-import logging
 import os
 import re
 from datetime import datetime, date, timezone
@@ -18,8 +17,9 @@ from services.news_service import NewsService
 from core.database import DatabaseService
 from core.dependencies import get_startup_service_dependency
 from config.factory import get_config
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -193,9 +193,7 @@ async def get_enhanced_day_data(
         # Get news data for the date
         news_data = news_service.get_news_by_date(date)
         
-        # If no news for specific date, get recent news as fallback
-        if not news_data:
-            news_data = news_service.get_latest_news(limit=5)
+        # No fallback - show empty news if no data for this specific date
         
         return {
             "date": date,
@@ -208,7 +206,8 @@ async def get_enhanced_day_data(
             "news": {
                 "articles": news_data,
                 "count": len(news_data),
-                "has_data": len(news_data) > 0
+                "has_data": len(news_data) > 0,
+                "message": "No news retrieved" if len(news_data) == 0 else None
             },
             "limitless": {
                 "markdown_content": markdown_content,

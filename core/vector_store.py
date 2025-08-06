@@ -2,9 +2,10 @@ import numpy as np
 import json
 import os
 from typing import List, Tuple, Optional, Dict, Any
-import logging
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class VectorStoreService:

@@ -1,7 +1,6 @@
 import sqlite3
 import json
 import os
-import logging
 import re
 from typing import List, Dict, Optional, Any
 from contextlib import contextmanager
@@ -10,8 +9,9 @@ import pytz
 
 from .migrations import MigrationRunner
 from .json_utils import JSONMetadataParser, DatabaseRowParser
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DatabaseService:

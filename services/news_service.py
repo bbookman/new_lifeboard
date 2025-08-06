@@ -1,17 +1,12 @@
 import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import logging
 
 from core.database import DatabaseService
 from config.models import NewsConfig
+from core.logging_config import get_logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-file_handler = logging.FileHandler('logs/news_service.log')
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
+logger = get_logger(__name__)
 
 
 class NewsService:

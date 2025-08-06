@@ -5,7 +5,6 @@ This is the refactored server that uses separate route modules
 for better organization and maintainability.
 """
 
-import logging
 import os
 import signal
 import sys
@@ -28,11 +27,12 @@ from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
 from config.factory import create_production_config
 from core.dependencies import get_dependency_registry
+from core.logging_config import get_logger
 
 # Import route modules
 from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Templates are no longer used - backend serves JSON API only
 logger.info("SERVER: Running in API-only mode (no HTML templates)")

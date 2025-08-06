@@ -5,13 +5,14 @@ This module provides a clean separation of database schema creation
 from the main DatabaseService class, following the single responsibility principle.
 """
 
-import sqlite3
-import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
+import sqlite3
 from contextlib import contextmanager
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class BaseMigration(ABC):

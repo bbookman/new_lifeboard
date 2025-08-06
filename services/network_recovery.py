@@ -6,7 +6,6 @@ including hung states, zombie processes, and binding failures.
 """
 
 import asyncio
-import logging
 import signal
 import subprocess
 import time
@@ -15,8 +14,9 @@ from enum import Enum
 from dataclasses import dataclass
 
 from services.port_state_service import PortStateService, PortState, NetworkBindingStatus
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RecoveryStrategy(Enum):

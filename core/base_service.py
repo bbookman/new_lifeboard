@@ -6,13 +6,13 @@ health checking, status tracking, and error handling patterns across all service
 """
 
 import asyncio
-import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Optional, Any, Dict, List
 
 from .exception_handling import ServiceError, ErrorAccumulator, safe_operation
+from core.logging_config import get_logger
 
 
 class ServiceStatus(Enum):
@@ -55,7 +55,7 @@ class BaseService(ABC):
         """
         self.service_name = service_name
         self.config = config
-        self.logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+        self.logger = get_logger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         
         # Service state tracking
         self._status = ServiceStatus.UNINITIALIZED
@@ -285,7 +285,7 @@ class AsyncServiceManager:
     
     def __init__(self):
         self.services: Dict[str, BaseService] = {}
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
     
     def register_service(self, service: BaseService):
         """Register a service for management"""

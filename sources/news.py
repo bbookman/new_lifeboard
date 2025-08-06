@@ -248,6 +248,7 @@ class NewsSource(BaseHTTPSource, BaseSource):
                 logger.warning(f"published_datetime is not a string: {type(published_datetime)} = {published_datetime}")
             
             # Use a hash of the link as the source_id for a stable, unique identifier
+            logger.debug(f"Hashing link: {link}")
             source_id = hashlib.sha1(link.encode()).hexdigest()
             
             return DataItem(

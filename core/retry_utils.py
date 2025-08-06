@@ -6,7 +6,6 @@ previously duplicated across API sources, LLM providers, and other services.
 """
 
 import asyncio
-import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -15,7 +14,9 @@ from typing import Any, Callable, Optional, Type, Union, List, Dict
 from datetime import datetime, timezone, timedelta
 import httpx
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def parse_retry_after_header(response: httpx.Response) -> Optional[int]:

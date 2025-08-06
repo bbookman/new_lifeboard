@@ -5,7 +5,6 @@ This module contains endpoints for application health monitoring
 and status checking.
 """
 
-import logging
 from typing import Dict, Any
 from datetime import datetime, timezone
 
@@ -15,8 +14,9 @@ from pydantic import BaseModel
 from services.startup import StartupService
 from core.exception_handling import handle_api_exceptions
 from core.dependencies import get_startup_service_dependency
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="", tags=["health"])
 

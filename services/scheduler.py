@@ -1,12 +1,13 @@
 import asyncio
-import logging
 from typing import Dict, Any, Optional, List, Callable, Awaitable
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
 import uuid
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class JobStatus(Enum):

@@ -5,7 +5,6 @@ This module contains endpoints for system initialization,
 shutdown, and management operations.
 """
 
-import logging
 from typing import Dict, Any
 
 from fastapi import APIRouter, Depends
@@ -16,8 +15,9 @@ from config.factory import create_production_config
 from core.exception_handling import handle_api_exceptions
 from services.startup import StartupService
 from core.dependencies import get_startup_service_dependency
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="", tags=["system"])
 

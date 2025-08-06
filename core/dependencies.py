@@ -5,15 +5,15 @@ This module provides a centralized way to manage dependency injection
 for FastAPI routes, avoiding the flawed module attribute injection pattern.
 """
 
-import logging
 from typing import Optional, Callable, Any
 from fastapi import HTTPException
 
 from services.startup import StartupService, get_startup_service
 from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DependencyRegistry:

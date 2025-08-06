@@ -6,7 +6,6 @@ conflict detection, and recovery mechanisms for the Lifeboard application.
 """
 
 import asyncio
-import logging
 import socket
 import subprocess
 import time
@@ -15,7 +14,9 @@ from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime, timezone
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class PortState(Enum):

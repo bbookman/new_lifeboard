@@ -49,7 +49,7 @@ class BaseLLMProvider(ABC):
     
     def __init__(self, provider_name: str):
         self.provider_name = provider_name
-        self.logger = logging.getLogger(f"{__name__}.{provider_name}")
+        self.logger = get_logger(f"{__name__}.{provider_name}")
     
     @abstractmethod
     async def is_available(self) -> bool:

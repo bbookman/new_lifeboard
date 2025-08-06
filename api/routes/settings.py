@@ -4,7 +4,6 @@ Settings endpoints for Lifeboard
 This module contains endpoints for application settings and configuration management.
 """
 
-import logging
 import shutil
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
@@ -12,8 +11,9 @@ from fastapi.responses import JSONResponse
 from services.sync_manager_service import SyncManagerService
 from sources.twitter import TwitterSource
 from core.dependencies import get_dependency_registry
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="", tags=["settings"])
 

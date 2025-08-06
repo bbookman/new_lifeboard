@@ -6,10 +6,11 @@ across the application, eliminating duplicate parsing logic.
 """
 
 import json
-import logging
 from typing import Any, Optional, Dict, Union
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class JSONMetadataParser:

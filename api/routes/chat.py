@@ -5,7 +5,6 @@ This module contains endpoints for the chat interface and
 conversation management.
 """
 
-import logging
 from datetime import datetime
 from typing import List, Dict, Any
 from pydantic import BaseModel
@@ -15,8 +14,9 @@ from services.chat_service import ChatService
 from services.startup import StartupService
 from core.exception_handling import handle_api_exceptions
 from core.dependencies import get_startup_service_dependency
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="", tags=["chat"])
 
