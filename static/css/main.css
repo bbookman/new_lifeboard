@@ -187,6 +187,10 @@ h1, h2, h3, h4, h5, h6 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.grid-cols-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 /* Spacing utilities */
 .mt-4 { margin-top: 1rem; }
 .mt-6 { margin-top: 1.5rem; }
@@ -328,8 +332,9 @@ select:focus {
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
-    font-size: 1.5rem;
+    font-size: 2.5rem;
     font-weight: 700;
+    color: #1a1a1a;
 }
 
 .temp-high {
@@ -372,6 +377,38 @@ select:focus {
 .activity-content {
     color: #555;
     line-height: 1.4;
+}
+
+/* Weather forecast styling */
+.weather-forecast {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1rem;
+    margin-top: 1rem;
+    text-align: center;
+}
+
+.weather-forecast-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+}
+
+.weather-day-name {
+    color: #1a1a1a;
+    font-weight: 700;
+}
+
+.weather-forecast-temp {
+    color: #1a1a1a;
+    font-size: 1rem;
+}
+
+.weather-condition {
+    color: #1a1a1a;
+    font-size: 1.125rem;
 }
 
 /* Responsive utilities */
