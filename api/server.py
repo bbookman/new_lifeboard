@@ -18,7 +18,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from datetime import datetime
@@ -603,11 +604,30 @@ app.include_router(system.router)
 app.include_router(weather.router)
 app.include_router(settings.router)
 
+# Mount static files for simple HTML UI
+static_dir = project_root / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    logger.info(f"Static files mounted from: {static_dir}")
+else:
+    logger.warning(f"Static directory not found: {static_dir}")
 
 @app.get("/")
 async def root():
     """Root endpoint - API status"""
     return {"message": "Lifeboard API", "status": "running", "version": "1.0.0"}
+
+@app.get("/simple")
+async def simple_ui():
+    """Serve the simple HTML/CSS UI"""
+    simple_html_path = project_root / "static" / "simple.html"
+    if simple_html_path.exists():
+        return FileResponse(simple_html_path, media_type="text/html")
+    else:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Simple UI not found", "detail": "The simple HTML interface is not yet installed"}
+        )
 
 
 # Global error handlers
