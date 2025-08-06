@@ -282,14 +282,8 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
           </div>
         </div>
 
-        {/* Right column - Breaking News (30% width) */}
+        {/* Right column - Breaking News */}
         <div className="flex-[7] space-y-6">
-          {/* Breaking News header */}
-          <div className="border-b-2 border-red-500 pb-2">
-            <h2 className="text-2xl font-bold text-gray-800">Breaking News</h2>
-            <p className="text-sm text-gray-600 mt-1">Latest updates from around the world</p>
-          </div>
-
           {/* Breaking News content */}
           <div>
             {(() => {
