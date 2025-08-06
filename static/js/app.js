@@ -191,8 +191,8 @@ const App = {
         // Update the header with current date
         this.updateDayViewHeader();
         
-        // Load weather data
-        this.loadWeatherData();
+        // Load weather data - COMMENTED OUT TO PRESERVE MOCK DATA
+        // this.loadWeatherData();
         
         // Load news data
         this.loadNewsData();
@@ -201,8 +201,8 @@ const App = {
         this.loadActivityData();
     },
     
-    // Load weather data
-    async loadWeatherData() {
+    // Load weather data - COMMENTED OUT TO PRESERVE MOCK DATA
+    /* async loadWeatherData() {
         const weatherContent = document.getElementById('weather-content');
         if (!weatherContent) return;
         
@@ -238,7 +238,7 @@ const App = {
             console.error('Failed to load weather data:', error);
             Utils.showError('weather-content', 'Failed to load weather data');
         }
-    },
+    }, */
     
     // Load news data
     async loadNewsData() {
