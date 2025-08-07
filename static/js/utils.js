@@ -147,22 +147,6 @@ const Utils = {
         }
     },
 
-    // Parse markdown-like text to simple HTML
-    simpleMarkdown(text) {
-        if (!text) return '';
-        
-        return text
-            // Bold text
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            // Italic text
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            // Code blocks
-            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-            // Inline code
-            .replace(/`(.*?)`/g, '<code>$1</code>')
-            // Line breaks
-            .replace(/\n/g, '<br>');
-    },
 
     // Truncate text with ellipsis
     truncateText(text, maxLength = 100) {

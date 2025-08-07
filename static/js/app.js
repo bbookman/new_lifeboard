@@ -288,27 +288,70 @@ const App = {
         try {
             const calendarData = await API.calendar.getDateData(this.currentDate);
             
-            // Check if we have Limitless data with markdown content
-            if (calendarData && calendarData.limitless && calendarData.limitless.has_data) {
-                const markdown = calendarData.limitless.markdown_content;
-                if (markdown && markdown.length > 0) {
-                    // Display markdown content as formatted text
-                    const formattedContent = markdown
-                        .replace(/^# (.+)/gm, '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>')
-                        .replace(/^## (.+)/gm, '<h4 class="text-md font-medium mt-3 mb-1">$1</h4>')
-                        .replace(/^### (.+)/gm, '<h5 class="text-sm font-medium mt-2 mb-1">$1</h5>')
-                        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                        .replace(/\n\n/g, '</p><p>')
-                        .replace(/\n/g, '<br>');
+            // Check if we have Limitless raw items data
+            if (calendarData && calendarData.limitless && calendarData.limitless.has_data && calendarData.limitless.raw_items) {
+                const rawItems = calendarData.limitless.raw_items;
+                
+                if (rawItems && rawItems.length > 0) {
+                    // Process and render lifelogs like a markdown document
+                    const lifelogsHtml = rawItems.map((item, index) => {
+                        let metadata = {};
+                        let sourceId = item.source_id || 'Unknown';
+                        let lifelogTitle = 'Untitled Lifelog';
+                        
+                        // Parse metadata to get lifelog data
+                        if (item.metadata) {
+                            try {
+                                metadata = typeof item.metadata === 'string' 
+                                    ? JSON.parse(item.metadata) 
+                                    : item.metadata;
+                                
+                                lifelogTitle = metadata.title || metadata.lifelog_title || lifelogTitle;
+                            } catch (e) {
+                                console.error('Error parsing metadata:', e);
+                            }
+                        }
+                        
+                        // Get the start and end times
+                        const startTime = metadata.start_time ? new Date(metadata.start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+                        const endTime = metadata.end_time ? new Date(metadata.end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+                        
+                        // Process markdown content to look like a markdown file
+                        let markdownContent = metadata.cleaned_markdown || metadata.markdown || item.content || '';
+                        
+                        // Render as structured markdown document
+                        const renderedContent = this.renderLifelogAsMarkdown(markdownContent);
+                        
+                        return `
+                            <div class="lifelog-document mb-8 bg-white border border-gray-200 rounded-lg shadow-sm">
+                                <div class="lifelog-header p-4 border-b border-gray-200 bg-gray-50">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <h3 class="lifelog-title text-lg font-semibold text-gray-900">${Utils.escapeHtml(lifelogTitle)}</h3>
+                                            <p class="lifelog-meta text-sm text-gray-600 mt-1">
+                                                ${startTime && endTime ? `${startTime} - ${endTime}` : ''}
+                                                ${sourceId ? ` • ID: ${Utils.escapeHtml(sourceId)}` : ''}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="lifelog-content p-6">
+                                    <div class="markdown-document">
+                                        ${renderedContent}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
                     
                     activityContent.innerHTML = `
-                        <div class="activity-markdown p-3">
-                            <p>${formattedContent}</p>
+                        <div class="lifelogs-container">
+                            <p class="text-sm text-gray-600 mb-6">Showing ${rawItems.length} lifelog${rawItems.length === 1 ? '' : 's'}:</p>
+                            ${lifelogsHtml}
                         </div>
                     `;
                 } else {
-                    Utils.showEmpty('activity-content', 'No activity content available for this date');
+                    Utils.showEmpty('activity-content', 'No lifelogs available for this date');
                 }
             } else {
                 Utils.showEmpty('activity-content', 'No activities recorded for this date');
@@ -316,6 +359,54 @@ const App = {
         } catch (error) {
             console.error('Failed to load activity data:', error);
             Utils.showError('activity-content', 'Failed to load activity data');
+        }
+    },
+    
+    // Render lifelog content as markdown using Marked.js with custom speaker pattern handling
+    renderLifelogAsMarkdown(content) {
+        if (!content) return '<p class="text-gray-500 italic">No content available</p>';
+        
+        // First, handle speaker patterns before passing to marked
+        // Speaker patterns: "Speaker Name [time]: content"
+        const lines = content.split('\n');
+        const processedLines = lines.map(line => {
+            const trimmedLine = line.trim();
+            
+            // Check for speaker patterns (Speaker Name [time]: content)
+            const speakerMatch = trimmedLine.match(/^([^[]+)\s*\[([^\]]+)\]:\s*(.+)$/);
+            if (speakerMatch) {
+                const speaker = speakerMatch[1].trim();
+                const time = speakerMatch[2].trim();
+                const words = speakerMatch[3].trim();
+                
+                // Convert to custom HTML that won't be processed by marked
+                return `<div class="speaker-line mb-3 pl-4 border-l-2 border-blue-300">
+                    <div class="speaker-info mb-1">
+                        <span class="speaker-name font-medium text-blue-700">${Utils.escapeHtml(speaker)}</span>
+                        <span class="speaker-time text-xs text-gray-500 ml-2">[${Utils.escapeHtml(time)}]</span>
+                    </div>
+                    <div class="speaker-content text-gray-800">${Utils.escapeHtml(words)}</div>
+                </div>`;
+            }
+            
+            return line;
+        });
+        
+        // Rejoin and render with marked
+        const processedContent = processedLines.join('\n');
+        
+        try {
+            // Use Marked.js to render markdown
+            const html = marked.parse(processedContent, {
+                breaks: true,  // Convert single line breaks to <br>
+                gfm: true      // Enable GitHub Flavored Markdown
+            });
+            
+            return html;
+        } catch (error) {
+            console.error('Error rendering markdown with Marked.js:', error);
+            // Fallback to simple text display if marked fails
+            return `<pre class="whitespace-pre-wrap text-gray-800">${Utils.escapeHtml(content)}</pre>`;
         }
     },
     
