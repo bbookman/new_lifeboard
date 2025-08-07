@@ -152,7 +152,17 @@ const Chat = {
         
         const messageText = document.createElement('div');
         messageText.className = 'message-text';
-        messageText.innerHTML = Utils.simpleMarkdown(Utils.escapeHtml(content));
+        
+        // Use Marked.js for markdown rendering in chat messages
+        try {
+            messageText.innerHTML = marked.parse(content, {
+                breaks: true,
+                gfm: true
+            });
+        } catch (error) {
+            console.error('Error rendering chat markdown:', error);
+            messageText.textContent = content;
+        }
         
         messageContent.appendChild(messageHeader);
         messageContent.appendChild(messageText);

@@ -212,6 +212,7 @@ async def get_enhanced_day_data(
             },
             "limitless": {
                 "markdown_content": markdown_content,
+                "raw_items": limitless_items,
                 "item_count": len(limitless_items),
                 "has_data": len(limitless_items) > 0 or bool(markdown_content)
             },

@@ -379,6 +379,230 @@ select:focus {
     line-height: 1.4;
 }
 
+.activity-id {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.activity-items {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.activity-content pre {
+    max-height: 200px;
+    overflow-y: auto;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+/* Markdown content styling for Marked.js output */
+.activity-markdown-content,
+.markdown-document,
+.message-text {
+    line-height: 1.6;
+    color: #374151;
+}
+
+.activity-markdown-content h1,
+.activity-markdown-content h2,
+.activity-markdown-content h3,
+.markdown-document h1,
+.markdown-document h2,
+.markdown-document h3,
+.message-text h1,
+.message-text h2,
+.message-text h3 {
+    color: #1f2937;
+    font-family: 'Playfair Display', serif;
+}
+
+.activity-markdown-content p,
+.markdown-document p,
+.message-text p {
+    margin-bottom: 1rem;
+}
+
+.activity-markdown-content strong,
+.markdown-document strong,
+.message-text strong {
+    color: #1f2937;
+    font-weight: 600;
+}
+
+.activity-markdown-content em,
+.markdown-document em,
+.message-text em {
+    font-style: italic;
+}
+
+.activity-markdown-content code,
+.markdown-document code,
+.message-text code {
+    background: #f3f4f6;
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875em;
+}
+
+.activity-markdown-content pre,
+.markdown-document pre,
+.message-text pre {
+    background: #f3f4f6;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875em;
+    line-height: 1.4;
+    margin: 1rem 0;
+}
+
+.activity-markdown-content pre code,
+.markdown-document pre code,
+.message-text pre code {
+    background: none;
+    padding: 0;
+}
+
+.activity-markdown-content a,
+.markdown-document a,
+.message-text a {
+    color: #3b82f6;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.activity-markdown-content a:hover,
+.markdown-document a:hover,
+.message-text a:hover {
+    color: #1d4ed8;
+    text-decoration: underline;
+}
+
+.activity-markdown-content blockquote,
+.markdown-document blockquote,
+.message-text blockquote {
+    border-left: 4px solid #d1d5db;
+    padding-left: 1rem;
+    margin: 1rem 0;
+    color: #6b7280;
+    font-style: italic;
+}
+
+.activity-markdown-content ul,
+.activity-markdown-content ol,
+.markdown-document ul,
+.markdown-document ol,
+.message-text ul,
+.message-text ol {
+    margin: 1rem 0;
+    padding-left: 2rem;
+}
+
+.activity-markdown-content li,
+.markdown-document li,
+.message-text li {
+    margin-bottom: 0.5rem;
+}
+
+/* Lifelog document styling - markdown-like appearance */
+.lifelog-document {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    max-width: none;
+}
+
+.lifelog-header {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.lifelog-title {
+    font-family: 'Playfair Display', serif;
+    color: #1e293b;
+}
+
+.lifelog-meta {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.markdown-document {
+    line-height: 1.7;
+    color: #374151;
+}
+
+.markdown-document h1 {
+    font-family: 'Playfair Display', serif;
+    color: #111827;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.markdown-document h2 {
+    font-family: 'Playfair Display', serif;
+    color: #1f2937;
+}
+
+.markdown-document h3 {
+    font-family: 'Playfair Display', serif;
+    color: #374151;
+}
+
+/* Speaker line styling */
+.speaker-line {
+    background: rgba(59, 130, 246, 0.02);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 8px 0;
+    border-left: 3px solid #3b82f6;
+}
+
+.speaker-name {
+    font-weight: 600;
+    color: #1d4ed8;
+}
+
+.speaker-time {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    color: #6b7280;
+    font-size: 0.75rem;
+}
+
+.speaker-content {
+    color: #111827;
+    margin-top: 4px;
+    line-height: 1.6;
+}
+
+/* Blockquote styling */
+.markdown-document blockquote {
+    background: rgba(107, 114, 128, 0.05);
+    border-radius: 4px;
+    margin: 16px 0;
+    padding: 12px 16px;
+}
+
+/* Lifelog container spacing */
+.lifelogs-container {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.lifelogs-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.lifelogs-container::-webkit-scrollbar-track {
+    background: #f3f4f6;
+}
+
+.lifelogs-container::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+}
+
+.lifelogs-container::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
 /* Weather forecast styling */
 .weather-forecast {
     display: grid;
