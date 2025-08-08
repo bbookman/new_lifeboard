@@ -255,6 +255,14 @@ h1, h2, h3, h4, h5, h6 {
     gap: 1rem;
 }
 
+/* Ensure navigation buttons are visible by default */
+#prev-date,
+#next-date {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
 .date-picker {
     padding: 0.5rem 0.75rem;
     border: 1px solid #e5e5e5;

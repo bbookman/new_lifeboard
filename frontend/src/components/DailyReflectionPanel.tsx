@@ -24,7 +24,7 @@ export const DailyReflectionPanel = ({
   return (
     <div className="space-y-6">
       <div className="border-b-2 border-blue-500 pb-2">
-        <h2 className="text-3xl font-bold text-gray-800">Daily Reflection</h2>
+        <h2 className="text-xl font-bold text-gray-800">Daily Reflection</h2>
       </div>
 
       <div>
@@ -37,7 +37,7 @@ export const DailyReflectionPanel = ({
         )}
 
         {!loading && !error && markdownContent && (
-          <div className="prose prose-lg max-w-none">
+          <div className="prose prose max-w-none">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdownContent}</ReactMarkdown>
           </div>
         )}

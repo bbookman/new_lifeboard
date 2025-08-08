@@ -5,7 +5,8 @@ __pycache__/
 .env
 .DS_store
 *.db
-supporting_documents/daily-digest-canvas
+
+
 logs/
 node_modules/
 *.db
