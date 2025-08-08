@@ -19,14 +19,11 @@ const App = {
         this.initDatePicker();
         this.initViews();
         
-        // Update day view header with initial date
-        this.updateDayViewHeader();
-        
         // Initialize chat
         Chat.init();
         
-        // Load initial data
-        this.loadInitialData();
+        // Load initial view and data
+        this.loadInitialView();
         
         console.log('Lifeboard Simple UI initialized successfully');
     },
@@ -36,10 +33,10 @@ const App = {
         const navButtons = document.querySelectorAll('.nav-button');
         
         navButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
+            button.addEventListener('click', async (e) => {
                 const view = button.dataset.view;
                 if (view) {
-                    this.switchView(view);
+                    await this.switchView(view);
                 }
             });
         });
@@ -80,8 +77,7 @@ const App = {
         this.initCalendarView();
         this.initSettingsView();
         
-        // Show initial view
-        this.switchView(this.currentView);
+        // Note: Initial view loading is now handled by loadInitialView()
     },
     
     // Initialize day view
@@ -131,22 +127,10 @@ const App = {
     },
     
     // Switch between views
-    switchView(viewName) {
+    async switchView(viewName) {
         console.log(`Switching to view: ${viewName}`);
         
-        // Hide all views
-        const views = document.querySelectorAll('.view-container');
-        views.forEach(view => {
-            view.style.display = 'none';
-        });
-        
-        // Show selected view
-        const targetView = document.getElementById(`${viewName}-view`);
-        if (targetView) {
-            targetView.style.display = 'block';
-        }
-        
-        // Update navigation
+        // Update navigation first
         const navButtons = document.querySelectorAll('.nav-button');
         navButtons.forEach(button => {
             button.classList.remove('active');
@@ -158,8 +142,27 @@ const App = {
         // Update current view
         this.currentView = viewName;
         
-        // Load view-specific data
-        this.loadViewData(viewName);
+        try {
+            // Load the template for the view
+            await TemplateLoader.loadTemplateIntoContainer(viewName);
+            
+            // After template is loaded, load view-specific data
+            await this.loadViewData(viewName);
+            
+        } catch (error) {
+            console.error(`Failed to switch to view ${viewName}:`, error);
+            
+            // Show error state in main content
+            const mainContent = document.getElementById('main-content');
+            if (mainContent) {
+                mainContent.innerHTML = `
+                    <div class="error-state">
+                        <p class="text-muted" style="color: #dc2626;">❌ Failed to load ${viewName} view</p>
+                        <p class="text-sm text-muted">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
     },
     
     // Load data for specific view
@@ -188,8 +191,14 @@ const App = {
     async loadDayViewData() {
         console.log(`Loading day view data for ${this.currentDate}`);
         
+        // Re-initialize date picker functionality after template load
+        this.initDatePicker();
+        
         // Update the header with current date
         this.updateDayViewHeader();
+        
+        // Update navigation button visibility
+        this.updateNavigationButtonVisibility();
         
         // Load weather data - COMMENTED OUT TO PRESERVE MOCK DATA
         // this.loadWeatherData();
@@ -414,6 +423,9 @@ const App = {
     async loadCalendarViewData() {
         console.log('Loading calendar view data');
         
+        // Re-initialize calendar navigation after template load
+        this.initCalendarView();
+        
         const currentDate = new Date(this.currentDate);
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
@@ -509,6 +521,9 @@ const App = {
     async loadSettingsViewData() {
         console.log('Loading settings view data');
         
+        // Re-initialize settings functionality after template load
+        this.initSettingsView();
+        
         // Load system information
         try {
             const systemInfo = await API.settings.getSystemInfo();
@@ -589,6 +604,9 @@ const App = {
             datePicker.value = dateString;
         }
         
+        // Update navigation button visibility
+        this.updateNavigationButtonVisibility();
+        
         // Update day view header with formatted date
         this.updateDayViewHeader();
         
@@ -598,6 +616,25 @@ const App = {
         }
         
         console.log(`Current date set to: ${dateString}`);
+    },
+
+    // Update navigation button visibility
+    updateNavigationButtonVisibility() {
+        const prevButton = document.getElementById('prev-date');
+        const nextButton = document.getElementById('next-date');
+        
+        if (prevButton && nextButton) {
+            const today = Utils.getTodayYYYYMMDD();
+            
+            // Always show both buttons by default
+            prevButton.style.display = '';
+            nextButton.style.display = '';
+            
+            // Hide next button only when current date is today
+            if (this.currentDate === today) {
+                nextButton.style.display = 'none';
+            }
+        }
     },
 
     // Update day view header with current date
@@ -613,12 +650,16 @@ const App = {
         }
     },
     
-    // Load initial data
-    async loadInitialData() {
-        console.log('Loading initial data...');
+    // Load initial view and data
+    async loadInitialView() {
+        console.log('Loading initial view...');
         
-        // Load data for current view
-        await this.loadViewData(this.currentView);
+        try {
+            // Load the initial view template
+            await this.switchView(this.currentView);
+        } catch (error) {
+            console.error('Failed to load initial view:', error);
+        }
     },
     
     // Sync data sources

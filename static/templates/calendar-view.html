@@ -1,0 +1,43 @@
+<!-- Calendar View Template -->
+<div id="calendar-view" class="view-container" style="display: none;">
+    <div class="newspaper-section-header">
+        <h2>Calendar</h2>
+        <p>Navigate through your digital history</p>
+    </div>
+    
+    <!-- Calendar Navigation -->
+    <div class="calendar-navigation mb-8">
+        <button id="prev-month" class="button button-outline">← Previous Month</button>
+        <h3 id="current-month" class="text-center">Loading...</h3>
+        <button id="next-month" class="button button-outline">Next Month →</button>
+    </div>
+    
+    <!-- Calendar Grid -->
+    <div class="calendar-container">
+        <div class="calendar-grid-header" id="calendar-header">
+            <!-- Day headers will be generated -->
+        </div>
+        
+        <div class="calendar-grid" id="calendar-grid">
+            <!-- Calendar days will be generated -->
+        </div>
+    </div>
+    
+    <!-- Calendar Legend -->
+    <div class="calendar-legend mt-4">
+        <div class="flex gap-4 justify-center">
+            <div class="legend-item">
+                <div class="legend-today"></div>
+                <span class="text-sm">Today</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-events"></div>
+                <span class="text-sm">Has Data</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-other"></div>
+                <span class="text-sm">Other Month</span>
+            </div>
+        </div>
+    </div>
+</div>

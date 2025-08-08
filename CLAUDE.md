@@ -283,6 +283,8 @@ Claude should:
 
 ## Claude Memories
 
+The project will never be run on a mobile device.  only design for desktop and laptop
+
 * Do not inspect or review supporting_documents directory unless directed to do so
 
 ```

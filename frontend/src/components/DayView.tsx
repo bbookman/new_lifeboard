@@ -261,49 +261,59 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
         </div>
       </div>
       
-      {/* Main content flexbox layout */}
-      <div className="flex gap-8">
-        {/* Left column - Daily Reflection (70% width) */}
-        <div className="flex-[5] border-r border-gray-200 pr-8">
-          <div className="space-y-6">
-            {/* Daily Reflection header */}
-            <div className="border-b-2 border-blue-500 pb-2">
-              <h2 className="text-3xl font-bold text-gray-800">Daily Reflection</h2>
-            </div>
-            
-            {/* Daily Reflection content */}
-            <div>
-              {loading && (
-                <div className="text-center py-8 text-gray-600">
-                  Loading day data...
-                </div>
-              )}
+      {/* Main content with adaptive layout based on content */}
+      <div className={`grid gap-8 ${
+        (loading || error || markdownContent)
+          ? 'grid-cols-1 lg:grid-cols-[2fr_1fr]'  // 2:1 ratio when reflection shows
+          : 'grid-cols-1 lg:grid-cols-[1fr]'      // Full width when no reflection
+      }`}>
+        {/* Daily Reflection - Show column for content, loading, or error states */}
+        {(loading || error || markdownContent) && (
+          <div className="border-r border-gray-200 pr-8">
+            <div className="space-y-6">
+              {/* Daily Reflection header */}
+              <div className="border-b-2 border-blue-500 pb-2">
+                <h2 className="text-3xl font-bold text-gray-800">Daily Reflection</h2>
+              </div>
               
-              {error && (
-                <div className="text-center py-8 text-red-600">
-                  {error}
-                </div>
-              )}
-              
-              {!loading && !error && !markdownContent && (
-                <div className="text-center py-8 text-gray-600">
-                  No reflection data found for {formatDate(currentDate)}
-                </div>
-              )}
-              
-              {!loading && !error && markdownContent && (
-                <div className="prose prose-lg max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {markdownContent}
-                  </ReactMarkdown>
-                </div>
-              )}
+              {/* Daily Reflection content */}
+              <div>
+                {loading && (
+                  <div className="text-center py-8 text-gray-600">
+                    Loading day data...
+                  </div>
+                )}
+                
+                {error && (
+                  <div className="text-center py-8 text-red-600">
+                    {error}
+                  </div>
+                )}
+                
+                {!loading && !error && !markdownContent && (
+                  <div className="text-center py-8 text-gray-600">
+                    No reflection data found for {formatDate(currentDate)}
+                  </div>
+                )}
+                
+                {!loading && !error && markdownContent && (
+                  <div className="prose prose-lg max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {markdownContent}
+                    </ReactMarkdown>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
         
-        {/* Right column - Breaking News (30% width) */}
-        <div className="flex-[7] space-y-6">
+        {/* Breaking News - Adaptive width based on reflection presence */}
+        <div className={`space-y-6 ${
+          (loading || error || markdownContent)
+            ? '' 
+            : 'max-w-4xl mx-auto'  // Center and limit width when full-width
+        }`}>
             {/* Breaking News header */}  
             <div className="border-b-2 border-red-500 pb-2">
               <h2 className="text-2xl font-bold text-gray-800">Breaking News</h2>

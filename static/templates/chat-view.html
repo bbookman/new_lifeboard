@@ -1,0 +1,44 @@
+<!-- Chat View Template -->
+<div id="chat-view" class="view-container" style="display: none;">
+    <div class="newspaper-section-header">
+        <h2>Chat with Your Data</h2>
+        <p>Ask questions about your conversations and activities</p>
+    </div>
+    
+    <!-- Chat Container -->
+    <div class="chat-container">
+        <!-- Chat Messages -->
+        <div class="chat-messages-container">
+            <div class="chat-messages" id="chat-messages">
+                <!-- Messages will be loaded here -->
+                <div class="chat-intro">
+                    <p class="text-muted text-center">Start a conversation to search through your personal data</p>
+                    
+                    <!-- Sample Questions -->
+                    <div class="sample-questions mt-4">
+                        <h4 class="text-center mb-4">Try asking:</h4>
+                        <button class="sample-question" data-question="What did I discuss about work this week?">
+                            What did I discuss about work this week?
+                        </button>
+                        <button class="sample-question" data-question="Show me conversations about travel plans">
+                            Show me conversations about travel plans
+                        </button>
+                        <button class="sample-question" data-question="What were the main topics in my recent calls?">
+                            What were the main topics in my recent calls?
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chat Input -->
+        <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+                <textarea id="chat-input" class="chat-input" placeholder="Ask about your conversations, activities, or any patterns in your data..." rows="3"></textarea>
+                <button id="send-button" class="button button-primary chat-send-button">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

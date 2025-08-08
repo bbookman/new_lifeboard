@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="/static/css/newspaper.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
-<bDody>
+<body>
     <!-- Main Container -->
     <div id="app" class="bg-background" style="min-height: 100vh;">
         
@@ -21,7 +21,7 @@
         <div class="newspaper-masthead" id="masthead">
             <div class="container">
                 <h1>Lifeboard</h1>
-                <p class="text-muted">Discovey, clarity, gratitude, and wonder</p>
+                <p class="text-muted">Discovery, clarity, gratitude, and wonder</p>
             </div>
         </div>
         
@@ -57,250 +57,11 @@
                 
                 <!-- Main Content -->
                 <div class="flex-1" id="main-content">
-                    
-                    <!-- Loading State -->
-                    <div id="loading-state" class="loading-state" style="display: none;">
+                    <!-- Templates will be loaded here dynamically -->
+                    <div class="loading-state">
                         <div class="loading-spinner"></div>
-                        <p>Loading...</p>
+                        <p>Loading application...</p>
                     </div>
-                    
-                    <!-- Day View -->
-                    <div id="day-view" class="view-container">
-                        <div class="newspaper-section-header">
-                            <h2 id="day-view-header"></h2>
-                        </div>
-                        
-                        <!-- Date Navigation -->
-                        <div class="date-navigation mb-8">
-                            <button id="prev-date" class="button button-outline">← Previous</button>
-                            <input type="date" id="date-picker" class="date-picker">
-                            <button id="next-date" class="button button-outline">Next →</button>
-                        </div>
-                        
-                        <!-- Day Content Grid -->
-                        <div class="grid lg:grid-cols-2 gap-6">
-                            <!-- Weather Section -->
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3 class="card-title">Weather</h3>
-                                </div>
-                                <div class="card-content" id="weather-content">
-                                    <div class="weather-summary">
-                                        <div class="weather-main">
-                                            <div class="weather-temp">
-                                                <span>72°</span>
-                                                <span class="temp-high">/ 75°</span>
-                                                <span class="temp-low">/ 65°</span>
-                                            </div>
-                                            <div class="weather-desc">
-                                                <p class="font-bold weather-condition">Partly Cloudy</p>
-                                                <p class="text-sm text-muted">Feels like 74°</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="grid grid-cols-5 gap-4 mt-4 text-center">
-                                        <div>
-                                            <p class="font-bold weather-day-name">Mon</p>
-                                            <p class="text-2xl">☀️</p>
-                                            <p class="text-sm weather-forecast-temp">75°</p>
-                                        </div>
-                                        <div>
-                                            <p class="font-bold weather-day-name">Tue</p>
-                                            <p class="text-2xl">🌦️</p>
-                                            <p class="text-sm weather-forecast-temp">72°</p>
-                                        </div>
-                                        <div>
-                                            <p class="font-bold weather-day-name">Wed</p>
-                                            <p class="text-2xl">☁️</p>
-                                            <p class="text-sm weather-forecast-temp">70°</p>
-                                        </div>
-                                        <div>
-                                            <p class="font-bold weather-day-name">Thu</p>
-                                            <p class="text-2xl">🌧️</p>
-                                            <p class="text-sm weather-forecast-temp">68°</p>
-                                        </div>
-                                        <div>
-                                            <p class="font-bold weather-day-name">Fri</p>
-                                            <p class="text-2xl">☀️</p>
-                                            <p class="text-sm weather-forecast-temp">73°</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- News Section -->
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3 class="card-title">News Headlines</h3>
-                                </div>
-                                <div class="card-content" id="news-content">
-                                    <p class="text-muted">Loading news data...</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Activity Summary -->
-                        <div class="mt-8">
-                            <div class="newspaper-section-header">
-                                <h3>Limitless</h3>
-                            </div>
-                            
-                            <div class="card">
-                                <div class="card-content" id="activity-content">
-                                    <p class="text-muted">Loading activities...</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Calendar View -->
-                    <div id="calendar-view" class="view-container" style="display: none;">
-                        <div class="newspaper-section-header">
-                            <h2>Calendar</h2>
-                            <p>Navigate through your digital history</p>
-                        </div>
-                        
-                        <!-- Calendar Navigation -->
-                        <div class="calendar-navigation mb-8">
-                            <button id="prev-month" class="button button-outline">← Previous Month</button>
-                            <h3 id="current-month" class="text-center">Loading...</h3>
-                            <button id="next-month" class="button button-outline">Next Month →</button>
-                        </div>
-                        
-                        <!-- Calendar Grid -->
-                        <div class="calendar-container">
-                            <div class="calendar-grid-header" id="calendar-header">
-                                <!-- Day headers will be generated -->
-                            </div>
-                            
-                            <div class="calendar-grid" id="calendar-grid">
-                                <!-- Calendar days will be generated -->
-                            </div>
-                        </div>
-                        
-                        <!-- Calendar Legend -->
-                        <div class="calendar-legend mt-4">
-                            <div class="flex gap-4 justify-center">
-                                <div class="legend-item">
-                                    <div class="legend-today"></div>
-                                    <span class="text-sm">Today</span>
-                                </div>
-                                <div class="legend-item">
-                                    <div class="legend-events"></div>
-                                    <span class="text-sm">Has Data</span>
-                                </div>
-                                <div class="legend-item">
-                                    <div class="legend-other"></div>
-                                    <span class="text-sm">Other Month</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Chat View -->
-                    <div id="chat-view" class="view-container" style="display: none;">
-                        <div class="newspaper-section-header">
-                            <h2>Chat with Your Data</h2>
-                            <p>Ask questions about your conversations and activities</p>
-                        </div>
-                        
-                        <!-- Chat Container -->
-                        <div class="chat-container">
-                            <!-- Chat Messages -->
-                            <div class="chat-messages-container">
-                                <div class="chat-messages" id="chat-messages">
-                                    <!-- Messages will be loaded here -->
-                                    <div class="chat-intro">
-                                        <p class="text-muted text-center">Start a conversation to search through your personal data</p>
-                                        
-                                        <!-- Sample Questions -->
-                                        <div class="sample-questions mt-4">
-                                            <h4 class="text-center mb-4">Try asking:</h4>
-                                            <button class="sample-question" data-question="What did I discuss about work this week?">
-                                                What did I discuss about work this week?
-                                            </button>
-                                            <button class="sample-question" data-question="Show me conversations about travel plans">
-                                                Show me conversations about travel plans
-                                            </button>
-                                            <button class="sample-question" data-question="What were the main topics in my recent calls?">
-                                                What were the main topics in my recent calls?
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Chat Input -->
-                            <div class="chat-input-container">
-                                <div class="chat-input-wrapper">
-                                    <textarea id="chat-input" class="chat-input" placeholder="Ask about your conversations, activities, or any patterns in your data..." rows="3"></textarea>
-                                    <button id="send-button" class="button button-primary chat-send-button">
-                                        Send
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Settings View -->
-                    <div id="settings-view" class="view-container" style="display: none;">
-                        <div class="newspaper-section-header">
-                            <h2>Settings</h2>
-                            <p>Configure your Lifeboard experience</p>
-                        </div>
-                        
-                        <!-- Settings Sections -->
-                        <div class="settings-sections">
-                            
-                            <!-- System Information -->
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3 class="card-title">System Information</h3>
-                                </div>
-                                <div class="card-content">
-                                    <div class="system-info" id="system-info">
-                                        <div class="info-item">
-                                            <span class="info-label">Version</span>
-                                            <span class="info-value">1.0.0</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label">Interface</span>
-                                            <span class="info-value">Simple HTML</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="info-label">Status</span>
-                                            <span class="info-value">Running</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Data Sources -->
-                            <div class="card mt-6">
-                                <div class="card-header">
-                                    <h3 class="card-title">Data Sources</h3>
-                                </div>
-                                <div class="card-content">
-                                    <div id="data-sources-info">
-                                        <p class="text-muted">Loading data source information...</p>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Actions -->
-                            <div class="settings-actions mt-6">
-                                <div class="flex gap-4">
-                                    <button id="sync-data" class="button button-primary">
-                                        Sync Data Sources
-                                    </button>
-                                    <button id="clear-cache" class="button button-outline">
-                                        Clear Cache
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
                 </div>
             </div>
         </div>
@@ -313,6 +74,7 @@
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/api.js"></script>
     <script src="/static/js/chat.js"></script>
+    <script src="/static/js/template-loader.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>
