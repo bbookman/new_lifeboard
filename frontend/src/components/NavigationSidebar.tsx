@@ -19,25 +19,34 @@ export const NavigationSidebar = ({
   className
 }: NavigationSidebarProps) => {
   return (
-    <nav className={`nav-sidebar ${className || ''}`}>
-      {items.map((item) => (
-        <button
-          key={item.id}
-          className={`nav-button ${activeItem === item.id ? 'active' : ''}`}
-          onClick={() => onItemClick(item)}
-          title={item.label}
-        >
-          {item.icon && (
-            <span
-              role="img"
-              aria-label={item.label}
+    <nav className={`border-b border-newspaper-divider bg-background ${className || ''}`}>
+      <div className="container mx-auto px-4">
+        <div className="flex space-x-8 py-4">
+          {items.map((item) => (
+            <button
+              key={item.id}
+              className={`nav-horizontal-button font-body text-sm transition-colors ${
+                activeItem === item.id 
+                  ? 'text-newspaper-masthead font-semibold border-b-2 border-news-accent' 
+                  : 'text-newspaper-byline hover:text-newspaper-headline'
+              }`}
+              onClick={() => onItemClick(item)}
+              title={item.label}
             >
-              {item.icon}
-            </span>
-          )}
-          <span className="nav-label">{item.label}</span>
-        </button>
-      ))}
+              {item.icon && (
+                <span
+                  role="img"
+                  aria-label={item.label}
+                  className="mr-2"
+                >
+                  {item.icon}
+                </span>
+              )}
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
     </nav>
   );
 };
