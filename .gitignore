@@ -6,7 +6,7 @@ __pycache__/
 .DS_store
 *.db
 
-
+daily-digest-canvas/
 logs/
 node_modules/
 *.db

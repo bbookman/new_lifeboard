@@ -1534,3 +1534,95 @@ h1, h2, h3, h4, h5, h6 {
     page-break-inside: avoid;
   }
 }
+
+/* ============================================================================
+   CUSTOM REFLECTION PROSE STYLES - SMALLER SIZES
+   ============================================================================ */
+
+/* Custom prose styles for Daily Reflection with smaller font sizes */
+.reflection-prose {
+  color: #1a1a1a;
+  max-width: none;
+  line-height: 1.6;
+  font-size: 0.75rem; /* 12px base */
+}
+
+.reflection-prose h1 {
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 700 !important;
+  font-size: 1.125rem !important; /* 18px */
+  color: #1a1a1a !important;
+  margin-top: 0 !important;
+  margin-bottom: 0.75rem !important;
+  line-height: 1.3 !important;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+.reflection-prose h2 {
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 600 !important;
+  font-size: 0.875rem !important; /* 14px */
+  color: #1a1a1a !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 0.5rem !important;
+  line-height: 1.3 !important;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+.reflection-prose h3 {
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important; /* 12px */
+  color: #1a1a1a !important;
+  margin-top: 1.25rem !important;
+  margin-bottom: 0.5rem !important;
+  line-height: 1.3 !important;
+}
+
+.reflection-prose p {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 0.75rem !important; /* 12px */
+  color: #374151 !important; /* muted gray like newspaper-byline */
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+  line-height: 1.6 !important;
+}
+
+.reflection-prose em {
+  font-size: 0.6875rem !important; /* 11px for timestamps */
+  color: #6b7280 !important;
+  display: block !important;
+  margin: 0.5rem 0 !important;
+}
+
+.reflection-prose strong {
+  font-weight: 600 !important;
+  font-size: inherit !important;
+}
+
+.reflection-prose ul,
+.reflection-prose ol {
+  font-size: 0.75rem !important;
+  margin: 0.75rem 0 !important;
+  padding-left: 1.25rem !important;
+}
+
+.reflection-prose li {
+  margin: 0.25rem 0 !important;
+  line-height: 1.6 !important;
+}
+
+.reflection-prose code {
+  font-size: 0.6875rem !important;
+}
+
+.reflection-prose table {
+  font-size: 0.75rem !important;
+}
+
+.reflection-prose th,
+.reflection-prose td {
+  font-size: 0.75rem !important;
+}
