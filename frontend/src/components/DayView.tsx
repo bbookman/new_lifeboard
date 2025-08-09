@@ -273,7 +273,7 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
             <div className="space-y-6">
               {/* Daily Reflection header */}
               <div className="border-b-2 border-blue-500 pb-2">
-                <h2 className="text-3xl font-bold text-gray-800">Daily Reflection</h2>
+                <h2 className="text-2xl font-bold text-gray-800">Daily Reflection</h2>
               </div>
               
               {/* Daily Reflection content */}

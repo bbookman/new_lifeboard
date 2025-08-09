@@ -37,7 +37,7 @@ export const DailyReflectionPanel = ({
         )}
 
         {!loading && !error && markdownContent && (
-          <div className="prose prose max-w-none">
+          <div className="reflection-prose max-w-none">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdownContent}</ReactMarkdown>
           </div>
         )}
