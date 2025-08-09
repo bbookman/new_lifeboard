@@ -1,58 +1,127 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Basic reset and newspaper styling */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Newspaper theme - cream background with deep charcoal text */
+    --background: 43 13% 97%;
+    --foreground: 210 11% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 11% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 11% 15%;
+
+    /* Deep newspaper ink color */
+    --primary: 210 11% 15%;
+    --primary-foreground: 43 13% 97%;
+
+    /* Light gray for secondary elements */
+    --secondary: 210 14% 93%;
+    --secondary-foreground: 210 11% 15%;
+
+    --muted: 210 14% 93%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 14% 93%;
+    --accent-foreground: 210 11% 15%;
+
+    /* Red for breaking news */
+    --destructive: 0 65% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 20% 88%;
+    --input: 215 20% 88%;
+    --ring: 210 11% 15%;
+
+    /* Newspaper-specific colors */
+    --newspaper-masthead: 210 11% 15%;
+    --newspaper-headline: 210 11% 15%;
+    --newspaper-byline: 215 16% 47%;
+    --newspaper-divider: 215 20% 80%;
+    
+    /* Section colors */
+    --social-accent: 213 94% 68%;
+    --news-accent: 0 65% 51%;
+    --music-accent: 120 39% 54%;
+    --photo-accent: 280 65% 60%;
+
+    /* Gradients */
+    --gradient-masthead: linear-gradient(135deg, hsl(210 11% 15%), hsl(210 11% 25%));
+    --gradient-section: linear-gradient(180deg, hsl(0 0% 100%), hsl(210 14% 98%));
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
 }
 
-body {
-  background-color: #fcfaf8;
-  color: #1a1a1a;
-  font-family: 'Inter', sans-serif;
-  line-height: 1.6;
-  margin: 0;
-}
+@layer base {
+  * {
+    @apply border-border;
+  }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Playfair Display', serif;
-  color: #1a1a1a;
-} 
-
-/* Newspaper-specific styling */
-.newspaper-masthead {
-  background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
-  color: white;
-  padding: 2rem 0;
-  margin-bottom: 2rem;
-}
-
-.newspaper-masthead h1 {
-  font-size: 4rem;
-  font-weight: 900;
-  text-align: center;
-  letter-spacing: -0.02em;
-  margin-bottom: 0.5rem;
-  color: white;
-}
-
-.newspaper-section-header {
-  border-bottom: 2px solid #ddd;
-  padding-bottom: 0.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.newspaper-section-header h2 {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #1a1a1a;
-}
-
-.newspaper-section-header p {
-  color: #666;
-  font-size: 0.875rem;
-  margin-top: 0.25rem;
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
 /* Layout */
