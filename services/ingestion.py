@@ -62,7 +62,12 @@ class IngestionService(BaseService):
         
         # Initialize processors
         self.processors: Dict[str, BaseProcessor] = {
-            "limitless": LimitlessProcessor(enable_segmentation=True)
+            "limitless": LimitlessProcessor(
+                enable_segmentation=True, 
+                enable_markdown_generation=True,
+                enable_semantic_deduplication=True,
+                embedding_service=embedding_service
+            )
         }
         self.default_processor = BaseProcessor()
         

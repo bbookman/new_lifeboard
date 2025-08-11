@@ -163,6 +163,164 @@ class WeatherTableMigration(BaseMigration):
 
 
 
+class TwoKeyMetadataMigration(BaseMigration):
+    """Migrate to two-key metadata structure and add semantic processing status"""
+    
+    @property
+    def version(self) -> str:
+        return "007_two_key_metadata"
+    
+    @property
+    def description(self) -> str:
+        return "Migrate to two-key metadata structure (original_response + processed_response)"
+    
+    def up(self, conn: sqlite3.Connection) -> None:
+        """Apply two-key metadata migration"""
+        import json
+        from datetime import datetime
+        
+        logger.info("Starting two-key metadata migration...")
+        
+        # Add new columns for semantic processing status tracking
+        try:
+            conn.execute("ALTER TABLE data_items ADD COLUMN semantic_status TEXT DEFAULT 'pending'")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+            
+        try:
+            conn.execute("ALTER TABLE data_items ADD COLUMN semantic_processed_at TIMESTAMP")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+            
+        try:
+            conn.execute("ALTER TABLE data_items ADD COLUMN processing_priority INTEGER DEFAULT 1")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+        
+        # Create indexes for efficient status queries
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_status_date ON data_items(semantic_status, days_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_processed_at ON data_items(semantic_processed_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_queue ON data_items(semantic_status, processing_priority, days_date, created_at)")
+        
+        # Migrate existing metadata structure
+        logger.info("Migrating existing metadata to two-key structure...")
+        
+        cursor = conn.execute("SELECT id, metadata FROM data_items WHERE namespace = 'limitless' AND metadata IS NOT NULL")
+        rows = cursor.fetchall()
+        
+        migrated_count = 0
+        error_count = 0
+        
+        for row in rows:
+            try:
+                # Parse existing metadata
+                old_metadata = json.loads(row['metadata']) if row['metadata'] else {}
+                
+                # Create new two-key structure
+                new_metadata = self._migrate_metadata_to_two_key(old_metadata)
+                priority = self._determine_priority(old_metadata)
+                
+                # Update record with new structure
+                conn.execute("""
+                    UPDATE data_items 
+                    SET metadata = ?, semantic_status = 'pending', processing_priority = ? 
+                    WHERE id = ?
+                """, (json.dumps(new_metadata), priority, row['id']))
+                
+                migrated_count += 1
+                
+                if migrated_count % 100 == 0:
+                    logger.info(f"Migrated {migrated_count} records...")
+                    
+            except Exception as e:
+                logger.error(f"Error migrating record {row['id']}: {e}")
+                error_count += 1
+                continue
+        
+        logger.info(f"Migration completed: {migrated_count} records migrated, {error_count} errors")
+    
+    def _migrate_metadata_to_two_key(self, old_metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert old mixed metadata structure to clean two-key architecture"""
+        # Extract original Limitless API response
+        original_lifelog = old_metadata.get('original_lifelog', {})
+        
+        # Create processed response from existing processed fields
+        processed_response = {
+            # Processing metadata
+            'processing_history': old_metadata.get('processing_history', []),
+            'semantic_metadata': {'processed': False},  # Will be updated when semantic processing runs
+            
+            # Basic extracted fields (from original processors)
+            'title': old_metadata.get('title'),
+            'start_time': old_metadata.get('start_time'),
+            'end_time': old_metadata.get('end_time'),
+            'is_starred': old_metadata.get('is_starred', False),
+            'updated_at': old_metadata.get('updated_at'),
+            'speakers': old_metadata.get('speakers', []),
+            'content_types': old_metadata.get('content_types', []),
+            'has_markdown': old_metadata.get('has_markdown', False),
+            'node_count': old_metadata.get('node_count', 0),
+            
+            # Content statistics
+            'content_stats': old_metadata.get('content_stats', {}),
+            'duration_seconds': old_metadata.get('duration_seconds'),
+            'duration_minutes': old_metadata.get('duration_minutes'),
+            'conversation_metadata': old_metadata.get('conversation_metadata', {}),
+            
+            # Segmentation data
+            'segmentation': old_metadata.get('segmentation', {}),
+            
+            # Cleaned content (if exists)
+            'cleaned_markdown': old_metadata.get('cleaned_markdown'),
+            
+            # Semantic deduplication placeholders (will be populated when processing runs)
+            'display_conversation': [],
+            'semantic_clusters': {}
+        }
+        
+        # Remove None values from processed_response
+        processed_response = {k: v for k, v in processed_response.items() if v is not None}
+        
+        # Create new two-key structure
+        return {
+            'original_response': original_lifelog,
+            'processed_response': processed_response
+        }
+    
+    def _determine_priority(self, old_metadata: Dict[str, Any]) -> int:
+        """Determine processing priority based on metadata"""
+        from datetime import datetime, timezone, timedelta
+        
+        # Try to get start time for priority calculation
+        start_time_str = old_metadata.get('start_time')
+        if not start_time_str:
+            return 1  # Normal priority for conversations without timestamps
+        
+        try:
+            # Parse start time
+            if start_time_str.endswith('Z'):
+                start_time_str = start_time_str.replace('Z', '+00:00')
+            
+            start_time = datetime.fromisoformat(start_time_str)
+            now = datetime.now(timezone.utc)
+            
+            # Calculate age
+            age = now - start_time
+            
+            if age <= timedelta(days=2):
+                return 3  # Urgent: today/yesterday
+            elif age <= timedelta(days=7):
+                return 2  # High: this week
+            else:
+                return 1  # Normal: older
+                
+        except Exception:
+            return 1  # Default to normal priority if date parsing fails
+
+
 class MigrationRunner:
     """Handles database migration execution"""
     
@@ -173,6 +331,7 @@ class MigrationRunner:
             IndexesMigration(),
             ChatMessagesMigration(),
             WeatherTableMigration(),
+            TwoKeyMetadataMigration(),
         ]
     
     @contextmanager

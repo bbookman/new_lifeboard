@@ -197,7 +197,13 @@ class SemanticDeduplicationProcessor(BaseProcessor):
         lines = []
         
         for item in items:
-            original_lifelog = item.metadata.get('original_lifelog', {})
+            # Handle both old and new metadata structure
+            if 'original_response' in item.metadata:
+                # New two-key structure
+                original_lifelog = item.metadata.get('original_response', {})
+            else:
+                # Legacy structure
+                original_lifelog = item.metadata.get('original_lifelog', {})
             contents = original_lifelog.get('contents', [])
             
             for node in contents:
@@ -436,7 +442,13 @@ class SemanticDeduplicationProcessor(BaseProcessor):
         processed_items = []
         
         for item in items:
-            original_lifelog = item.metadata.get('original_lifelog', {})
+            # Handle both old and new metadata structure
+            if 'original_response' in item.metadata:
+                # New two-key structure
+                original_lifelog = item.metadata.get('original_response', {})
+            else:
+                # Legacy structure
+                original_lifelog = item.metadata.get('original_lifelog', {})
             contents = original_lifelog.get('contents', [])
             
             display_nodes = []
@@ -504,17 +516,32 @@ class SemanticDeduplicationProcessor(BaseProcessor):
                     "confidence": cluster.confidence_score
                 }
             
-            # Update item metadata
-            item.metadata['display_conversation'] = display_nodes
-            item.metadata['semantic_clusters'] = cluster_metadata
-            item.metadata['semantic_metadata'] = {
-                "processed": True,
-                "total_lines_analyzed": len(contents),
-                "clustered_lines": len([n for n in display_nodes if n.get('is_deduplicated')]),
-                "unique_themes": list(set(c['theme'] for c in cluster_metadata.values())),
-                "semantic_density": len(display_nodes) / len(contents) if contents else 1.0,
-                "clusters_found": len(used_clusters)
-            }
+            # Update item metadata - handle both old and new structure
+            if 'processed_response' in item.metadata:
+                # New two-key structure - update processed_response
+                processed = item.metadata['processed_response']
+                processed['display_conversation'] = display_nodes
+                processed['semantic_clusters'] = cluster_metadata
+                processed['semantic_metadata'] = {
+                    "processed": True,
+                    "total_lines_analyzed": len(contents),
+                    "clustered_lines": len([n for n in display_nodes if n.get('is_deduplicated')]),
+                    "unique_themes": list(set(c['theme'] for c in cluster_metadata.values())),
+                    "semantic_density": len(display_nodes) / len(contents) if contents else 1.0,
+                    "clusters_found": len(used_clusters)
+                }
+            else:
+                # Legacy structure - update directly
+                item.metadata['display_conversation'] = display_nodes
+                item.metadata['semantic_clusters'] = cluster_metadata
+                item.metadata['semantic_metadata'] = {
+                    "processed": True,
+                    "total_lines_analyzed": len(contents),
+                    "clustered_lines": len([n for n in display_nodes if n.get('is_deduplicated')]),
+                    "unique_themes": list(set(c['theme'] for c in cluster_metadata.values())),
+                    "semantic_density": len(display_nodes) / len(contents) if contents else 1.0,
+                    "clusters_found": len(used_clusters)
+                }
             
             processed_items.append(item)
         

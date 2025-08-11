@@ -121,6 +121,10 @@ h1, h2, h3, h4, h5, h6 {
     overflow: hidden;
 }
 
+.card-tall {
+    min-height: 500px; /* Approximately 3x the standard card height */
+}
+
 .card-header {
     padding: 1.5rem;
     border-bottom: 1px solid #f0f0f0;
@@ -128,6 +132,105 @@ h1, h2, h3, h4, h5, h6 {
 
 .card-content {
     padding: 1.5rem;
+}
+
+.scrollable-content {
+    max-height: 420px; /* Leave room for header in tall cards */
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.scrollable-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.scrollable-content::-webkit-scrollbar-track {
+    background: #f3f4f6;
+    border-radius: 3px;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+/* Summary items styling */
+.summary-item {
+    border-left: 3px solid #3b82f6;
+    background-color: #f8fafc;
+    border-radius: 0.375rem;
+}
+
+.summary-header h4 {
+    font-family: 'Playfair Display', serif;
+    color: #1f2937;
+}
+
+.summary-content h3 {
+    font-family: 'Playfair Display', serif;
+    color: #111827;
+}
+
+.summary-content h4 {
+    font-family: 'Playfair Display', serif;
+    color: #374151;
+}
+
+/* Utility classes for JavaScript-generated content */
+.border-l-3 {
+    border-left-width: 3px;
+}
+
+.border-blue-300 {
+    border-left-color: #93c5fd;
+}
+
+.bg-blue-50 {
+    background-color: #eff6ff;
+}
+
+.p-3 {
+    padding: 0.75rem;
+}
+
+.text-xs {
+    font-size: 0.75rem;
+}
+
+.text-gray-500 {
+    color: #6b7280;
+}
+
+.text-gray-700 {
+    color: #374151;
+}
+
+.text-gray-800 {
+    color: #1f2937;
+}
+
+.text-gray-900 {
+    color: #111827;
+}
+
+.font-medium {
+    font-weight: 500;
+}
+
+.font-semibold {
+    font-weight: 600;
+}
+
+.mt-2 {
+    margin-top: 0.5rem;
+}
+
+.mt-3 {
+    margin-top: 0.75rem;
 }
 
 .card-title {

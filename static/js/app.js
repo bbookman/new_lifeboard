@@ -203,8 +203,8 @@ const App = {
         // Load weather data - COMMENTED OUT TO PRESERVE MOCK DATA
         // this.loadWeatherData();
         
-        // Load news data
-        this.loadNewsData();
+        // Load summaries data
+        this.loadSummariesData();
         
         // Load activity data
         this.loadActivityData();
@@ -285,6 +285,112 @@ const App = {
             console.error('Failed to load news data:', error);
             Utils.showError('news-content', 'Failed to load news data');
         }
+    },
+    
+    // Load summaries data
+    async loadSummariesData() {
+        const summariesContent = document.getElementById('summaries-content');
+        if (!summariesContent) return;
+        
+        Utils.showLoading('summaries-content', 'Loading summaries...');
+        
+        try {
+            const calendarData = await API.calendar.getDateData(this.currentDate);
+            
+            // Look for summaries data in the response
+            let summaries = [];
+            
+            // Check if we have Limitless data with summaries
+            if (calendarData && calendarData.limitless && calendarData.limitless.has_data && calendarData.limitless.raw_items) {
+                const rawItems = calendarData.limitless.raw_items;
+                
+                // Filter for items that have heading1 or heading2 content
+                summaries = rawItems.filter(item => {
+                    if (!item.content) return false;
+                    
+                    // Check if content contains heading1 or heading2 patterns
+                    const content = item.content.toLowerCase();
+                    return content.includes('# ') || content.includes('## ') || 
+                           (item.metadata && 
+                            (JSON.stringify(item.metadata).toLowerCase().includes('heading1') ||
+                             JSON.stringify(item.metadata).toLowerCase().includes('heading2')));
+                }).map(item => {
+                    let metadata = {};
+                    try {
+                        metadata = typeof item.metadata === 'string' 
+                            ? JSON.parse(item.metadata) 
+                            : item.metadata || {};
+                    } catch (e) {
+                        console.error('Error parsing metadata:', e);
+                    }
+                    
+                    return {
+                        title: metadata.title || metadata.lifelog_title || 'Untitled Summary',
+                        content: item.content,
+                        cleaned_content: metadata.cleaned_markdown || metadata.markdown || item.content,
+                        source_id: item.source_id,
+                        start_time: metadata.start_time,
+                        end_time: metadata.end_time
+                    };
+                });
+            }
+            
+            if (summaries.length > 0) {
+                const summariesHtml = summaries.map(summary => {
+                    // Extract headings from content
+                    const headingContent = this.extractHeadingContent(summary.cleaned_content || summary.content);
+                    
+                    const startTime = summary.start_time ? new Date(summary.start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+                    const endTime = summary.end_time ? new Date(summary.end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+                    
+                    return `
+                        <div class="summary-item mb-4 p-3 border-l-3 border-blue-300 bg-blue-50">
+                            <div class="summary-header mb-2">
+                                <h4 class="font-semibold text-gray-900">${Utils.escapeHtml(summary.title)}</h4>
+                                ${startTime && endTime ? `<p class="text-xs text-gray-500">${startTime} - ${endTime}</p>` : ''}
+                            </div>
+                            <div class="summary-content text-gray-800">
+                                ${headingContent}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                summariesContent.innerHTML = summariesHtml;
+            } else {
+                Utils.showEmpty('summaries-content', 'No summaries with headings available for this date');
+            }
+        } catch (error) {
+            console.error('Failed to load summaries data:', error);
+            Utils.showError('summaries-content', 'Failed to load summaries data');
+        }
+    },
+    
+    // Extract heading content from markdown/text
+    extractHeadingContent(content) {
+        if (!content) return '<p class="text-gray-500 italic">No content available</p>';
+        
+        const lines = content.split('\n');
+        const headingLines = lines.filter(line => {
+            const trimmed = line.trim();
+            return trimmed.startsWith('# ') || trimmed.startsWith('## ');
+        });
+        
+        if (headingLines.length === 0) {
+            // If no markdown headings, show first few lines as summary
+            const preview = lines.slice(0, 3).join(' ').trim();
+            return `<p>${Utils.escapeHtml(preview.substring(0, 200))}${preview.length > 200 ? '...' : ''}</p>`;
+        }
+        
+        return headingLines.map(line => {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('## ')) {
+                return `<h4 class="font-medium text-gray-700 mt-2">${Utils.escapeHtml(trimmed.substring(3))}</h4>`;
+            } else if (trimmed.startsWith('# ')) {
+                return `<h3 class="font-semibold text-gray-900 mt-3">${Utils.escapeHtml(trimmed.substring(2))}</h3>`;
+            }
+            return '';
+        }).join('');
     },
     
     // Load activity data
