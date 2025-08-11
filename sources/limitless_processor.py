@@ -670,13 +670,15 @@ class LimitlessProcessor:
                 # Continue with other processors
                 continue
         
-        # Note: Semantic deduplication requires batch processing
+        # Note: Semantic deduplication requires batch processing for full effectiveness
         # Single items will be processed without cross-conversation deduplication
+        # For optimal semantic deduplication, use process_batch() instead
         if self.enable_semantic_deduplication:
             try:
                 processed_item = self.semantic_processor.process(processed_item)
             except Exception as e:
-                logger.error(f"Error in semantic deduplication processor: {e}")
+                logger.debug(f"Semantic deduplication skipped for single item: {e}")
+                # Continue without semantic deduplication for single items
         
         return processed_item
     

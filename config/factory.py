@@ -214,3 +214,22 @@ def create_production_config() -> AppConfig:
 def get_config() -> AppConfig:
     """Get configuration for the application (defaults to production config)"""
     return create_production_config()
+
+
+class ConfigFactory:
+    """Factory class for creating application configuration instances"""
+    
+    @staticmethod
+    def create_config() -> AppConfig:
+        """Create configuration instance (defaults to production config)"""
+        return create_production_config()
+    
+    @staticmethod
+    def create_production_config() -> AppConfig:
+        """Create production configuration from environment"""
+        return create_production_config()
+    
+    @staticmethod
+    def create_test_config(temp_dir: str = None) -> AppConfig:
+        """Create configuration for testing"""
+        return create_test_config(temp_dir)

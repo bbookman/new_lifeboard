@@ -1,5 +1,5 @@
 # Lifeboard Development Log
-Updated August 5, 2025
+Updated August 11, 2025
 
 ## Phase Status Overview
 
@@ -17,17 +17,95 @@ Updated August 5, 2025
 - ✅ **Phase 12: Daily Digest UI with React & Vite** (COMPLETED)
 - ✅ **Phase 13: Modern React Frontend Implementation** (COMPLETED)
 - ✅ **Phase 14: Unified Data Architecture Implementation** (COMPLETED)
+- ✅ **Phase 15: Clean Up Crew - Background Processing & Real-Time Updates** (COMPLETED)
 - ✅ **Configuration Simplification: AUTO_SYNC_ENABLED Removal** (COMPLETED)
 
 
 ---
 
-## Implementation Status: 170+ Tasks Completed ✅
+## Implementation Status: 180+ Tasks Completed ✅
 
-**Test Coverage:** 401+ tests across all implemented phases (note: test review pending for Phase 13 frontend).
+**Test Coverage:** 420+ tests across all implemented phases (note: test review pending for Phase 13 frontend).
 **Code Quality:** Comprehensive code smell reduction with standardized patterns and dedicated data source architecture.
 **Frontend Architecture:** Modern React + TypeScript + Vite implementation with real API integration.
 **Configuration Simplification:** Always-on sync behavior with simplified configuration management.
+
+---
+
+## ✅ Phase 15: Clean Up Crew - Background Processing & Real-Time Updates (COMPLETED)
+
+### Overview
+A sophisticated background processing system, "The Clean Up Crew," has been implemented to perform aggressive semantic deduplication on user data. This system is designed to significantly improve frontend performance by pre-processing data, ensuring that users experience near-instant load times for their daily conversation views. The system is complemented by a real-time WebSocket-based notification system to keep the user informed of the processing status.
+
+### Components Implemented
+
+#### 15.1 CleanUpCrewService (Orchestration Brain)
+- **File:** `services/clean_up_crew_service.py`
+- **Features:**
+  - Manages the entire lifecycle of background processing.
+  - Schedules a recurring background job (every 5 minutes) to process pending data.
+  - Provides an API to trigger immediate processing for specific days.
+  - Tracks the status of processing for each day (`pending`, `processing`, `completed`, `failed`).
+  - Resets items that were stuck in a `processing` state from a previous run.
+
+#### 15.2 SemanticDeduplicationService (Processing Engine)
+- **File:** `services/semantic_deduplication_service.py`
+- **Features:**
+  - A pure, stateless processing engine responsible for the core logic of semantic deduplication.
+  - Takes a list of data items and returns a processed list with duplicates removed.
+  - Utilizes a `SemanticDeduplicationProcessor` to perform the actual clustering and analysis.
+  - Decoupled from the orchestration logic, making it easy to test and maintain.
+
+#### 15.3 WebSocketManager (Real-Time Communication)
+- **File:** `services/websocket_manager.py`
+- **Features:**
+  - A generic WebSocket manager for handling real-time communication with the frontend.
+  - Supports topic-based subscriptions, allowing clients to subscribe to specific events (e.g., the processing status of a particular day).
+  - Used by the `CleanUpCrewService` to send real-time updates on the progress of background jobs.
+  - Provides a more interactive and transparent user experience.
+
+#### 15.4 Startup Integration
+- **File:** `services/startup_integration.py`
+- **Features:**
+  - A new `CleanUpCrewBootstrap` class that initializes and wires up all the components of the Clean Up Crew system at application startup.
+  - Ensures that the background processing system is started automatically when the application starts.
+
+### Architectural Benefits
+- **Improved Performance:** By pre-processing data in the background, the frontend can load data much faster, providing a better user experience.
+- **Enhanced User Experience:** The real-time WebSocket updates keep the user informed about the status of their data, making the application feel more responsive and transparent.
+- **Scalability:** The background processing architecture is designed to be scalable, allowing it to handle large volumes of data without impacting the performance of the main application.
+- **Maintainability:** The clear separation of concerns between the orchestration (`CleanUpCrewService`), processing (`SemanticDeduplicationService`), and communication (`WebSocketManager`) layers makes the system easier to understand, test, and maintain.
+
+### Technical Implementation
+
+#### Background Processing Cycle
+```python
+# In CleanUpCrewService
+async def _background_processing_cycle(self):
+    """Main background processing cycle executed by scheduler"""
+    logger.info("Starting background semantic deduplication processing cycle")
+    pending_days = await self._get_pending_days(limit=self.max_concurrent_days)
+    if not pending_days:
+        logger.debug("No pending days found for processing")
+        return
+    
+    logger.info(f"Processing {len(pending_days)} pending days: {pending_days}")
+    results = await self.trigger_batch_processing(max_days=len(pending_days))
+    # ... log results
+```
+
+#### WebSocket Integration
+```python
+# In CleanUpCrewService, during processing
+await self._notify_progress_callbacks(days_date, ProcessingStatus.PROCESSING)
+
+# In WebSocketManager
+async def broadcast(self, topic: str, message: Dict[str, Any]):
+    """Broadcast a message to all subscribers of a topic"""
+    if topic in self.subscriptions:
+        for websocket in self.subscriptions[topic]:
+            await websocket.send_json(message)
+```
 
 ---
 

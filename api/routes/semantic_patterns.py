@@ -15,8 +15,8 @@ router = APIRouter(prefix="/semantic-patterns", tags=["semantic-patterns"])
 def get_semantic_service() -> SemanticDeduplicationService:
     """Get semantic deduplication service instance"""
     config = ConfigFactory.create_config()
-    database = DatabaseService(config.database_url)
-    embedding_service = EmbeddingService(config)
+    database = DatabaseService(config.database.path)
+    embedding_service = EmbeddingService(config.embeddings)
     return SemanticDeduplicationService(database, embedding_service)
 
 
