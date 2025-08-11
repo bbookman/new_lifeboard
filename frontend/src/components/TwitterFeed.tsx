@@ -1,20 +1,24 @@
-import { Card } from "@/components/ui/card";
-import { Avatar } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { ContentCard, ContentItemData, DailySummaryData } from "./ContentCard";
 
-interface Tweet {
-  id: string;
-  username: string;
-  handle: string;
-  content: string;
-  timestamp: string;
-  likes: number;
-  retweets: number;
-  verified?: boolean;
-}
+// Sample data with the new structure
+const sampleDailySummary: DailySummaryData = {
+  type: "daily-summary",
+  date: new Date().toISOString().split('T')[0],
+  totalItems: 47,
+  highlights: [
+    "Had a productive morning meeting with the team",
+    "Discovered an interesting article about AI developments",
+    "Enjoyed a great lunch conversation about sustainability",
+    "Made significant progress on the quarterly project"
+  ],
+  keyThemes: ["Productivity", "Technology", "Sustainability", "Teamwork", "Innovation"],
+  moodScore: 8,
+  weatherSummary: "Pleasant day with partly cloudy skies, perfect for outdoor activities"
+};
 
-const sampleTweets: Tweet[] = [
+const sampleTweets: ContentItemData[] = [
   {
+    type: "content-item",
     id: "1",
     username: "Tech News Daily",
     handle: "@technewsdaily",
@@ -22,9 +26,11 @@ const sampleTweets: Tweet[] = [
     timestamp: "2h",
     likes: 1240,
     retweets: 340,
-    verified: true
+    verified: true,
+    source: "twitter"
   },
   {
+    type: "content-item",
     id: "2",
     username: "World Updates",
     handle: "@worldupdates",
@@ -32,9 +38,11 @@ const sampleTweets: Tweet[] = [
     timestamp: "4h",
     likes: 890,
     retweets: 560,
-    verified: true
+    verified: true,
+    source: "twitter"
   },
   {
+    type: "content-item",
     id: "3",
     username: "Sports Central",
     handle: "@sportscentral",
@@ -42,7 +50,8 @@ const sampleTweets: Tweet[] = [
     timestamp: "6h",
     likes: 2340,
     retweets: 890,
-    verified: true
+    verified: true,
+    source: "twitter"
   }
 ];
 
@@ -59,54 +68,12 @@ export const TwitterFeed = () => {
       </div>
       
       <div className="space-y-4">
+        {/* Daily Summary Card (top-most) */}
+        <ContentCard data={sampleDailySummary} />
+        
+        {/* Content Item Cards (below) */}
         {sampleTweets.map((tweet) => (
-          <Card key={tweet.id} className="p-4 hover:shadow-lg transition-shadow">
-            <div className="flex space-x-3">
-              <Avatar className="w-12 h-12">
-                <div className="w-full h-full bg-social-accent rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">
-                    {tweet.username.charAt(0)}
-                  </span>
-                </div>
-              </Avatar>
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center space-x-2 mb-1">
-                  <h3 className="font-body font-semibold text-newspaper-headline truncate">
-                    {tweet.username}
-                  </h3>
-                  {tweet.verified && (
-                    <Badge variant="secondary" className="bg-social-accent text-white text-xs">
-                      ✓
-                    </Badge>
-                  )}
-                  <span className="text-newspaper-byline text-sm">
-                    {tweet.handle}
-                  </span>
-                  <span className="text-newspaper-byline text-sm">•</span>
-                  <span className="text-newspaper-byline text-sm">
-                    {tweet.timestamp}
-                  </span>
-                </div>
-                
-                <p className="font-body text-newspaper-headline leading-relaxed mb-3">
-                  {tweet.content}
-                </p>
-                
-                <div className="flex space-x-6 text-newspaper-byline text-sm">
-                  <span className="hover:text-social-accent cursor-pointer transition-colors">
-                    ♡ {tweet.likes.toLocaleString()}
-                  </span>
-                  <span className="hover:text-social-accent cursor-pointer transition-colors">
-                    ↻ {tweet.retweets.toLocaleString()}
-                  </span>
-                  <span className="hover:text-social-accent cursor-pointer transition-colors">
-                    ⤴ Share
-                  </span>
-                </div>
-              </div>
-            </div>
-          </Card>
+          <ContentCard key={tweet.id} data={tweet} />
         ))}
       </div>
     </div>

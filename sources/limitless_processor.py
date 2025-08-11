@@ -621,8 +621,13 @@ class DeduplicationProcessor(BaseProcessor):
 class LimitlessProcessor:
     """Main processor for Limitless content with configurable pipeline"""
     
-    def __init__(self, enable_segmentation: bool = True, enable_markdown_generation: bool = True):
+    def __init__(self, 
+                 enable_segmentation: bool = True, 
+                 enable_markdown_generation: bool = False,  # Deprecated in favor of semantic deduplication
+                 enable_semantic_deduplication: bool = True,
+                 embedding_service = None):
         self.processors: List[BaseProcessor] = []
+        self.enable_semantic_deduplication = enable_semantic_deduplication
         
         # Always include basic processors
         self.processors.append(BasicCleaningProcessor())
@@ -632,12 +637,17 @@ class LimitlessProcessor:
         if enable_segmentation:
             self.processors.append(ConversationSegmentProcessor())
         
-        # Add markdown processor for cleaned markdown generation
-        if enable_markdown_generation:
+        # Legacy markdown processor (deprecated - semantic deduplication replaces this)
+        if enable_markdown_generation and not enable_semantic_deduplication:
             self.processors.append(MarkdownProcessor())
         
-        # Placeholder for future processors
-        self.processors.append(DeduplicationProcessor())
+        # Semantic deduplication processor (replaces basic deduplication and markdown)
+        if enable_semantic_deduplication:
+            from sources.semantic_deduplication_processor import SemanticDeduplicationProcessor
+            self.semantic_processor = SemanticDeduplicationProcessor(embedding_service=embedding_service)
+        else:
+            # Fallback to basic deduplication
+            self.processors.append(DeduplicationProcessor())
     
     def add_processor(self, processor: BaseProcessor):
         """Add a custom processor to the pipeline"""
@@ -651,6 +661,7 @@ class LimitlessProcessor:
         """Process item through the entire pipeline"""
         processed_item = item
         
+        # Process through standard processors
         for processor in self.processors:
             try:
                 processed_item = processor.process(processed_item)
@@ -659,12 +670,54 @@ class LimitlessProcessor:
                 # Continue with other processors
                 continue
         
+        # Note: Semantic deduplication requires batch processing
+        # Single items will be processed without cross-conversation deduplication
+        if self.enable_semantic_deduplication:
+            try:
+                processed_item = self.semantic_processor.process(processed_item)
+            except Exception as e:
+                logger.error(f"Error in semantic deduplication processor: {e}")
+        
         return processed_item
+    
+    async def process_batch(self, items: List[DataItem]) -> List[DataItem]:
+        """
+        Process multiple items through the pipeline, enabling cross-item analysis
+        This is the preferred method for semantic deduplication
+        """
+        processed_items = []
+        
+        # Process each item through standard processors first
+        for item in items:
+            processed_item = item
+            for processor in self.processors:
+                try:
+                    processed_item = processor.process(processed_item)
+                except Exception as e:
+                    logger.error(f"Error in processor {processor.get_processor_name()}: {e}")
+                    continue
+            processed_items.append(processed_item)
+        
+        # Apply semantic deduplication across all items
+        if self.enable_semantic_deduplication and processed_items:
+            try:
+                processed_items = await self.semantic_processor.process_batch(processed_items)
+            except Exception as e:
+                logger.error(f"Error in batch semantic deduplication: {e}")
+                # Return items without semantic deduplication on error
+        
+        return processed_items
     
     def get_pipeline_info(self) -> Dict[str, Any]:
         """Get information about the current processing pipeline"""
+        processors_list = [p.get_processor_name() for p in self.processors]
+        if self.enable_semantic_deduplication:
+            processors_list.append('SemanticDeduplicationProcessor')
+        
         return {
-            'processor_count': len(self.processors),
-            'processors': [p.get_processor_name() for p in self.processors],
-            'pipeline_version': '2.0'
+            'processor_count': len(processors_list),
+            'processors': processors_list,
+            'pipeline_version': '3.0',  # Updated for semantic deduplication
+            'semantic_deduplication_enabled': self.enable_semantic_deduplication,
+            'supports_batch_processing': True
         }
