@@ -58,15 +58,26 @@ class BasicCleaningProcessor(BaseProcessor):
         # Update item
         item.content = cleaned_content
         
-        # Track processing in metadata
-        if 'processing_history' not in item.metadata:
-            item.metadata['processing_history'] = []
-        
-        item.metadata['processing_history'].append({
-            'processor': self.get_processor_name(),
-            'timestamp': datetime.now().isoformat(),
-            'changes': 'text_cleaning'
-        })
+        # Track processing in metadata (handle both old and new structure)
+        if 'processed_response' in item.metadata:
+            # New two-key structure
+            processed = item.metadata['processed_response']
+            if 'processing_history' not in processed:
+                processed['processing_history'] = []
+            processed['processing_history'].append({
+                'processor': self.get_processor_name(),
+                'timestamp': datetime.now().isoformat(),
+                'changes': 'text_cleaning'
+            })
+        else:
+            # Legacy structure fallback
+            if 'processing_history' not in item.metadata:
+                item.metadata['processing_history'] = []
+            item.metadata['processing_history'].append({
+                'processor': self.get_processor_name(),
+                'timestamp': datetime.now().isoformat(),
+                'changes': 'text_cleaning'
+            })
         
         return item
 
@@ -78,18 +89,32 @@ class MetadataEnrichmentProcessor(BaseProcessor):
         """Add enriched metadata"""
         enriched_metadata = self._compute_metadata(item)
         
-        # Merge with existing metadata
-        item.metadata.update(enriched_metadata)
-        
-        # Track processing
-        if 'processing_history' not in item.metadata:
-            item.metadata['processing_history'] = []
-        
-        item.metadata['processing_history'].append({
-            'processor': self.get_processor_name(),
-            'timestamp': datetime.now().isoformat(),
-            'changes': 'metadata_enrichment'
-        })
+        # Handle both old and new metadata structure
+        if 'processed_response' in item.metadata:
+            # New two-key structure - merge into processed_response
+            processed = item.metadata['processed_response']
+            processed.update(enriched_metadata)
+            
+            # Track processing
+            if 'processing_history' not in processed:
+                processed['processing_history'] = []
+            processed['processing_history'].append({
+                'processor': self.get_processor_name(),
+                'timestamp': datetime.now().isoformat(),
+                'changes': 'metadata_enrichment'
+            })
+        else:
+            # Legacy structure fallback
+            item.metadata.update(enriched_metadata)
+            
+            # Track processing
+            if 'processing_history' not in item.metadata:
+                item.metadata['processing_history'] = []
+            item.metadata['processing_history'].append({
+                'processor': self.get_processor_name(),
+                'timestamp': datetime.now().isoformat(),
+                'changes': 'metadata_enrichment'
+            })
         
         return item
     
@@ -112,8 +137,14 @@ class MetadataEnrichmentProcessor(BaseProcessor):
             metadata['duration_seconds'] = duration.total_seconds()
             metadata['duration_minutes'] = duration.total_seconds() / 60
         
-        # Extract original lifelog metadata if available
-        original_lifelog = item.metadata.get('original_lifelog', {})
+        # Extract original lifelog metadata if available (handle both structures)
+        if 'processed_response' in item.metadata:
+            # New two-key structure
+            original_lifelog = item.metadata.get('original_response', {})
+        else:
+            # Legacy structure
+            original_lifelog = item.metadata.get('original_lifelog', {})
+            
         if original_lifelog:
             metadata['conversation_metadata'] = self._extract_conversation_metadata(original_lifelog, item)
         
@@ -184,12 +215,19 @@ class ConversationSegmentProcessor(BaseProcessor):
         
         if word_count < self.max_segment_words:
             # Add segmentation metadata even for non-segmented items
-            item.metadata['segmentation'] = {
+            segmentation_data = {
                 'is_segmented': False,
                 'total_segments': 1,
                 'segment_index': 0,
                 'word_count': word_count
             }
+            
+            if 'processed_response' in item.metadata:
+                # New two-key structure
+                item.metadata['processed_response']['segmentation'] = segmentation_data
+            else:
+                # Legacy structure
+                item.metadata['segmentation'] = segmentation_data
             return item
         
         # Create segments
@@ -197,17 +235,24 @@ class ConversationSegmentProcessor(BaseProcessor):
         
         if len(segments) <= 1:
             # Not worth segmenting
-            item.metadata['segmentation'] = {
+            segmentation_data = {
                 'is_segmented': False,
                 'total_segments': 1,
                 'segment_index': 0,
                 'word_count': word_count
             }
+            
+            if 'processed_response' in item.metadata:
+                # New two-key structure
+                item.metadata['processed_response']['segmentation'] = segmentation_data
+            else:
+                # Legacy structure
+                item.metadata['segmentation'] = segmentation_data
             return item
         
         # For now, return the original item with segmentation metadata
         # In a more advanced implementation, we might create multiple DataItems
-        item.metadata['segmentation'] = {
+        segmentation_data = {
             'is_segmented': True,
             'total_segments': len(segments),
             'segment_index': 0,  # This is the full conversation
@@ -224,6 +269,13 @@ class ConversationSegmentProcessor(BaseProcessor):
                 for seg in segments
             ]
         }
+        
+        if 'processed_response' in item.metadata:
+            # New two-key structure
+            item.metadata['processed_response']['segmentation'] = segmentation_data
+        else:
+            # Legacy structure
+            item.metadata['segmentation'] = segmentation_data
         
         # Track processing
         if 'processing_history' not in item.metadata:
@@ -410,17 +462,32 @@ class MarkdownProcessor(BaseProcessor):
             cleaned_markdown = self._generate_cleaned_markdown(item)
             
             if cleaned_markdown:
-                item.metadata['cleaned_markdown'] = cleaned_markdown
-            
-            # Track processing
-            if 'processing_history' not in item.metadata:
-                item.metadata['processing_history'] = []
-            
-            item.metadata['processing_history'].append({
-                'processor': self.get_processor_name(),
-                'timestamp': datetime.now().isoformat(),
-                'changes': 'cleaned_markdown_generation'
-            })
+                # Handle both old and new metadata structure
+                if 'processed_response' in item.metadata:
+                    # New two-key structure
+                    processed = item.metadata['processed_response']
+                    processed['cleaned_markdown'] = cleaned_markdown
+                    
+                    # Track processing
+                    if 'processing_history' not in processed:
+                        processed['processing_history'] = []
+                    processed['processing_history'].append({
+                        'processor': self.get_processor_name(),
+                        'timestamp': datetime.now().isoformat(),
+                        'changes': 'cleaned_markdown_generation'
+                    })
+                else:
+                    # Legacy structure
+                    item.metadata['cleaned_markdown'] = cleaned_markdown
+                    
+                    # Track processing
+                    if 'processing_history' not in item.metadata:
+                        item.metadata['processing_history'] = []
+                    item.metadata['processing_history'].append({
+                        'processor': self.get_processor_name(),
+                        'timestamp': datetime.now().isoformat(),
+                        'changes': 'cleaned_markdown_generation'
+                    })
             
             return item
         else:
@@ -442,8 +509,13 @@ class MarkdownProcessor(BaseProcessor):
         """Generate cleaned markdown from original lifelog data"""
         # Handle both DataItem objects and raw dictionaries for backward compatibility
         if hasattr(item, 'metadata'):
-            # DataItem object
-            original_lifelog = item.metadata.get('original_lifelog', {})
+            # DataItem object - handle both old and new structure
+            if 'processed_response' in item.metadata:
+                # New two-key structure
+                original_lifelog = item.metadata.get('original_response', {})
+            else:
+                # Legacy structure
+                original_lifelog = item.metadata.get('original_lifelog', {})
         else:
             # Raw dictionary - treat as lifelog data directly
             original_lifelog = item
@@ -619,29 +691,35 @@ class DeduplicationProcessor(BaseProcessor):
 
 
 class LimitlessProcessor:
-    """Main processor for Limitless content with configurable pipeline"""
+    """
+    Main processor for Limitless content with two-key metadata architecture
+    
+    Generates clean separation between original API response and processed data:
+    - original_response: Complete unmodified Limitless API response
+    - processed_response: All processing results including semantic deduplication
+    """
     
     def __init__(self, 
                  enable_segmentation: bool = True, 
-                 enable_markdown_generation: bool = False,  # Deprecated in favor of semantic deduplication
+                 enable_markdown_generation: bool = True,  # Enable for basic markdown in processed_response
                  enable_semantic_deduplication: bool = True,
                  embedding_service = None):
         self.processors: List[BaseProcessor] = []
         self.enable_semantic_deduplication = enable_semantic_deduplication
         
-        # Always include basic processors
+        # Always include basic processors for processed_response
         self.processors.append(BasicCleaningProcessor())
         self.processors.append(MetadataEnrichmentProcessor())
         
-        # Optional processors
+        # Optional processors for processed_response
         if enable_segmentation:
             self.processors.append(ConversationSegmentProcessor())
         
-        # Legacy markdown processor (deprecated - semantic deduplication replaces this)
-        if enable_markdown_generation and not enable_semantic_deduplication:
+        # Markdown processor for basic cleaned markdown in processed_response
+        if enable_markdown_generation:
             self.processors.append(MarkdownProcessor())
         
-        # Semantic deduplication processor (replaces basic deduplication and markdown)
+        # Semantic deduplication processor (for cross-conversation analysis)
         if enable_semantic_deduplication:
             from sources.semantic_deduplication_processor import SemanticDeduplicationProcessor
             self.semantic_processor = SemanticDeduplicationProcessor(embedding_service=embedding_service)
@@ -658,13 +736,29 @@ class LimitlessProcessor:
         self.processors = [p for p in self.processors if not isinstance(p, processor_class)]
     
     def process(self, item: DataItem) -> DataItem:
-        """Process item through the entire pipeline"""
-        processed_item = item
+        """Process item with two-key metadata architecture"""
+        # Extract original Limitless API response
+        original_lifelog = item.metadata.get('original_lifelog', {})
         
-        # Process through standard processors
+        # Create clean two-key metadata structure
+        item.metadata = {
+            "original_response": original_lifelog,
+            "processed_response": {
+                "processing_history": [],
+                "semantic_metadata": {"processed": False},
+                "display_conversation": [],
+                "semantic_clusters": {}
+            }
+        }
+        
+        # Apply basic processing to processed_response
+        self._apply_basic_processing(item)
+        
+        # Process through standard processors (they will update processed_response)
         for processor in self.processors:
             try:
-                processed_item = processor.process(processed_item)
+                processed_item = processor.process(item)
+                item = processed_item  # Update reference
             except Exception as e:
                 logger.error(f"Error in processor {processor.get_processor_name()}: {e}")
                 # Continue with other processors
@@ -675,12 +769,13 @@ class LimitlessProcessor:
         # For optimal semantic deduplication, use process_batch() instead
         if self.enable_semantic_deduplication:
             try:
-                processed_item = self.semantic_processor.process(processed_item)
+                processed_item = self.semantic_processor.process(item)
+                item = processed_item  # Update reference
             except Exception as e:
                 logger.debug(f"Semantic deduplication skipped for single item: {e}")
                 # Continue without semantic deduplication for single items
         
-        return processed_item
+        return item
     
     async def process_batch(self, items: List[DataItem]) -> List[DataItem]:
         """
@@ -709,6 +804,55 @@ class LimitlessProcessor:
                 # Return items without semantic deduplication on error
         
         return processed_items
+    
+    def _apply_basic_processing(self, item: DataItem):
+        """Apply basic processing like metadata extraction to processed_response"""
+        processed = item.metadata['processed_response']
+        original = item.metadata['original_response']
+        
+        # Extract basic metadata from original response
+        processed['title'] = original.get('title', 'Untitled')
+        processed['start_time'] = original.get('startTime')
+        processed['end_time'] = original.get('endTime')
+        processed['is_starred'] = original.get('isStarred', False)
+        processed['updated_at'] = original.get('updatedAt')
+        
+        # Extract speakers from content nodes
+        processed['speakers'] = self._extract_speakers(original)
+        processed['content_types'] = self._extract_content_types(original)
+        processed['has_markdown'] = bool(original.get('markdown'))
+        processed['node_count'] = len(original.get('contents', []))
+        
+        # Track processing
+        processed['processing_history'].append({
+            'processor': 'TwoKeyMetadataProcessor',
+            'timestamp': datetime.now().isoformat(),
+            'changes': 'two_key_structure_creation'
+        })
+    
+    def _extract_speakers(self, original_lifelog: Dict[str, Any]) -> List[str]:
+        """Extract unique speakers from conversation content"""
+        speakers = set()
+        contents = original_lifelog.get('contents', [])
+        
+        for node in contents:
+            speaker_name = node.get('speakerName')
+            if speaker_name:
+                speakers.add(speaker_name)
+        
+        return sorted(list(speakers))
+    
+    def _extract_content_types(self, original_lifelog: Dict[str, Any]) -> List[str]:
+        """Extract content types from conversation nodes"""
+        content_types = set()
+        contents = original_lifelog.get('contents', [])
+        
+        for node in contents:
+            node_type = node.get('type')
+            if node_type:
+                content_types.add(node_type)
+        
+        return sorted(list(content_types))
     
     def get_pipeline_info(self) -> Dict[str, Any]:
         """Get information about the current processing pipeline"""
