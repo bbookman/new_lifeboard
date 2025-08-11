@@ -107,7 +107,7 @@ class SemanticDeduplicationProcessor(BaseProcessor):
         if not self.embedding_service:
             from config.factory import ConfigFactory
             config = ConfigFactory.create_config()
-            self.embedding_service = EmbeddingService(config)
+            self.embedding_service = EmbeddingService(config.embeddings)
         
         # Cache for embeddings and similarities
         self.embedding_cache: Dict[str, np.ndarray] = {}
@@ -173,9 +173,24 @@ class SemanticDeduplicationProcessor(BaseProcessor):
         """
         # For single items, we can't do cross-conversation deduplication
         # But we can still process internal conversation deduplication
-        loop = asyncio.get_event_loop()
-        processed_items = loop.run_until_complete(self.process_batch([item]))
-        return processed_items[0] if processed_items else item
+        
+        try:
+            # Check if we're already in a running event loop
+            loop = asyncio.get_running_loop()
+            # We're in an async context, but this is a sync method
+            # We'll skip semantic deduplication for single items in this case
+            # and recommend using process_batch() instead
+            logger.warning("Semantic deduplication skipped for single item in async context. Use process_batch() for full functionality.")
+            return item
+        except RuntimeError:
+            # No running loop, safe to create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                processed_items = loop.run_until_complete(self.process_batch([item]))
+                return processed_items[0] if processed_items else item
+            finally:
+                loop.close()
     
     def _extract_spoken_lines(self, items: List[DataItem]) -> List[SpokenLine]:
         """Extract individual spoken lines from conversation items"""

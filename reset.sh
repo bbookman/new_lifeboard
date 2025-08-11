@@ -82,6 +82,7 @@ echo "  • Removing vector store files..."
 find . -name "*.faiss" -type f -delete
 find . -name "*.index" -type f -delete
 find . -name "*.pkl" -type f -delete
+find . -name "vector_ids.json" -type f -delete
 
 # Remove vector store directories
 if [ -d "vector_store" ]; then
