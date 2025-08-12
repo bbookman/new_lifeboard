@@ -118,13 +118,7 @@ class NewsSource(BaseHTTPSource, BaseSource):
         today = datetime.now().strftime("%Y-%m-%d")
         if self._has_news_data_for_date(today):
             logger.info(f"News data already exists for {today}. Skipping API call.")
-            # Yield a dummy item to indicate we checked but didn't fetch new data
-            yield DataItem(
-                namespace=self.namespace,
-                source_id="news_check",
-                content="News data already exists for today",
-                metadata={"check_date": today, "status": "skipped"}
-            )
+            # Simply return without yielding any items - no need for dummy data
             return
         
         # Use unique_items_per_day as the actual limit instead of the limit parameter
