@@ -8,6 +8,10 @@ interface Photo {
   location?: string;
 }
 
+interface PhotoGalleryProps {
+  selectedDate?: string;
+}
+
 const samplePhotos: Photo[] = [
   {
     id: "1",
@@ -39,7 +43,13 @@ const samplePhotos: Photo[] = [
   }
 ];
 
-export const PhotoGallery = () => {
+/**
+ * PhotoGallery component displays photos for a specific date
+ * @param selectedDate - The date to display photos for (YYYY-MM-DD format)
+ */
+export const PhotoGallery = ({ selectedDate }: PhotoGalleryProps) => {
+  // TODO: In a real app, fetch photos based on selectedDate
+  
   return (
     <div className="space-y-6">
       <div className="border-b-2 border-photo-accent pb-2">
@@ -48,6 +58,7 @@ export const PhotoGallery = () => {
         </h2>
         <p className="text-newspaper-byline font-body text-sm">
           Moments captured throughout your day
+          {selectedDate && ` • ${selectedDate}`}
         </p>
       </div>
       

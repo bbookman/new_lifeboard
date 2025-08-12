@@ -217,8 +217,8 @@ li {
 
 /* Calendar view compression */
 .calendar-day {
-  min-height: 160px !important;
-  padding: 1rem !important;
+  min-height: 100px !important;
+  padding: .40rem !important;
 }
 
 .calendar-day-header {

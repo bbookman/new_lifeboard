@@ -26,6 +26,7 @@ interface ExtendedNewsCardProps {
   category: string;
   readTime: string;
   breaking?: boolean;
+  selectedDate?: string;
 }
 
 /**
@@ -33,85 +34,86 @@ interface ExtendedNewsCardProps {
  * Displays limitless markdown content from data_items.metadata.cleaned_markdown
  * This component is used within a Card wrapper in NewsSection, so no outer Card needed
  */
-export const ExtendedNewsCard = () => {
+export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, 'selectedDate'>) => {
   const [markdownContent, setMarkdownContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log(`[ExtendedNewsCard] useEffect triggered with selectedDate:`, selectedDate);
     /**
      * Fetch cleaned markdown from limitless data_items
      * Gets markdown content from data_items.metadata.cleaned_markdown
-     * Falls back to most recent available data if today has no data
+     * Only displays data for the requested date - no fallback behavior
      */
     const fetchLimitlessMarkdown = async () => {
       try {
-        // Get today's date in local timezone (not UTC)
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const today = `${year}-${month}-${day}`;
+        // Debug selectedDate prop
+        console.log(`[ExtendedNewsCard] Component received selectedDate prop:`, selectedDate, typeof selectedDate);
         
-        console.log(`Fetching data for local date: ${today}`);
+        // Use selectedDate if provided, otherwise use today's date
+        let targetDate: string;
+        if (selectedDate) {
+          targetDate = selectedDate;
+          console.log(`[ExtendedNewsCard] Using selectedDate: ${targetDate}`);
+        } else {
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          targetDate = `${year}-${month}-${day}`;
+          console.log(`[ExtendedNewsCard] No selectedDate provided, using today: ${targetDate}`);
+        }
         
-        // First, try to fetch data for today
-        let response = await fetch(`http://localhost:8000/calendar/api/data_items/${today}?namespaces=limitless`);
+        console.log(`[ExtendedNewsCard] Final targetDate: ${targetDate}`);
+        
+        // First, try to fetch data for the target date
+        const apiUrl = `http://localhost:8000/calendar/api/data_items/${targetDate}?namespaces=limitless`;
+        console.log(`[ExtendedNewsCard] API URL: ${apiUrl}`);
+        
+        let response = await fetch(apiUrl);
+        console.log(`[ExtendedNewsCard] Response status: ${response.status}`);
         
         if (response.ok) {
           let dataItems: DataItem[] = await response.json();
+          console.log(`[ExtendedNewsCard] Received ${dataItems.length} items for ${targetDate}`);
           
-          // If no data for today, fetch the most recent available data
-          if (dataItems.length === 0) {
-            console.log(`No data for today (${today}), fetching most recent available data...`);
-            
-            // Get list of days with data
-            const daysResponse = await fetch('http://localhost:8000/calendar/api/days-with-data');
-            if (daysResponse.ok) {
-              const daysData = await daysResponse.json();
-              const allDays = daysData.all || [];
-              
-              // Find the most recent date with data
-              if (allDays.length > 0) {
-                const mostRecentDate = allDays[0]; // Days are returned in descending order
-                console.log(`Fetching data for most recent date: ${mostRecentDate}`);
-                
-                // Fetch data for the most recent date
-                response = await fetch(`http://localhost:8000/calendar/api/data_items/${mostRecentDate}?namespaces=limitless`);
-                if (response.ok) {
-                  dataItems = await response.json();
-                  
-                  // Add a note about the date
-                  if (dataItems.length > 0) {
-                    const dateObj = new Date(mostRecentDate + 'T00:00:00');
-                    const formattedDate = dateObj.toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    });
-                    setMarkdownContent(`# Data from ${formattedDate}\n\n`);
-                  }
-                }
-              }
-            }
+          // Log first item for debugging
+          if (dataItems.length > 0) {
+            console.log(`[ExtendedNewsCard] First item:`, {
+              id: dataItems[0].id,
+              namespace: dataItems[0].namespace,
+              days_date: dataItems[0].days_date,
+              has_content: !!dataItems[0].content,
+              has_metadata: !!dataItems[0].metadata,
+              has_cleaned_markdown: !!dataItems[0].metadata?.cleaned_markdown,
+              metadata_keys: dataItems[0].metadata ? Object.keys(dataItems[0].metadata) : []
+            });
           }
+          
+          // No fallback logic - only display data for requested date
           
           if (dataItems.length > 0) {
             // Combine all cleaned markdown content from all items
             const markdownParts: string[] = [];
             
-            dataItems.forEach(item => {
+            dataItems.forEach((item, index) => {
               let itemMarkdown = '';
               
               // Priority order: cleaned_markdown > markdown > original_lifelog.markdown > content
               if (item.metadata?.cleaned_markdown) {
                 itemMarkdown = item.metadata.cleaned_markdown;
+                console.log(`[ExtendedNewsCard] Item ${index}: Using cleaned_markdown (${itemMarkdown.length} chars)`);
               } else if (item.metadata?.markdown) {
                 itemMarkdown = item.metadata.markdown;
+                console.log(`[ExtendedNewsCard] Item ${index}: Using metadata.markdown (${itemMarkdown.length} chars)`);
               } else if (item.metadata?.original_lifelog?.markdown) {
                 itemMarkdown = item.metadata.original_lifelog.markdown;
+                console.log(`[ExtendedNewsCard] Item ${index}: Using original_lifelog.markdown (${itemMarkdown.length} chars)`);
               } else if (item.content) {
                 itemMarkdown = item.content;
+                console.log(`[ExtendedNewsCard] Item ${index}: Using content (${itemMarkdown.length} chars)`);
+              } else {
+                console.log(`[ExtendedNewsCard] Item ${index}: No markdown content found`);
               }
               
               if (itemMarkdown) {
@@ -119,11 +121,26 @@ export const ExtendedNewsCard = () => {
               }
             });
             
+            console.log(`[ExtendedNewsCard] Total markdown parts: ${markdownParts.length}, total chars: ${markdownParts.join('').length}`);
+            
             // Join all markdown content with separators
             const combinedMarkdown = markdownParts.join('\n\n---\n\n');
             setMarkdownContent(prevContent => prevContent + combinedMarkdown);
+            
+            console.log(`[ExtendedNewsCard] Final markdown content length: ${combinedMarkdown.length}`);
           } else {
-            setMarkdownContent('No Limitless data available.');
+            console.log(`[ExtendedNewsCard] No data items found for ${targetDate}`);
+            
+            // Format the requested date for display
+            const dateObj = new Date(targetDate + 'T00:00:00');
+            const formattedDate = dateObj.toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric', 
+              month: 'long',
+              day: 'numeric'
+            });
+            
+            setMarkdownContent(`# No Data Available\n\nNo Limitless data found for ${formattedDate}.\n\nThis date may not have any recorded activities or conversations.`);
           }
         } else {
           console.error('Failed to fetch limitless data:', response.status);
@@ -139,7 +156,7 @@ export const ExtendedNewsCard = () => {
     };
 
     fetchLimitlessMarkdown();
-  }, []);
+  }, [selectedDate]); // Re-run when selectedDate changes
 
 
   return (

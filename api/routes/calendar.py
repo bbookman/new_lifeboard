@@ -418,9 +418,25 @@ async def get_data_items_for_date(
             namespace_list = [ns.strip() for ns in namespaces.split(",")]
         
         # Get data items for the date
+        logger.info(f"[DATA_ITEMS API] Requesting data items for date {date} with namespaces {namespace_list}")
         data_items = database.get_data_items_by_date(date, namespace_list)
         
-        logger.info(f"[DATA_ITEMS API] Retrieved {len(data_items)} data items for date {date} with namespaces {namespace_list}")
+        logger.info(f"[DATA_ITEMS API] Retrieved {len(data_items)} data items for date {date}")
+        
+        # Log first item details for debugging
+        if data_items:
+            first_item = data_items[0]
+            logger.info(f"[DATA_ITEMS API] First item: id={first_item.get('id')}, namespace={first_item.get('namespace')}, has_content={bool(first_item.get('content'))}, has_metadata={bool(first_item.get('metadata'))}")
+            
+            metadata = first_item.get('metadata', {})
+            if isinstance(metadata, dict):
+                logger.info(f"[DATA_ITEMS API] First item metadata keys: {list(metadata.keys())}")
+                if 'cleaned_markdown' in metadata:
+                    cleaned_md = metadata['cleaned_markdown']
+                    logger.info(f"[DATA_ITEMS API] First item cleaned_markdown length: {len(cleaned_md)}")
+                    logger.info(f"[DATA_ITEMS API] First item cleaned_markdown preview: {cleaned_md[:200]}...")
+        else:
+            logger.warning(f"[DATA_ITEMS API] No data items found for date {date} with namespaces {namespace_list}")
         
         return data_items
         

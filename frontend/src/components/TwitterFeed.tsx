@@ -1,5 +1,9 @@
 import { ContentCard, ContentItemData, DailySummaryData } from "./ContentCard";
 
+interface TwitterFeedProps {
+  selectedDate?: string;
+}
+
 // Sample data with the new structure
 const sampleDailySummary: DailySummaryData = {
   type: "daily-summary",
@@ -55,7 +59,18 @@ const sampleTweets: ContentItemData[] = [
   }
 ];
 
-export const TwitterFeed = () => {
+/**
+ * TwitterFeed component displays social media content for a specific date
+ * @param selectedDate - The date to display content for (YYYY-MM-DD format)
+ */
+export const TwitterFeed = ({ selectedDate }: TwitterFeedProps) => {
+  // TODO: In a real app, fetch Twitter data based on selectedDate
+  // Update the daily summary date to match the selected date
+  const dailySummary: DailySummaryData = {
+    ...sampleDailySummary,
+    date: selectedDate || new Date().toISOString().split('T')[0]
+  };
+  
   return (
     <div className="space-y-6">
       <div className="border-b-2 border-social-accent pb-2">
@@ -64,12 +79,13 @@ export const TwitterFeed = () => {
         </h2>
         <p className="text-newspaper-byline font-body text-sm">
           Trending conversations and updates
+          {selectedDate && ` • ${selectedDate}`}
         </p>
       </div>
       
       <div className="space-y-4">
         {/* Daily Summary Card (top-most) */}
-        <ContentCard data={sampleDailySummary} />
+        <ContentCard data={dailySummary} />
         
         {/* Content Item Cards (below) */}
         {sampleTweets.map((tweet) => (

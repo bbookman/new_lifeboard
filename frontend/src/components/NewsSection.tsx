@@ -14,6 +14,10 @@ interface NewsArticle {
   breaking?: boolean;
 }
 
+interface NewsSectionProps {
+  selectedDate?: string;
+}
+
 const sampleNews: NewsArticle[] = [
   {
     id: "1",
@@ -45,7 +49,16 @@ const sampleNews: NewsArticle[] = [
   }
 ];
 
-export const NewsSection = () => {
+/**
+ * NewsSection component displays news articles for a specific date
+ * @param selectedDate - The date to display news for (YYYY-MM-DD format)
+ */
+export const NewsSection = ({ selectedDate }: NewsSectionProps) => {
+  console.log(`[NewsSection] Received selectedDate: ${selectedDate}`);
+  
+  // TODO: In a real app, fetch news data based on selectedDate
+  // For now, we'll display sample data with a note about the selected date
+  
   return (
     <div className="space-y-6">
       <div className="border-b-2 border-news-accent pb-2">
@@ -54,6 +67,7 @@ export const NewsSection = () => {
         </h2>
         <p className="text-newspaper-byline font-body text-sm">
           Latest updates from around the world
+          {selectedDate && ` • ${selectedDate}`}
         </p>
       </div>
       
@@ -61,6 +75,7 @@ export const NewsSection = () => {
         {sampleNews.map((article, index) => {
           // Use ExtendedNewsCard for the second item (index 1)
           if (index === 1) {
+            console.log(`[NewsSection] Passing selectedDate to ExtendedNewsCard: ${selectedDate}`);
             return (
               <ExtendedNewsCard
                 key={article.id}
@@ -71,6 +86,7 @@ export const NewsSection = () => {
                 category={article.category}
                 readTime={article.readTime}
                 breaking={article.breaking}
+                selectedDate={selectedDate}
               />
             );
           }
