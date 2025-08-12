@@ -12,6 +12,10 @@ interface MusicTrack {
   mood?: string;
 }
 
+interface MusicHistoryProps {
+  selectedDate?: string;
+}
+
 const sampleTracks: MusicTrack[] = [
   {
     id: "1",
@@ -61,7 +65,13 @@ const getMoodColor = (mood: string) => {
   }
 };
 
-export const MusicHistory = () => {
+/**
+ * MusicHistory component displays music listening history for a specific date
+ * @param selectedDate - The date to display music history for (YYYY-MM-DD format)
+ */
+export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
+  // TODO: In a real app, fetch music data based on selectedDate
+  
   return (
     <div className="space-y-6">
       <div className="border-b-2 border-music-accent pb-2">
@@ -70,6 +80,7 @@ export const MusicHistory = () => {
         </h2>
         <p className="text-newspaper-byline font-body text-sm">
           Your daily soundtrack and listening history
+          {selectedDate && ` • ${selectedDate}`}
         </p>
       </div>
       

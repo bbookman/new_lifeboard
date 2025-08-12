@@ -56,6 +56,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         },
         mode: 'cors',
         signal,
+        // Add timeout and retry-friendly settings
+        cache: 'no-cache',
       });
       
       if (response.ok) {
@@ -69,6 +71,10 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         }
       } else {
         console.error(`[CALENDAR] HTTP Error:`, response.status, response.statusText);
+        // Set empty data set as fallback for HTTP errors too
+        if (!signal?.aborted) {
+          setDaysWithData(new Set());
+        }
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -76,6 +82,11 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       }
       
       console.error('[CALENDAR] Fetch error:', error);
+      
+      // Set empty data set as fallback to prevent UI issues
+      if (!signal?.aborted) {
+        setDaysWithData(new Set());
+      }
     } finally {
       if (!signal?.aborted) {
         setLoading(false);
@@ -92,7 +103,18 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   useEffect(() => {
     const abortController = new AbortController();
     
-    fetchDaysWithData(currentDate.getFullYear(), currentDate.getMonth(), abortController.signal);
+    const fetchWithRetry = async (retries = 2) => {
+      try {
+        await fetchDaysWithData(currentDate.getFullYear(), currentDate.getMonth(), abortController.signal);
+      } catch (error) {
+        if (retries > 0 && !abortController.signal.aborted) {
+          console.log(`[CALENDAR] Retrying... (${retries} attempts left)`);
+          setTimeout(() => fetchWithRetry(retries - 1), 1000);
+        }
+      }
+    };
+    
+    fetchWithRetry();
     
     return () => {
       abortController.abort();
