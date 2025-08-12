@@ -473,10 +473,15 @@ class IngestionService(BaseService):
         try:
             # First try to use created_at if available
             if item.created_at:
-                # Get user timezone from config for this namespace
+                # Ensure created_at is timezone-aware (assume UTC if naive)
+                if item.created_at.tzinfo is None or item.created_at.tzinfo.utcoffset(item.created_at) is None:
+                    created_at_aware = item.created_at.replace(tzinfo=timezone.utc)
+                else:
+                    created_at_aware = item.created_at
+
                 user_timezone = self._get_user_timezone_for_namespace(item.namespace)
                 return self.database.extract_date_from_timestamp(
-                    item.created_at.isoformat(), 
+                    created_at_aware.isoformat(), 
                     user_timezone
                 )
             
@@ -494,11 +499,31 @@ class IngestionService(BaseService):
                     
                     for field in timestamp_fields:
                         if field in metadata_dict and metadata_dict[field]:
-                            user_timezone = self._get_user_timezone_for_namespace(item.namespace)
-                            extracted_date = self.database.extract_date_from_timestamp(
-                                str(metadata_dict[field]), 
-                                user_timezone
-                            )
+                            # Ensure the timestamp is timezone-aware (assume UTC if naive)
+                            dt_obj = None
+                            try:
+                                if isinstance(metadata_dict[field], datetime):
+                                    dt_obj = metadata_dict[field]
+                                elif isinstance(metadata_dict[field], str):
+                                    # Try parsing as ISO format, assuming UTC if no timezone info
+                                    if metadata_dict[field].endswith('Z'):
+                                        dt_obj = datetime.fromisoformat(metadata_dict[field].replace('Z', '+00:00'))
+                                    elif '+' in metadata_dict[field] or '-' in metadata_dict[field][10:]:
+                                        dt_obj = datetime.fromisoformat(metadata_dict[field])
+                                    else:
+                                        dt_obj = datetime.fromisoformat(metadata_dict[field]).replace(tzinfo=timezone.utc)
+                            except (ValueError, TypeError):
+                                pass
+
+                            if dt_obj:
+                                if dt_obj.tzinfo is None or dt_obj.tzinfo.utcoffset(dt_obj) is None:
+                                    dt_obj = dt_obj.replace(tzinfo=timezone.utc)
+                                
+                                user_timezone = self._get_user_timezone_for_namespace(item.namespace)
+                                extracted_date = self.database.extract_date_from_timestamp(
+                                    dt_obj.isoformat(), 
+                                    user_timezone
+                                )
                             if extracted_date:
                                 return extracted_date
             
