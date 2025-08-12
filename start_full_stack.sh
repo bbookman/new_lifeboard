@@ -38,10 +38,34 @@ cleanup_processes() {
     # Kill Vite dev server processes
     pkill -f "vite" 2>/dev/null || true
     
+    # Kill any process using port 8000 (backend port)
+    print_status "Ensuring port 8000 is available..."
+    PORT_8000_PIDS=$(lsof -ti:8000 2>/dev/null || true)
+    if [ ! -z "$PORT_8000_PIDS" ]; then
+        print_warning "Found processes using port 8000: $PORT_8000_PIDS"
+        echo "$PORT_8000_PIDS" | xargs kill -TERM 2>/dev/null || true
+        sleep 2
+        
+        # Check if any processes are still using port 8000
+        REMAINING_PIDS=$(lsof -ti:8000 2>/dev/null || true)
+        if [ ! -z "$REMAINING_PIDS" ]; then
+            print_warning "Forcefully killing remaining processes on port 8000: $REMAINING_PIDS"
+            echo "$REMAINING_PIDS" | xargs kill -9 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+    
     # Wait a moment for processes to terminate
     sleep 2
     
-    print_success "Cleanup completed"
+    # Verify port 8000 is actually free
+    if lsof -i:8000 >/dev/null 2>&1; then
+        print_error "Port 8000 is still in use after cleanup. Manual intervention required."
+        print_error "Try: lsof -i:8000 to see what's using the port"
+        return 1
+    fi
+    
+    print_success "Cleanup completed - port 8000 is available"
 }
 
 # Function to start backend
@@ -135,7 +159,11 @@ echo ""
 mkdir -p logs
 
 # Clean up any existing processes
-cleanup_processes
+if ! cleanup_processes; then
+    print_error "Failed to clean up existing processes"
+    print_error "Cannot proceed with startup - port 8000 is not available"
+    exit 1
+fi
 
 # Start backend
 if ! start_backend; then

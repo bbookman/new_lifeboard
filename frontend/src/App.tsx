@@ -5,6 +5,7 @@ import { CalendarView } from './components/CalendarView'
 import { DayView } from './components/DayView'
 import { ChatView } from './components/ChatView'
 import { SettingsView } from './components/SettingsView'
+import { DateNavigation } from './components/DateNavigation'
 
 const navigationItems = [
   { id: 'day', label: 'Day', icon: '📅', path: '/day' },
@@ -51,14 +52,21 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background font-body">
-      <NewspaperMasthead />
+                <NewspaperMasthead selectedDate={selectedDate} />
       
       {/* Horizontal Navigation Bar */}
-      <NavigationSidebar
-        items={navigationItems}
-        activeItem={activeView}
-        onItemClick={handleNavigation}
-      />
+      <div className="flex justify-between items-center w-full px-4 py-2 bg-white shadow-md">
+        <NavigationSidebar
+          items={navigationItems}
+          activeItem={activeView}
+          onItemClick={handleNavigation}
+        />
+        <DateNavigation
+          selectedDate={selectedDate}
+          onDateChange={handleDateChange}
+          isDayViewActive={activeView === 'day'}
+        />
+      </div>
       
       {/* Main Content Area */}
       <div className="container mx-auto px-4 py-8">

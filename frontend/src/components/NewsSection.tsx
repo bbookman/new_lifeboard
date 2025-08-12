@@ -61,16 +61,6 @@ export const NewsSection = ({ selectedDate }: NewsSectionProps) => {
   
   return (
     <div className="space-y-6">
-      <div className="border-b-2 border-news-accent pb-2">
-        <h2 className="font-headline text-3xl font-bold text-newspaper-headline">
-          Breaking News
-        </h2>
-        <p className="text-newspaper-byline font-body text-sm">
-          Latest updates from around the world
-          {selectedDate && ` • ${selectedDate}`}
-        </p>
-      </div>
-      
       <div className="space-y-6">
         {sampleNews.map((article, index) => {
           // Use ExtendedNewsCard for the second item (index 1)

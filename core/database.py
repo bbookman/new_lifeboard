@@ -360,6 +360,17 @@ class DatabaseService:
             
             return results
     
+    def get_all_namespaces(self) -> List[str]:
+        """Get a list of all distinct namespaces present in the data_items table."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT DISTINCT namespace
+                FROM data_items
+                WHERE namespace IS NOT NULL
+                ORDER BY namespace
+            """)
+            return [row['namespace'] for row in cursor.fetchall()]
+
     def get_markdown_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> str:
         """Extract and combine markdown content from metadata for a specific date"""
         logger.info(f"[MARKDOWN DEBUG] Getting markdown for date: {date}, namespaces: {namespaces}")

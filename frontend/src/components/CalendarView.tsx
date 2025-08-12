@@ -6,12 +6,14 @@ interface CalendarDay {
   date: number;
   isCurrentMonth: boolean;
   isToday: boolean;
-  hasEvents?: boolean;
+  hasEvents?: boolean; // Keep for general data presence
+  hasNewsEvents?: boolean;
+  hasLimitlessEvents?: boolean;
 }
 
 interface DaysWithDataResponse {
-  all: string[];
-  twitter: string[];
+  [key: string]: string[]; // Allows for dynamic keys like 'news', 'limitless', etc.
+  all: string[]; // Still expect 'all' to be present
 }
 
 interface CalendarViewProps {
@@ -20,7 +22,9 @@ interface CalendarViewProps {
 
 export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [daysWithData, setDaysWithData] = useState<Set<string>>(new Set());
+  const [allDaysWithData, setAllDaysWithData] = useState<Set<string>>(new Set());
+  const [newsDaysWithData, setNewsDaysWithData] = useState<Set<string>>(new Set());
+  const [limitlessDaysWithData, setLimitlessDaysWithData] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [serverToday, setServerToday] = useState<string>('');
   
@@ -62,18 +66,21 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       
       if (response.ok) {
         const data: DaysWithDataResponse = await response.json();
-        console.log(`[CALENDAR] Received ${data.all?.length || 0} days with data`);
-        
-        const dataSet = new Set(data.all);
+        console.log(`[CALENDAR] Received data for ${Object.keys(data).length} namespaces`);
         
         if (!signal?.aborted) {
-          setDaysWithData(dataSet);
+          setAllDaysWithData(new Set(data.all || []));
+          setNewsDaysWithData(new Set(data.news || []));
+          setLimitlessDaysWithData(new Set(data.limitless || []));
+          // Add more sets for other namespaces as needed
         }
       } else {
         console.error(`[CALENDAR] HTTP Error:`, response.status, response.statusText);
-        // Set empty data set as fallback for HTTP errors too
+        // Set empty data sets as fallback for HTTP errors too
         if (!signal?.aborted) {
-          setDaysWithData(new Set());
+          setAllDaysWithData(new Set());
+          setNewsDaysWithData(new Set());
+          setLimitlessDaysWithData(new Set());
         }
       }
     } catch (error) {
@@ -83,9 +90,11 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       
       console.error('[CALENDAR] Fetch error:', error);
       
-      // Set empty data set as fallback to prevent UI issues
+      // Set empty data sets as fallback to prevent UI issues
       if (!signal?.aborted) {
-        setDaysWithData(new Set());
+        setAllDaysWithData(new Set());
+        setNewsDaysWithData(new Set());
+        setLimitlessDaysWithData(new Set());
       }
     } finally {
       if (!signal?.aborted) {
@@ -94,10 +103,10 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     }
   };
 
-  // Monitor daysWithData state changes  
+  // Monitor allDaysWithData state changes  
   useEffect(() => {
-    console.log(`[CALENDAR] Days with data updated: ${daysWithData.size} days`);
-  }, [daysWithData]);
+    console.log(`[CALENDAR] All days with data updated: ${allDaysWithData.size} days`);
+  }, [allDaysWithData]);
 
   // Fetch data when component mounts or date changes
   useEffect(() => {
@@ -147,13 +156,17 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       // Check if this day matches the server's today and has data
       const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const isToday = dateString === serverToday;
-      const hasEvents = daysWithData.has(dateString);
+      const hasEvents = allDaysWithData.has(dateString); // General data presence
+      const hasNewsEvents = newsDaysWithData.has(dateString);
+      const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
       
       days.push({
         date: day,
         isCurrentMonth: true,
         isToday,
-        hasEvents
+        hasEvents,
+        hasNewsEvents,
+        hasLimitlessEvents
       });
     }
     
@@ -262,9 +275,14 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
                     }}
                   >
                     <span className="calendar-day-number">{day.date}</span>
-                    {day.hasEvents && day.isCurrentMonth && (
-                      <div className="calendar-events">
-                        <div className="event-dot"></div>
+                    {day.isCurrentMonth && (day.hasNewsEvents || day.hasLimitlessEvents) && (
+                      <div className="calendar-icons-container">
+                        {day.hasLimitlessEvents && (
+                          <img src="/src/assets/limitless-logo.svg" alt="Limitless Data" className="calendar-icon limitless-icon" />
+                        )}
+                        {day.hasNewsEvents && (
+                          <span className="calendar-icon news-icon">📰</span>
+                        )}
                       </div>
                     )}
                   </div>

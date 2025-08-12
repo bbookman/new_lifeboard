@@ -576,6 +576,36 @@ All colors MUST be HSL.
   border-radius: 2px;
 }
 
+/* Calendar Icons */
+.calendar-day {
+  position: relative; /* Ensure positioning context for children */
+}
+
+.calendar-icons-container {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.25rem; /* Space between icons */
+  align-items: center;
+}
+
+.calendar-icon {
+  width: 16px; /* Approximate size of the original dot */
+  height: 16px; /* Approximate size of the original dot */
+  object-fit: contain; /* Ensure image scales correctly */
+  font-size: 16px; /* For emoji sizing */
+  line-height: 1; /* For emoji vertical alignment */
+}
+
+.limitless-icon {
+  /* Specific styles for limitless logo if needed */
+}
+
+.news-icon {
+  /* Specific styles for news emoji if needed */
+}
+
 /* Additional utility classes */
 .justify-between {
   justify-content: space-between;

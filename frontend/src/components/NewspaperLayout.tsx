@@ -5,16 +5,18 @@ interface NewspaperLayoutProps {
   children: ReactNode;
   showMasthead?: boolean;
   className?: string;
+  selectedDate?: string;
 }
 
-export const NewspaperLayout = ({ 
-  children, 
+export const NewspaperLayout = ({
+  children,
   showMasthead = true,
-  className 
+  className,
+  selectedDate
 }: NewspaperLayoutProps) => {
   return (
     <div className={className} style={{ minHeight: '100vh' }}>
-      {showMasthead && <NewspaperMasthead />}
+      {showMasthead && <NewspaperMasthead selectedDate={selectedDate} />}
       
       <div className="container" style={{ paddingBottom: '3rem' }}>
         {children}

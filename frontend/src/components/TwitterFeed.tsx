@@ -73,15 +73,7 @@ export const TwitterFeed = ({ selectedDate }: TwitterFeedProps) => {
   
   return (
     <div className="space-y-6">
-      <div className="border-b-2 border-social-accent pb-2">
-        <h2 className="font-headline text-3xl font-bold text-newspaper-headline">
-          Social Pulse
-        </h2>
-        <p className="text-newspaper-byline font-body text-sm">
-          Trending conversations and updates
-          {selectedDate && ` • ${selectedDate}`}
-        </p>
-      </div>
+      
       
       <div className="space-y-4">
         {/* Daily Summary Card (top-most) */}

@@ -48,17 +48,7 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
   
   return (
     <div>
-      {/* Date Header */}
-      {displayDate && (
-        <div className="mb-8 text-center">
-          <h1 className="font-headline text-3xl font-bold text-newspaper-headline">
-            {formatDisplayDate(displayDate)}
-          </h1>
-          {displayDate !== selectedDate && !selectedDate && (
-            <p className="text-newspaper-byline text-sm mt-1">Today's Edition</p>
-          )}
-        </div>
-      )}
+      
       
       {/* Main newspaper grid layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
