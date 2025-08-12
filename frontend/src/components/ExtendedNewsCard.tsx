@@ -1,5 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface DataItem {
   id: string;
@@ -31,15 +33,7 @@ interface ExtendedNewsCardProps {
  * Displays limitless markdown content from data_items.metadata.cleaned_markdown
  * This component is used within a Card wrapper in NewsSection, so no outer Card needed
  */
-export const ExtendedNewsCard = ({
-  headline,
-  summary,
-  author,
-  timestamp,
-  category,
-  readTime,
-  breaking
-}: ExtendedNewsCardProps) => {
+export const ExtendedNewsCard = () => {
   const [markdownContent, setMarkdownContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
@@ -147,35 +141,11 @@ export const ExtendedNewsCard = ({
     fetchLimitlessMarkdown();
   }, []);
 
-  // Simple markdown rendering function (basic)
-  const renderMarkdown = (markdown: string) => {
-    if (!markdown) return '';
-    
-    // Basic markdown parsing - you could use a proper markdown library here
-    return markdown
-      .split('\n')
-      .map(line => {
-        if (line.startsWith('# ')) {
-          return `<h1 class="text-2xl font-bold text-newspaper-headline mb-3 mt-4">${line.substring(2)}</h1>`;
-        } else if (line.startsWith('## ')) {
-          return `<h2 class="text-xl font-bold text-newspaper-headline mb-2 mt-3">${line.substring(3)}</h2>`;
-        } else if (line.startsWith('### ')) {
-          return `<h3 class="text-lg font-bold text-newspaper-headline mb-2 mt-3">${line.substring(4)}</h3>`;
-        } else if (line.trim() === '---') {
-          return `<hr class="my-4 border-gray-300" />`;
-        } else if (line.trim() === '') {
-          return '<br />';
-        } else {
-          return `<p class="mb-2 text-newspaper-byline">${line}</p>`;
-        }
-      })
-      .join('');
-  };
 
   return (
     <>
       {/* Header - Fixed (no outer Card, as parent NewsSection already provides Card) */}
-      <div className="p-6 border-b border-gray-200">
+      <div className="p-1 border-b border-gray-200">
         <div className="flex items-center space-x-2 mb-3">
           <Badge variant="outline" className="text-xs">
             Limitless
@@ -184,14 +154,7 @@ export const ExtendedNewsCard = ({
             Today's Activity
           </span>
         </div>
-        
-        <h3 className="font-headline font-bold text-xl text-newspaper-headline mb-3 leading-tight">
-          Limitless
-        </h3>
-        
-        <p className="font-body text-newspaper-byline leading-relaxed mb-4">
-          Your cleaned markdown content from today's activity
-        </p>
+
       </div>
 
       {/* Scrollable Markdown Content Area */}
@@ -201,10 +164,49 @@ export const ExtendedNewsCard = ({
             Loading Limitless content...
           </div>
         ) : markdownContent ? (
-          <div 
-            className="prose prose-sm max-w-none"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(markdownContent) }}
-          />
+          <div className="prose prose-sm max-w-none prose-headings:text-newspaper-headline prose-p:text-newspaper-byline prose-hr:border-gray-300">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                h1: ({children}) => <h1 className="text-2xl font-bold text-newspaper-headline mb-3 mt-4">{children}</h1>,
+                h2: ({children}) => <h2 className="text-xl font-bold text-newspaper-headline mb-2 mt-3">{children}</h2>,
+                h3: ({children}) => <h3 className="text-lg font-bold text-newspaper-headline mb-2 mt-3">{children}</h3>,
+                p: ({children}) => <p className="mb-2 text-newspaper-byline">{children}</p>,
+                hr: () => <hr className="my-4 border-gray-300" />,
+                // Support for code blocks and inline code
+                code: ({children, ...props}: any) => {
+                  const className = props.className || '';
+                  const isInline = !className.includes('language-');
+                  
+                  return isInline ? (
+                    <code className="bg-gray-100 px-1 py-0.5 rounded text-sm">{children}</code>
+                  ) : (
+                    <pre className="bg-gray-100 p-3 rounded-md overflow-x-auto">
+                      <code className={className}>
+                        {children}
+                      </code>
+                    </pre>
+                  );
+                },
+                // Support for lists
+                ul: ({children}) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                ol: ({children}) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                li: ({children}) => <li className="ml-4 mb-1">{children}</li>,
+                // Support for blockquotes
+                blockquote: ({children}) => (
+                  <blockquote className="border-l-4 border-gray-300 pl-4 italic my-2">{children}</blockquote>
+                ),
+                // Support for links
+                a: ({href, children}) => (
+                  <a href={href} className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer">
+                    {children}
+                  </a>
+                )
+              }}
+            >
+              {markdownContent}
+            </ReactMarkdown>
+          </div>
         ) : (
           <div className="text-center py-4 text-gray-500 text-sm">
             No Limitless content available
