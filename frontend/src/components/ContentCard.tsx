@@ -137,6 +137,11 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
   return (
     <div className="flex space-x-3">
       <Avatar className="w-12 h-12">
+        <div className={`w-full h-full bg-${accentColor} rounded-full flex items-center justify-center`}>
+          <span className="text-white font-bold text-lg">
+            {data.username ? data.username.charAt(0) : data.source.charAt(0).toUpperCase()}
+          </span>
+        </div>
       </Avatar>
       
       <div className="flex-1 min-w-0">
