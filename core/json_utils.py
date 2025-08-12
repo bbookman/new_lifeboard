@@ -142,7 +142,7 @@ class JSONMetadataParser:
                 json.loads(metadata)
                 return metadata
             except json.JSONDecodeError:
-                logger.warning("Metadata string is not valid JSON, attempting to fix")
+                logger.warning(f"Metadata string is not valid JSON, attempting to fix. Malformed JSON: {metadata}")
                 # If it's not valid JSON, treat it as a raw string and serialize it
                 return json.dumps(metadata)
         

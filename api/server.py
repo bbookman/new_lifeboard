@@ -2,7 +2,7 @@
 Main FastAPI server with modular route organization
 
 This is the refactored server that uses separate route modules
-for better organization and maintainability.
+for better organization and maintainability
 """
 
 import logging
@@ -31,7 +31,7 @@ from config.factory import create_production_config
 from core.dependencies import get_dependency_registry
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings
+from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings
 
 logger = logging.getLogger(__name__)
 
@@ -488,7 +488,7 @@ async def lifespan(app: FastAPI):
                 # Wait for tasks to complete cancellation with shorter timeout
                 try:
                     await asyncio.wait_for(
-                        asyncio.gather(*tasks, return_exceptions=True), 
+                        asyncio.gather(*tasks, return_exceptions=True),
                         timeout=5.0
                     )
                     logger.info("LIFESPAN: All tasks cancelled successfully")
@@ -603,6 +603,7 @@ app.include_router(embeddings.router)
 app.include_router(system.router)
 app.include_router(weather.router)
 app.include_router(settings.router)
+app.include_router(headings.router)
 
 # Mount static files for simple HTML UI
 static_dir = project_root / "static"
@@ -792,7 +793,7 @@ def find_server_processes():
                         if proc.is_running():
                             server_processes.append(pid)
                             logger.debug(f"PROCESS: Found server process PID {pid} (status: {status})")
-                            logger.debug(f"PROCESS: Process cmdline: {' '.join(cmdline[:3])}...")
+                            logger.debug(f"PROCESS: Process cmdline: {' '.join(cmdline[:3])}..." )
                         else:
                             logger.debug(f"PROCESS: PID {pid} not running, skipping")
                     except psutil.NoSuchProcess:
@@ -1158,7 +1159,7 @@ async def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = Fals
             host=host,
             port=port,
             log_level=log_level,
-            reload=debug,
+            reload=False,
             # Enable graceful shutdown with timeout
             timeout_graceful_shutdown=30,  # 30 seconds for graceful shutdown
             timeout_keep_alive=5
@@ -1194,6 +1195,8 @@ async def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = Fals
         except (OSError, ValueError) as e:
             logger.warning(f"UVICORN: Error saving original SIGTERM handler: {e}")
         
+        shutdown_event = asyncio.Event()
+
         def uvicorn_signal_handler(signum, frame):
             """Signal handler that properly triggers uvicorn shutdown with safety checks"""
             # Safe signal name resolution
@@ -1246,6 +1249,7 @@ async def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = Fals
                 logger.exception("UVICORN: Full exception details:")
             
             logger.info(f"UVICORN: Signal handler for {signal_name} completed")
+            shutdown_event.set()
         
         # Install our custom handlers with error handling
         try:
@@ -1284,9 +1288,10 @@ async def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = Fals
                 for recommendation in post_startup_validation.get('recommendations', []):
                     print(f"   💡 {recommendation['description']}")
             
-            # Wait for server thread to complete
-            server_thread.join()
+            # Wait for the shutdown event
+            await shutdown_event.wait()
         finally:
+            logger.info(f"UVICORN: Server thread is {'alive' if server_thread.is_alive() else 'not alive'}")
             # Release session lock
             print("🔓 Releasing session lock...")
             await session_manager.release_session_lock()

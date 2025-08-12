@@ -287,5 +287,35 @@ The project will never be run on a mobile device.  only design for desktop and l
 
 * Do not inspect or review supporting_documents directory unless directed to do so
 
+* write test files only to /tests directory
+
+
+## Frontend Architecture Verification Protocol
+
+  BEFORE modifying ANY UI code:
+
+  1. **PORT IDENTIFICATION**
+     - localhost:3000 = Create React App
+     - localhost:5173 = Vite
+     - localhost:8080 = Vue CLI
+     - localhost:4200 = Angular CLI
+
+  2. **MANDATORY QUESTIONS**
+     - "What port are you accessing?"
+     - "Do you see a /frontend directory?"
+     - "What's in your browser's Network tab?"
+     - "Can you view page source?"
+
+  3. **ARCHITECTURE VERIFICATION**
+     - Check package.json in frontend dir
+     - Identify framework (React/Vue/Angular)
+     - Map UI components to actual files
+
+  4. **CHANGE VERIFICATION**
+     - Modify correct frontend files
+     - Verify changes affect user's browser
+     - Test in development server
+
+
 ```
 ```

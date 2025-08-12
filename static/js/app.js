@@ -203,11 +203,8 @@ const App = {
         // Load weather data - COMMENTED OUT TO PRESERVE MOCK DATA
         // this.loadWeatherData();
         
-        // Load summaries data
-        this.loadSummariesData();
-        
-        // Load activity data
-        this.loadActivityData();
+        // Load limitless data
+        this.loadLimitlessData();
     },
     
     // Load weather data - COMMENTED OUT TO PRESERVE MOCK DATA
@@ -287,82 +284,74 @@ const App = {
         }
     },
     
-    // Load summaries data
-    async loadSummariesData() {
-        const summariesContent = document.getElementById('summaries-content');
-        if (!summariesContent) return;
+    // Load limitless data - Enhanced for taller scrollable view
+    async loadLimitlessData() {
+        console.log('[DEBUG] loadLimitlessData() called');
+        const limitlessContent = document.getElementById('limitless-content');
+        if (!limitlessContent) {
+            console.error('[DEBUG] limitless-content element not found');
+            return;
+        }
+        console.log('[DEBUG] limitless-content element found:', limitlessContent);
         
-        Utils.showLoading('summaries-content', 'Loading summaries...');
+        Utils.showLoading('limitless-content', 'Loading limitless data...');
         
         try {
-            const calendarData = await API.calendar.getDateData(this.currentDate);
+            // Use the enhanced API endpoint to get limitless data
+            const apiUrl = `/calendar/api/day/${this.currentDate}/enhanced`;
+            console.log('[DEBUG] Fetching from:', apiUrl);
+            const response = await fetch(apiUrl);
             
-            // Look for summaries data in the response
-            let summaries = [];
-            
-            // Check if we have Limitless data with summaries
-            if (calendarData && calendarData.limitless && calendarData.limitless.has_data && calendarData.limitless.raw_items) {
-                const rawItems = calendarData.limitless.raw_items;
-                
-                // Filter for items that have heading1 or heading2 content
-                summaries = rawItems.filter(item => {
-                    if (!item.content) return false;
-                    
-                    // Check if content contains heading1 or heading2 patterns
-                    const content = item.content.toLowerCase();
-                    return content.includes('# ') || content.includes('## ') || 
-                           (item.metadata && 
-                            (JSON.stringify(item.metadata).toLowerCase().includes('heading1') ||
-                             JSON.stringify(item.metadata).toLowerCase().includes('heading2')));
-                }).map(item => {
-                    let metadata = {};
-                    try {
-                        metadata = typeof item.metadata === 'string' 
-                            ? JSON.parse(item.metadata) 
-                            : item.metadata || {};
-                    } catch (e) {
-                        console.error('Error parsing metadata:', e);
-                    }
-                    
-                    return {
-                        title: metadata.title || metadata.lifelog_title || 'Untitled Summary',
-                        content: item.content,
-                        cleaned_content: metadata.cleaned_markdown || metadata.markdown || item.content,
-                        source_id: item.source_id,
-                        start_time: metadata.start_time,
-                        end_time: metadata.end_time
-                    };
-                });
+            if (!response.ok) {
+                console.error('[DEBUG] API request failed:', response.status, response.statusText);
+                throw new Error(`Enhanced day API failed: ${response.status} ${response.statusText}`);
             }
             
-            if (summaries.length > 0) {
-                const summariesHtml = summaries.map(summary => {
-                    // Extract headings from content
-                    const headingContent = this.extractHeadingContent(summary.cleaned_content || summary.content);
+            const dayData = await response.json();
+            console.log('[DEBUG] Enhanced day API response:', dayData);
+            
+            if (dayData && dayData.limitless && dayData.limitless.has_data) {
+                let markdownContent = dayData.limitless.markdown_content;
+                
+                // If no cleaned markdown available, fallback to raw content
+                if (!markdownContent && dayData.limitless.raw_items && dayData.limitless.raw_items.length > 0) {
+                    // Extract raw content and combine
+                    const rawContents = dayData.limitless.raw_items.map(item => {
+                        if (item.metadata && typeof item.metadata === 'object') {
+                            // Try to get markdown from metadata
+                            const metadata = item.metadata;
+                            return metadata.markdown || metadata.original_lifelog?.markdown || item.content || '';
+                        }
+                        return item.content || '';
+                    }).filter(content => content.trim());
                     
-                    const startTime = summary.start_time ? new Date(summary.start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
-                    const endTime = summary.end_time ? new Date(summary.end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+                    markdownContent = rawContents.join('\n\n---\n\n');
+                }
+                
+                if (markdownContent) {
+                    // Render markdown using the existing function
+                    const renderedHtml = this.renderLifelogAsMarkdown(markdownContent);
                     
-                    return `
-                        <div class="summary-item mb-4 p-3 border-l-3 border-blue-300 bg-blue-50">
-                            <div class="summary-header mb-2">
-                                <h4 class="font-semibold text-gray-900">${Utils.escapeHtml(summary.title)}</h4>
-                                ${startTime && endTime ? `<p class="text-xs text-gray-500">${startTime} - ${endTime}</p>` : ''}
+                    limitlessContent.innerHTML = `
+                        <div class="limitless-container">
+                            <div class="limitless-header mb-4">
+                                <p class="text-sm text-gray-600">Limitless data for ${this.currentDate}</p>
+                                <p class="text-xs text-gray-500">${dayData.limitless.item_count} item${dayData.limitless.item_count === 1 ? '' : 's'}</p>
                             </div>
-                            <div class="summary-content text-gray-800">
-                                ${headingContent}
+                            <div class="limitless-markdown-content">
+                                ${renderedHtml}
                             </div>
                         </div>
                     `;
-                }).join('');
-                
-                summariesContent.innerHTML = summariesHtml;
+                } else {
+                    Utils.showEmpty('limitless-content', 'No content available for this date');
+                }
             } else {
-                Utils.showEmpty('summaries-content', 'No summaries with headings available for this date');
+                Utils.showEmpty('limitless-content', 'No limitless data available for this date');
             }
         } catch (error) {
-            console.error('Failed to load summaries data:', error);
-            Utils.showError('summaries-content', 'Failed to load summaries data');
+            console.error('Failed to load limitless data:', error);
+            Utils.showError('limitless-content', 'Failed to load limitless data');
         }
     },
     
@@ -393,7 +382,8 @@ const App = {
         }).join('');
     },
     
-    // Load activity data
+    // Load activity data - REMOVED: Now using loadLimitlessData() instead
+    /*
     async loadActivityData() {
         const activityContent = document.getElementById('activity-content');
         if (!activityContent) return;
@@ -476,6 +466,7 @@ const App = {
             Utils.showError('activity-content', 'Failed to load activity data');
         }
     },
+    */
     
     // Render lifelog content as markdown using Marked.js with custom speaker pattern handling
     renderLifelogAsMarkdown(content) {

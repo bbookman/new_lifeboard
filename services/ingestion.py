@@ -135,8 +135,37 @@ class IngestionService(BaseService):
                 except (ValueError, TypeError) as e:
                     logger.warning(f"Failed to parse last sync time for {namespace}: {last_sync} - {e}")
             
+            # Collect items for batch processing
+            items = []
             async for item in source.fetch_items(since=since, limit=limit):
-                await self._process_and_store_item(item, result)
+                items.append(item)
+                result.items_processed += 1
+            
+            # Process items - use batch processing for namespace with batch-capable processors
+            if items:
+                processor = self.processors.get(namespace, self.default_processor)
+                
+                # Check if processor supports batch processing (has process_batch method)
+                if hasattr(processor, 'process_batch') and callable(getattr(processor, 'process_batch')):
+                    logger.info(f"Using batch processing for {namespace} with {len(items)} items")
+                    try:
+                        processed_items = await processor.process_batch(items)
+                        
+                        # Store each processed item
+                        for processed_item in processed_items:
+                            await self._store_processed_item(processed_item, result)
+                            
+                    except Exception as e:
+                        logger.error(f"Batch processing failed for {namespace}: {e}")
+                        # Fall back to individual processing
+                        logger.info(f"Falling back to individual processing for {namespace}")
+                        for item in items:
+                            await self._process_and_store_item(item, result)
+                else:
+                    # Use individual processing for processors that don't support batching
+                    logger.debug(f"Using individual processing for {namespace} (no batch support)")
+                    for item in items:
+                        await self._process_and_store_item(item, result)
             
             # Update last sync time after successful processing
             self.database.set_setting(
@@ -155,15 +184,9 @@ class IngestionService(BaseService):
         
         return result
     
-    async def _process_and_store_item(self, item: DataItem, result: IngestionResult):
-        """Process and store a single data item"""
+    async def _store_processed_item(self, processed_item: DataItem, result: IngestionResult):
+        """Store a pre-processed data item"""
         try:
-            result.items_processed += 1
-            
-            # Select the correct processor for the namespace
-            processor = self.processors.get(item.namespace, self.default_processor)
-            processed_item = processor.process(item)
-            
             # Create namespaced ID
             namespaced_id = NamespacedIDManager.create_id(
                 processed_item.namespace, 
@@ -184,7 +207,22 @@ class IngestionService(BaseService):
             )
             
             result.items_stored += 1
-            logger.debug(f"Stored item: {namespaced_id}")
+            logger.debug(f"Stored batch-processed item: {namespaced_id}")
+            
+        except Exception as e:
+            error_msg = f"Error storing processed item {processed_item.source_id}: {str(e)}"
+            logger.error(error_msg)
+            result.errors.append(error_msg)
+    
+    async def _process_and_store_item(self, item: DataItem, result: IngestionResult):
+        """Process and store a single data item"""
+        try:            
+            # Select the correct processor for the namespace
+            processor = self.processors.get(item.namespace, self.default_processor)
+            processed_item = processor.process(item)
+            
+            # Store the processed item
+            await self._store_processed_item(processed_item, result)
             
         except Exception as e:
             error_msg = f"Error processing item {item.source_id}: {str(e)}"

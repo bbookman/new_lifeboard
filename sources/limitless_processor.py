@@ -506,16 +506,24 @@ class MarkdownProcessor(BaseProcessor):
             return processed_item
     
     def _generate_cleaned_markdown(self, item) -> Optional[str]:
-        """Generate cleaned markdown from original lifelog data"""
+        """Generate cleaned markdown from original lifelog data, using deduplicated content when available"""
         # Handle both DataItem objects and raw dictionaries for backward compatibility
+        processed_response = None
         if hasattr(item, 'metadata'):
             # DataItem object - handle both old and new structure
             if 'processed_response' in item.metadata:
                 # New two-key structure
                 original_lifelog = item.metadata.get('original_response', {})
+                processed_response = item.metadata.get('processed_response', {})
             else:
                 # Legacy structure
                 original_lifelog = item.metadata.get('original_lifelog', {})
+                # Check for legacy semantic processing results
+                if item.metadata.get('display_conversation'):
+                    processed_response = {
+                        'display_conversation': item.metadata.get('display_conversation'),
+                        'semantic_metadata': item.metadata.get('semantic_metadata', {})
+                    }
         else:
             # Raw dictionary - treat as lifelog data directly
             original_lifelog = item
@@ -525,8 +533,8 @@ class MarkdownProcessor(BaseProcessor):
         
         markdown_parts = []
         
-        # Extract and format content first
-        markdown_content = self._extract_markdown_content(original_lifelog)
+        # Extract and format content first, using deduplicated data when available
+        markdown_content = self._extract_markdown_content(original_lifelog, processed_response)
         
         # Add title if available, with fallback - but avoid duplication
         title = original_lifelog.get('title')
@@ -597,22 +605,31 @@ class MarkdownProcessor(BaseProcessor):
         
         return '\n'.join(filtered_lines)
     
-    def _extract_markdown_content(self, lifelog: Dict[str, Any]) -> Optional[str]:
-        """Extract markdown content from lifelog data"""
-        # First, try to get markdown directly from lifelog
+    def _extract_markdown_content(self, lifelog: Dict[str, Any], processed_response: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        """Extract markdown content from lifelog data, preferring deduplicated content when available"""
+        
+        # First priority: Use deduplicated content if available and semantic processing is completed
+        if processed_response:
+            semantic_metadata = processed_response.get('semantic_metadata', {})
+            if semantic_metadata.get('processed') and processed_response.get('display_conversation'):
+                logger.debug("Using deduplicated content from semantic processing for markdown generation")
+                return self._construct_markdown_from_contents(processed_response['display_conversation'])
+        
+        # Second priority: Try to get markdown directly from lifelog
         if lifelog.get('markdown'):
             return lifelog['markdown']
         
-        # Try processed_content field
+        # Third priority: Try processed_content field
         if lifelog.get('processed_content'):
             return lifelog['processed_content']
         
-        # If no direct markdown, construct from structured content nodes
+        # Fourth priority: Construct from original structured content nodes
         contents = lifelog.get('contents', [])
         if contents:
+            logger.debug("Using original content (non-deduplicated) for markdown generation")
             return self._construct_markdown_from_contents(contents)
         
-        # Fallback to raw_data if available
+        # Final fallback: Try raw_data if available
         raw_data = lifelog.get('raw_data')
         if raw_data:
             try:
@@ -627,7 +644,7 @@ class MarkdownProcessor(BaseProcessor):
         return None
     
     def _construct_markdown_from_contents(self, contents: List[Dict[str, Any]]) -> str:
-        """Construct markdown from content nodes"""
+        """Construct markdown from content nodes, handling both original and deduplicated content"""
         markdown_parts = []
         
         for node in contents:
@@ -641,20 +658,38 @@ class MarkdownProcessor(BaseProcessor):
             speaker_name = node.get('speakerName')
             speaker_id = node.get('speakerIdentifier')
             
+            # Check if this is a deduplicated node (from semantic processing)
+            is_deduplicated = node.get('is_deduplicated', False)
+            hidden_variations = node.get('hidden_variations', 0)
+            
             if node_type == 'blockquote' and speaker_name:
                 # Format as quoted speech
                 speaker_label = f"{speaker_name} (You)" if speaker_id == 'user' else speaker_name
-                markdown_parts.append(f"> **{speaker_label}:** {node_content}")
+                formatted_content = f"> **{speaker_label}:** {node_content}"
+                
+                # Add deduplication indicator if this represents multiple similar lines
+                if is_deduplicated and hidden_variations > 0:
+                    formatted_content += f" *(represents {hidden_variations + 1} similar statements)*"
+                
+                markdown_parts.append(formatted_content)
+                
             elif node_type.startswith('heading'):
                 # Format as appropriate heading level
                 level = int(node_type.replace('heading', '') or '2')
                 heading_prefix = '#' * min(level, 6)
                 markdown_parts.append(f"{heading_prefix} {node_content}")
+                
             else:
                 # Regular paragraph content
                 if speaker_name and node_type != 'paragraph':
                     speaker_label = f"{speaker_name} (You)" if speaker_id == 'user' else speaker_name
-                    markdown_parts.append(f"**{speaker_label}:** {node_content}")
+                    formatted_content = f"**{speaker_label}:** {node_content}"
+                    
+                    # Add deduplication indicator if applicable
+                    if is_deduplicated and hidden_variations > 0:
+                        formatted_content += f" *(represents {hidden_variations + 1} similar statements)*"
+                    
+                    markdown_parts.append(formatted_content)
                 else:
                     markdown_parts.append(node_content)
         
