@@ -92,6 +92,9 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
           if (fetchResult.success) {
             console.log(`[ExtendedNewsCard] Automatic fetch successful: ${fetchResult.message}`);
             
+            // IMPORTANT: Never show API response messages to user
+            // Only log them and refetch actual content
+            
             // Wait a moment for data to be processed
             setTimeout(async () => {
               console.log(`[ExtendedNewsCard] Refetching data after successful automatic fetch`);
@@ -214,6 +217,21 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
                 console.log(`[ExtendedNewsCard] Item ${index}: No markdown content found`);
               }
               
+              // Validate content - reject API response messages or system messages
+              if (itemMarkdown) {
+                const lowerContent = itemMarkdown.toLowerCase();
+                const isApiResponse = lowerContent.includes('data already exists') || 
+                                    lowerContent.includes('api response') ||
+                                    lowerContent.includes('fetch result') ||
+                                    lowerContent.includes('successfully fetched') ||
+                                    lowerContent.includes('items_processed');
+                
+                if (isApiResponse) {
+                  console.warn(`[ExtendedNewsCard] Item ${index}: Rejecting API response-like content: ${itemMarkdown.substring(0, 100)}...`);
+                  itemMarkdown = '';
+                }
+              }
+              
               if (itemMarkdown) {
                 markdownParts.push(itemMarkdown);
               }
@@ -225,17 +243,17 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
             const combinedMarkdown = markdownParts.join('\n\n---\n\n');
             
             if (combinedMarkdown.trim().length > 0) {
-              setMarkdownContent(prevContent => prevContent + combinedMarkdown);
-              console.log(`[ExtendedNewsCard] Final markdown content length: ${combinedMarkdown.length}`);
+              setMarkdownContent(combinedMarkdown); // Replace content, don't concatenate
+              console.log(`[ExtendedNewsCard] Set markdown content length: ${combinedMarkdown.length}`);
             } else {
               console.log(`[ExtendedNewsCard] No displayable markdown content found for ${targetDate}`);
               
               // Trigger automatic fetch if no data and not already attempted
               if (allowAutoFetch && !fetchAttempted.has(targetDate) && !autoFetching) {
-                console.log(`[ExtendedNewsCard] Triggering automatic fetch for ${targetDate}`);
+                console.log(`[ExtendedNewsCard] Triggering automatic fetch for ${targetDate} - no displayable content`);
                 await triggerAutomaticFetch(targetDate);
               } else {
-                console.log(`[ExtendedNewsCard] Automatic fetch already attempted or in progress for ${targetDate}, or auto-fetch disabled`);
+                console.log(`[ExtendedNewsCard] Not triggering automatic fetch for ${targetDate}: attempted=${fetchAttempted.has(targetDate)}, fetching=${autoFetching}, allowAuto=${allowAutoFetch}`);
                 setMarkdownContent(''); // Set to empty string if no displayable content
               }
             }

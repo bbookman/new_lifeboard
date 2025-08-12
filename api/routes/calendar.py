@@ -543,65 +543,28 @@ async def fetch_limitless_for_date(
             logger.debug(f"[OnDemandFetch] Registering Limitless source with ingestion service")
             ingestion_service.register_source(limitless_source)
         
-        # Process items through existing pipeline
+        # Process items through existing pipeline using proper ingestion service methods
         logger.info(f"[OnDemandFetch] Processing {len(items_fetched)} items through ingestion pipeline")
         
-        processor = ingestion_service.processors.get('limitless', ingestion_service.default_processor)
-        processed_count = 0
-        stored_count = 0
-        errors = []
+        # Import IngestionResult for proper result tracking
+        from services.ingestion import IngestionResult
+        result = IngestionResult()
+        result.start_time = datetime.now(timezone.utc)
         
         try:
-            # Check if processor supports batch processing
-            if hasattr(processor, 'process_batch') and callable(getattr(processor, 'process_batch')):
-                logger.debug(f"[OnDemandFetch] Using batch processing for {len(items_fetched)} items")
-                try:
-                    processed_items = await processor.process_batch(items_fetched)
-                    
-                    # Store each processed item
-                    for processed_item in processed_items:
-                        try:
-                            await ingestion_service._store_processed_item(processed_item, type('MockResult', (), {'errors': errors})())
-                            stored_count += 1
-                            processed_count += 1
-                            logger.debug(f"[OnDemandFetch] Stored processed item: {processed_item.source_id}")
-                        except Exception as e:
-                            error_msg = f"Error storing item {processed_item.source_id}: {str(e)}"
-                            logger.error(f"[OnDemandFetch] {error_msg}")
-                            errors.append(error_msg)
-                            processed_count += 1
-                            
-                except Exception as e:
-                    logger.error(f"[OnDemandFetch] Batch processing failed: {e}")
-                    # Fall back to individual processing
-                    logger.info(f"[OnDemandFetch] Falling back to individual processing")
-                    for item in items_fetched:
-                        try:
-                            processed_item = processor.process(item)
-                            await ingestion_service._store_processed_item(processed_item, type('MockResult', (), {'errors': errors})())
-                            stored_count += 1
-                            processed_count += 1
-                            logger.debug(f"[OnDemandFetch] Individually processed and stored: {item.source_id}")
-                        except Exception as e:
-                            error_msg = f"Error processing item {item.source_id}: {str(e)}"
-                            logger.error(f"[OnDemandFetch] {error_msg}")
-                            errors.append(error_msg)
-                            processed_count += 1
-            else:
-                # Use individual processing
-                logger.debug(f"[OnDemandFetch] Using individual processing (no batch support)")
-                for item in items_fetched:
-                    try:
-                        processed_item = processor.process(item)
-                        await ingestion_service._store_processed_item(processed_item, type('MockResult', (), {'errors': errors})())
-                        stored_count += 1
-                        processed_count += 1
-                        logger.debug(f"[OnDemandFetch] Individually processed and stored: {item.source_id}")
-                    except Exception as e:
-                        error_msg = f"Error processing item {item.source_id}: {str(e)}"
-                        logger.error(f"[OnDemandFetch] {error_msg}")
-                        errors.append(error_msg)
-                        processed_count += 1
+            # Process each item using the ingestion service's standard processing method
+            for item in items_fetched:
+                logger.debug(f"[OnDemandFetch] Processing item: {item.source_id}")
+                await ingestion_service._process_and_store_item(item, result)
+                result.items_processed += 1  # Manually track processed count
+                logger.debug(f"[OnDemandFetch] Successfully processed item: {item.source_id}")
+            
+            result.end_time = datetime.now(timezone.utc)
+            processed_count = result.items_processed
+            stored_count = result.items_stored 
+            errors = result.errors
+            
+            logger.info(f"[OnDemandFetch] Processing completed: {processed_count} processed, {stored_count} stored, {len(errors)} errors")
             
         except Exception as e:
             logger.error(f"[OnDemandFetch] Critical error during processing: {e}")
