@@ -139,13 +139,13 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
           }
         } else {
           console.error('Failed to fetch limitless data:', response.status);
-          setMarkdownContent('Failed to load Limitless data.');
+          setMarkdownContent(''); // Don't show error, just empty content
         }
         
         setLoading(false);
       } catch (error) {
         console.error('Error fetching limitless data:', error);
-        setMarkdownContent('Error loading Limitless data.');
+        setMarkdownContent(''); // Don't show error, just empty content
         setLoading(false);
       }
     };
