@@ -73,17 +73,7 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
         <PhotoGallery selectedDate={displayDate} />
       </div>
       
-      {/* Footer */}
-      <footer className="mt-12 pt-8 border-t border-newspaper-divider">
-        <div className="text-center">
-          <p className="font-body text-newspaper-byline text-sm">
-            The Daily Digest • Your Personalized News Experience
-          </p>
-          <p className="font-body text-newspaper-byline text-xs mt-1">
-            Curated from your social feeds, music history, and daily moments
-          </p>
-        </div>
-      </footer>
+      
     </div>
   );
 };
