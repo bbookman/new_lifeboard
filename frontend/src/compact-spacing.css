@@ -1,0 +1,514 @@
+/* ============================================================================
+   COMPACT SPACING OVERRIDES - Maximum content density
+   ============================================================================ */
+
+/* Global spacing reductions */
+* {
+  line-height: 1.2 !important;
+}
+
+/* Reduce root padding */
+#root {
+  padding: 0.5rem !important;
+}
+
+/* Container spacing */
+.container {
+  padding: 0 0.5rem !important;
+}
+
+/* Navigation sidebar compression */
+.nav-sidebar {
+  padding: 0.25rem 0.125rem !important;
+  width: 8rem !important;
+}
+
+.nav-button {
+  padding: 0.25rem 0.25rem !important;
+  margin-bottom: 0.125rem !important;
+  font-size: 0.75rem !important;
+  line-height: 1 !important;
+}
+
+.nav-button span {
+  margin-right: 0.25rem !important;
+  font-size: 1em !important;
+}
+
+.nav-header {
+  padding: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+/* Card compression */
+.card {
+  margin-bottom: 0.5rem !important;
+}
+
+.card-header {
+  padding: 0.5rem !important;
+}
+
+.card-content {
+  padding: 0.5rem !important;
+}
+
+.card-title {
+  font-size: 1.125rem !important;
+  margin-bottom: 0.25rem !important;
+  line-height: 1.1 !important;
+}
+
+/* Heading compression */
+h1, h2, h3, h4, h5, h6 {
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.25rem !important;
+  line-height: 1.1 !important;
+}
+
+h1 { font-size: 1.5rem !important; }
+h2 { font-size: 1.25rem !important; }
+h3 { font-size: 1.125rem !important; }
+h4 { font-size: 1rem !important; }
+h5 { font-size: 0.875rem !important; }
+h6 { font-size: 0.75rem !important; }
+
+/* Paragraph and text spacing */
+p {
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+  line-height: 1.3 !important;
+}
+
+/* List compression */
+ul, ol {
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+  padding-left: 1rem !important;
+}
+
+li {
+  margin-top: 0.125rem !important;
+  margin-bottom: 0.125rem !important;
+  line-height: 1.2 !important;
+}
+
+/* Button compression */
+.button {
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.75rem !important;
+}
+
+/* Grid and flex gap reduction */
+.gap-8 { gap: 0.5rem !important; }
+.gap-6 { gap: 0.375rem !important; }
+.gap-4 { gap: 0.25rem !important; }
+.gap-2 { gap: 0.125rem !important; }
+
+/* Spacing utilities compression */
+.mt-8 { margin-top: 1rem !important; }
+.mt-4 { margin-top: 0.5rem !important; }
+.mt-2 { margin-top: 0.25rem !important; }
+.mb-8 { margin-bottom: 1rem !important; }
+.mb-4 { margin-bottom: 0.5rem !important; }
+.mb-2 { margin-bottom: 0.25rem !important; }
+.p-6 { padding: 0.75rem !important; }
+.p-4 { padding: 0.5rem !important; }
+.p-2 { padding: 0.25rem !important; }
+.py-4 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+.px-4 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+.space-y-8 > * + * { margin-top: 1rem !important; }
+.space-y-6 > * + * { margin-top: 0.75rem !important; }
+.space-y-4 > * + * { margin-top: 0.5rem !important; }
+.space-y-3 > * + * { margin-top: 0.375rem !important; }
+.space-y-2 > * + * { margin-top: 0.25rem !important; }
+
+/* Conversation Patterns View specific compression */
+.conversation-patterns-view .card {
+  padding: 0.5rem !important;
+}
+
+.conversation-patterns-view h2 {
+  font-size: 1.25rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.conversation-patterns-view .text-sm {
+  font-size: 0.6875rem !important;
+  line-height: 1.2 !important;
+}
+
+.conversation-patterns-view .mb-6 {
+  margin-bottom: 0.5rem !important;
+}
+
+/* Pattern cards compression */
+.pattern-header {
+  margin-bottom: 0.25rem !important;
+}
+
+.pattern-content {
+  padding: 0.25rem !important;
+}
+
+/* Badge compression */
+.badge {
+  padding: 0.125rem 0.25rem !important;
+  font-size: 0.625rem !important;
+}
+
+/* Select and input compression */
+.select-trigger,
+.setting-select,
+.setting-input {
+  padding: 0.25rem 0.375rem !important;
+  font-size: 0.75rem !important;
+  height: auto !important;
+  min-height: 1.5rem !important;
+}
+
+/* Stats overview compression */
+.stats-grid > div {
+  padding: 0.375rem !important;
+}
+
+.stats-grid .text-2xl {
+  font-size: 1.125rem !important;
+}
+
+.stats-grid .text-sm {
+  font-size: 0.625rem !important;
+}
+
+/* Chat view compression */
+.chat-container {
+  height: calc(100vh - 150px) !important;
+  min-height: 300px !important;
+}
+
+.chat-messages {
+  padding: 0.5rem !important;
+  gap: 0.5rem !important;
+}
+
+.chat-message-content {
+  padding: 0.5rem !important;
+}
+
+.message-header {
+  margin-bottom: 0.25rem !important;
+  font-size: 0.625rem !important;
+}
+
+.message-text {
+  line-height: 1.3 !important;
+  font-size: 0.75rem !important;
+}
+
+.chat-input {
+  padding: 0.375rem !important;
+  min-height: 40px !important;
+  font-size: 0.75rem !important;
+}
+
+.chat-send-button {
+  padding: 0.375rem 0.75rem !important;
+}
+
+/* Calendar view compression */
+.calendar-day {
+  min-height: 40px !important;
+  padding: 0.25rem !important;
+}
+
+.calendar-day-header {
+  padding: 0.375rem !important;
+  font-size: 0.625rem !important;
+}
+
+.calendar-day-number {
+  font-size: 0.625rem !important;
+}
+
+/* Settings compression */
+.setting-item {
+  padding: 0.5rem 0 !important;
+  gap: 0.5rem !important;
+}
+
+.setting-label {
+  margin-bottom: 0.125rem !important;
+  font-size: 0.75rem !important;
+}
+
+.setting-description {
+  font-size: 0.625rem !important;
+  line-height: 1.2 !important;
+}
+
+/* Prose content compression */
+.prose {
+  line-height: 1.4 !important;
+}
+
+.prose h1 {
+  font-size: 1.5rem !important;
+  margin-top: 0 !important;
+  margin-bottom: 0.5rem !important;
+  padding-bottom: 0.25rem !important;
+}
+
+.prose h2 {
+  font-size: 1.25rem !important;
+  margin-top: 1rem !important;
+  margin-bottom: 0.5rem !important;
+  padding-bottom: 0.25rem !important;
+}
+
+.prose h3 {
+  font-size: 1.125rem !important;
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.375rem !important;
+}
+
+.prose p {
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+  line-height: 1.4 !important;
+}
+
+.prose ul,
+.prose ol {
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+  padding-left: 1.25rem !important;
+}
+
+.prose li {
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.prose blockquote {
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+  padding: 0.5rem !important;
+}
+
+.prose pre {
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+  padding: 0.5rem !important;
+}
+
+.prose table {
+  margin-top: 1rem !important;
+  margin-bottom: 1rem !important;
+}
+
+.prose thead th,
+.prose tbody td {
+  padding: 0.375rem !important;
+}
+
+/* Reflection prose ultra-compact */
+.reflection-prose {
+  font-size: 0.625rem !important; /* 10px base */
+  line-height: 1.2 !important;
+}
+
+.reflection-prose h1 {
+  font-size: 0.875rem !important; /* 14px */
+  margin-bottom: 0.375rem !important;
+}
+
+.reflection-prose h2 {
+  font-size: 0.75rem !important; /* 12px */
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.reflection-prose h3 {
+  font-size: 0.6875rem !important; /* 11px */
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.reflection-prose p {
+  font-size: 0.625rem !important; /* 10px */
+  margin-top: 0.375rem !important;
+  margin-bottom: 0.375rem !important;
+  line-height: 1.3 !important;
+}
+
+.reflection-prose em {
+  font-size: 0.5625rem !important; /* 9px */
+  margin: 0.25rem 0 !important;
+}
+
+/* Tabs compression */
+.tabs-list {
+  gap: 0.25rem !important;
+  padding: 0.25rem !important;
+}
+
+.tabs-trigger {
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.75rem !important;
+}
+
+.tabs-content {
+  padding: 0.5rem !important;
+  margin-top: 0.25rem !important;
+}
+
+/* Form elements compression */
+input[type="text"],
+input[type="email"],
+input[type="number"],
+textarea,
+select {
+  padding: 0.25rem 0.375rem !important;
+  font-size: 0.75rem !important;
+  line-height: 1.2 !important;
+}
+
+/* Timestamp and metadata specific */
+.message-time,
+.timestamp,
+.date-display,
+.time-display {
+  font-size: 0.5625rem !important; /* 9px */
+  line-height: 1 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Remove unnecessary dividers spacing */
+hr {
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.border-t,
+.border-b {
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+/* Conversation item specific compression */
+.conversation-item {
+  padding: 0.375rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+/* Fix the specific timestamp gap issue */
+.timestamp + h1,
+.timestamp + h2,
+.timestamp + h3,
+.timestamp + .heading,
+.message-time + h1,
+.message-time + h2,
+.message-time + h3,
+.message-time + .heading,
+em + h1,
+em + h2,
+em + h3,
+em + .heading {
+  margin-top: 0.25rem !important;
+}
+
+/* Typography adjustments for better density */
+body {
+  font-size: 0.75rem !important;
+  line-height: 1.2 !important;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 768px) {
+  .container {
+    padding: 0 0.25rem !important;
+  }
+  
+  .card-header,
+  .card-content {
+    padding: 0.375rem !important;
+  }
+  
+  h1 { font-size: 1.25rem !important; }
+  h2 { font-size: 1rem !important; }
+  h3 { font-size: 0.875rem !important; }
+  
+  .nav-sidebar {
+    padding: 0.25rem !important;
+  }
+  
+  .nav-button {
+    padding: 0.375rem !important;
+    font-size: 0.625rem !important;
+  }
+}
+
+/* Ultra-compact mode for maximum density */
+.ultra-compact {
+  font-size: 0.625rem !important;
+}
+
+.ultra-compact * {
+  line-height: 1.1 !important;
+}
+
+.ultra-compact .card {
+  padding: 0.25rem !important;
+}
+
+.ultra-compact p,
+.ultra-compact li,
+.ultra-compact span {
+  margin: 0.125rem 0 !important;
+}
+
+/* Fix for specific ConversationPatternsView spacing */
+.space-y-6 {
+  --tw-space-y-reverse: 0;
+}
+
+.space-y-6 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.5rem !important;
+}
+
+.space-y-4 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.375rem !important;
+}
+
+.space-y-3 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.25rem !important;
+}
+
+.space-y-2 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.125rem !important;
+}
+
+/* Pattern card specific fixes */
+.hover\:shadow-lg:hover {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Remove all unnecessary vertical space */
+.my-12 {
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+.my-6 {
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.pt-8 {
+  padding-top: 0.5rem !important;
+}
+
+.pb-8 {
+  padding-bottom: 0.5rem !important;
+}
