@@ -66,7 +66,8 @@ const convertNewsToContentItem = (apiArticle: ApiNewsArticle, index: number): Co
     content: `${apiArticle.title}\n\n${apiArticle.snippet || apiArticle.content.substring(0, 200)}...`,
     timestamp: formatTimestamp(apiArticle.created_at || apiArticle.published_datetime_utc || new Date().toISOString()),
     verified: true,
-    source: "news"
+    source: "news",
+    url: apiArticle.link
   };
 };
 
