@@ -29,6 +29,7 @@ export interface ContentItemData {
   retweets?: number;
   verified?: boolean;
   source: "twitter" | "news" | "limitless" | "music" | "photo";
+  url?: string;
 }
 
 export interface LimitlessContentData {
@@ -132,62 +133,64 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
     }
   };
 
+  const extractTitle = (content: string) => {
+    // Extract title from content (first line before \n\n)
+    const lines = content.split('\n\n');
+    return lines[0] || content.substring(0, 100);
+  };
+
+  const extractContentWithoutTitle = (content: string) => {
+    // Extract content without the title (everything after first \n\n)
+    const lines = content.split('\n\n');
+    return lines.slice(1).join('\n\n') || '';
+  };
+
   const accentColor = getSourceAccentColor(data.source);
 
   return (
     <div className="flex space-x-3">
-      
-      
       <div className="flex-1 min-w-0">
-        {data.username && (
-          <div className="flex items-center space-x-2 mb-1">
-            <h3 className="font-body font-semibold text-newspaper-headline truncate">
-              {data.username}
-            </h3>
-            {data.verified && (
-              <Badge variant="secondary" className={`bg-${accentColor} text-white text-xs`}>
-                ✓
-              </Badge>
-            )}
-            {data.verified && (
-              <Badge variant="secondary" className={`bg-${accentColor} text-white text-xs`}>
-                ✓
-              </Badge>
-            )}
-            {data.handle && (
-              <>
-                <span className="text-newspaper-byline text-sm">
-                  {data.handle}
+        {data.content && (
+          <>
+            <div className="flex items-center space-x-2 mb-1">
+              {data.url ? (
+                <a 
+                  href={data.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="font-body font-semibold text-blue-600 underline truncate"
+                >
+                  {extractTitle(data.content)}
+                </a>
+              ) : (
+                <span className="font-body font-semibold text-newspaper-headline truncate">
+                  {extractTitle(data.content)}
                 </span>
-                <span className="text-newspaper-byline text-sm">•</span>
-              </>
+              )}
+            </div>
+          
+            <p className="font-body text-newspaper-headline leading-relaxed mb-3">
+              {extractContentWithoutTitle(data.content)}
+            </p>
+          
+            {(data.likes !== undefined || data.retweets !== undefined) && (
+              <div className="flex space-x-6 text-newspaper-byline text-sm">
+                {data.likes !== undefined && (
+                  <span className={`hover:text-${accentColor} cursor-pointer transition-colors`}>
+                    ♡ {data.likes.toLocaleString()}
+                  </span>
+                )}
+                {data.retweets !== undefined && (
+                  <span className={`hover:text-${accentColor} cursor-pointer transition-colors`}>
+                    ↻ {data.retweets.toLocaleString()}
+                  </span>
+                )}
+                <span className={`hover:text-${accentColor} cursor-pointer transition-colors`}>
+                  ⤴ Share
+                </span>
+              </div>
             )}
-            <span className="text-newspaper-byline text-sm">
-              {data.timestamp}
-            </span>
-          </div>
-        )}
-        
-        <p className="font-body text-newspaper-headline leading-relaxed mb-3">
-          {data.content}
-        </p>
-        
-        {(data.likes !== undefined || data.retweets !== undefined) && (
-          <div className="flex space-x-6 text-newspaper-byline text-sm">
-            {data.likes !== undefined && (
-              <span className={`hover:text-${accentColor} cursor-pointer transition-colors`}>
-                ♡ {data.likes.toLocaleString()}
-              </span>
-            )}
-            {data.retweets !== undefined && (
-              <span className={`hover:text-${accentColor} cursor-pointer transition-colors`}>
-                ↻ {data.retweets.toLocaleString()}
-              </span>
-            )}
-            <span className={`hover:text-${accentColor} cursor-pointer transition-colors`}>
-              ⤴ Share
-            </span>
-          </div>
+          </>
         )}
       </div>
     </div>

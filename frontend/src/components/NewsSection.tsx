@@ -92,6 +92,9 @@ export const NewsSection = ({ selectedDate }: NewsSectionProps) => {
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute top-4 left-4">
+                    <Badge className="bg-news-accent text-white font-bold">
+                      BREAKING
+                    </Badge>
                   </div>
                 </div>
               )}
@@ -101,8 +104,11 @@ export const NewsSection = ({ selectedDate }: NewsSectionProps) => {
                   <Badge variant="outline" className="text-xs">
                     {article.category}
                   </Badge>
-                  
-                  
+                  {article.breaking && index !== 0 && (
+                    <Badge className="bg-news-accent text-white text-xs">
+                      BREAKING
+                    </Badge>
+                  )}
                   <span className="text-newspaper-byline text-xs">
                     {article.readTime}
                   </span>
