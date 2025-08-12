@@ -125,22 +125,17 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
             
             // Join all markdown content with separators
             const combinedMarkdown = markdownParts.join('\n\n---\n\n');
-            setMarkdownContent(prevContent => prevContent + combinedMarkdown);
             
-            console.log(`[ExtendedNewsCard] Final markdown content length: ${combinedMarkdown.length}`);
+            if (combinedMarkdown.trim().length > 0) {
+              setMarkdownContent(prevContent => prevContent + combinedMarkdown);
+              console.log(`[ExtendedNewsCard] Final markdown content length: ${combinedMarkdown.length}`);
+            } else {
+              console.log(`[ExtendedNewsCard] No displayable markdown content found for ${targetDate}`);
+              setMarkdownContent(''); // Set to empty string if no displayable content
+            }
           } else {
             console.log(`[ExtendedNewsCard] No data items found for ${targetDate}`);
-            
-            // Format the requested date for display
-            const dateObj = new Date(targetDate + 'T00:00:00');
-            const formattedDate = dateObj.toLocaleDateString('en-US', {
-              weekday: 'long',
-              year: 'numeric', 
-              month: 'long',
-              day: 'numeric'
-            });
-            
-            setMarkdownContent(`# No Data Available\n\nNo Limitless data found for ${formattedDate}.\n\nThis date may not have any recorded activities or conversations.`);
+            setMarkdownContent(''); // Set to empty string if no data items
           }
         } else {
           console.error('Failed to fetch limitless data:', response.status);
