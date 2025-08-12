@@ -1,7 +1,12 @@
 import mastheadImage from "@/assets/newspaper-masthead.jpg";
 
-export const NewspaperMasthead = () => {
-  const currentDate = new Date().toLocaleDateString('en-US', {
+interface NewspaperMastheadProps {
+  selectedDate?: string;
+}
+
+export const NewspaperMasthead = ({ selectedDate }: NewspaperMastheadProps) => {
+  const displayDate = selectedDate ? new Date(selectedDate + 'T00:00:00') : new Date();
+  const formattedDate = displayDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -16,7 +21,7 @@ export const NewspaperMasthead = () => {
             THE DAILY DIGEST
           </h1>
           <div className="flex items-center justify-center space-x-4 text-sm font-body font-medium">
-            <span>{currentDate}</span>
+            <span>{formattedDate}</span>
             <span>•</span>
             <span>Your Personalized News</span>
             <span>•</span>

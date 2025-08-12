@@ -83,35 +83,9 @@ interface ContentCardProps {
 const DailySummaryContent = ({ data }: { data: DailySummaryData }) => {
   return (
     <div className="space-y-4">
-      <div className="border-b-2 border-primary pb-3">
-        <h2 className="font-headline text-2xl font-bold text-newspaper-headline">
-          Daily Summary
-        </h2>
-        <p className="text-newspaper-byline font-body text-sm">
-          {new Date(data.date).toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          })}
-        </p>
-      </div>
+      
 
-      {/* Key Stats */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="text-center p-3 bg-muted rounded-lg">
-          <div className="font-headline text-2xl font-bold text-newspaper-headline">
-            {data.totalItems}
-          </div>
-          <div className="text-newspaper-byline text-sm">Total Items</div>
-        </div>
-        <div className="text-center p-3 bg-muted rounded-lg">
-          <div className="font-headline text-2xl font-bold text-newspaper-headline">
-            {data.moodScore}/10
-          </div>
-          <div className="text-newspaper-byline text-sm">Mood Score</div>
-        </div>
-      </div>
+      
 
       {/* Weather Summary */}
       <div>

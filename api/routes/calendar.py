@@ -108,24 +108,35 @@ async def get_days_with_data(
         # Get all days with data
         logger.info("[CALENDAR API] Calling database.get_days_with_data()")
         all_days = database.get_days_with_data()
-        logger.info("[CALENDAR API] Calling database.get_days_with_data(namespaces=['twitter'])")
-        twitter_days = database.get_days_with_data(namespaces=['twitter'])
         
-        logger.info(f"[CALENDAR DEBUG] Raw all_days from database: {all_days[:10] if all_days else 'Empty'}")
+        # Get all distinct namespaces from the database
+        all_namespaces = database.get_all_namespaces()
+        
+        # Prepare the result dictionary with 'all' days initially
+        result_data: Dict[str, List[str]] = {"all": all_days}
+        
+        # Fetch days with data for each namespace dynamically
+        for namespace in all_namespaces:
+            logger.info(f"[CALENDAR API] Calling database.get_days_with_data(namespaces=['{namespace}'])")
+            namespace_days = database.get_days_with_data(namespaces=[namespace])
+            result_data[namespace] = namespace_days
+            logger.info(f"[CALENDAR DEBUG] {namespace} days count: {len(namespace_days) if namespace_days else 0}")
+        
         logger.info(f"[CALENDAR DEBUG] Total all_days count: {len(all_days) if all_days else 0}")
-        logger.info(f"[CALENDAR DEBUG] Twitter days count: {len(twitter_days) if twitter_days else 0}")
         
         # Filter by year/month if specified
         if year is not None and month is not None:
             target_prefix = f"{year:04d}-{month:02d}"
             logger.info(f"[CALENDAR DEBUG] Filtering with target_prefix: {target_prefix}")
-            filtered_days = [day for day in all_days if day.startswith(target_prefix)]
-            filtered_twitter_days = [day for day in twitter_days if day.startswith(target_prefix)]
-            logger.info(f"[CALENDAR DEBUG] Filtered all_days: {filtered_days}")
-            logger.info(f"[CALENDAR DEBUG] Filtered twitter_days: {filtered_twitter_days}")
-            result = {"all": filtered_days, "twitter": filtered_twitter_days}
+            
+            filtered_result_data: Dict[str, List[str]] = {}
+            for key, days_list in result_data.items():
+                filtered_result_data[key] = [day for day in days_list if day.startswith(target_prefix)]
+                logger.info(f"[CALENDAR DEBUG] Filtered {key}: {filtered_result_data[key]}")
+            
+            result = filtered_result_data
         else:
-            result = {"all": all_days, "twitter": twitter_days}
+            result = result_data
         
         logger.info(f"[CALENDAR API] Returning response: {result}")
         return result
