@@ -53,7 +53,13 @@ class LimitlessSource(BaseSource, HTTPClientMixin):
             logger.warning("LIMITLESS_API_KEY is not configured in .env file. Connection test skipped.")
             return False
         
-        return await super().test_connection()
+        try:
+            client = await self._ensure_client()
+            response = await self._make_test_request(client)
+            return response.status_code < 400
+        except Exception as e:
+            logger.error(f"Connection test failed: {e}")
+            return False
     
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """Fetch lifelogs with pagination and yield DataItems for unified processing pipeline"""
