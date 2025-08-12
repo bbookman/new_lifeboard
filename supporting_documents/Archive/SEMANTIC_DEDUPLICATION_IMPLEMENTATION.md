@@ -1,3 +1,5 @@
+DEPRICATED
+
 # Semantic Deduplication Implementation Summary
 
 ## Overview

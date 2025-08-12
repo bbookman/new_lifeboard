@@ -125,6 +125,10 @@ h1, h2, h3, h4, h5, h6 {
     min-height: 500px; /* Approximately 3x the standard card height */
 }
 
+.card-extra-tall {
+    min-height: 750px; /* 3x the standard card height for scrollable content */
+}
+
 .card-header {
     padding: 1.5rem;
     border-bottom: 1px solid #f0f0f0;
@@ -140,21 +144,31 @@ h1, h2, h3, h4, h5, h6 {
     padding-right: 0.5rem;
 }
 
-.scrollable-content::-webkit-scrollbar {
+.scrollable-content-tall {
+    max-height: 670px; /* Leave room for header in extra-tall cards */
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.scrollable-content::-webkit-scrollbar,
+.scrollable-content-tall::-webkit-scrollbar {
     width: 6px;
 }
 
-.scrollable-content::-webkit-scrollbar-track {
+.scrollable-content::-webkit-scrollbar-track,
+.scrollable-content-tall::-webkit-scrollbar-track {
     background: #f3f4f6;
     border-radius: 3px;
 }
 
-.scrollable-content::-webkit-scrollbar-thumb {
+.scrollable-content::-webkit-scrollbar-thumb,
+.scrollable-content-tall::-webkit-scrollbar-thumb {
     background: #d1d5db;
     border-radius: 3px;
 }
 
-.scrollable-content::-webkit-scrollbar-thumb:hover {
+.scrollable-content::-webkit-scrollbar-thumb:hover,
+.scrollable-content-tall::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
 }
 

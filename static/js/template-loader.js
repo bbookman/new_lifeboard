@@ -36,8 +36,8 @@ const TemplateLoader = {
      * @param {boolean} useCache - Whether to use cached version (default: true)
      * @returns {Promise<string>} - Template HTML content
      */
-    async loadTemplate(templateName, useCache = true) {
-        // Check cache first
+    async loadTemplate(templateName, useCache = false) {
+        // Check cache first (disabled for development)
         if (useCache && this.templateCache[templateName]) {
             console.log(`Using cached template: ${templateName}`);
             return this.templateCache[templateName];
@@ -48,7 +48,7 @@ const TemplateLoader = {
             throw new Error(`Template not found: ${templateName}`);
         }
         
-        const templatePath = this.basePath + templateConfig.file;
+        const templatePath = this.basePath + templateConfig.file + '?t=' + Date.now();
         
         try {
             console.log(`Loading template: ${templateName} from ${templatePath}`);

@@ -396,3 +396,36 @@ async def debug_markdown_raw(
     except Exception as e:
         logger.error(f"Error in raw markdown debug endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Debug endpoint error: {str(e)}")
+
+
+@router.get("/api/data_items/{date}")
+async def get_data_items_for_date(
+    date: str, 
+    namespaces: Optional[str] = None,
+    database: DatabaseService = Depends(get_database_service)
+) -> List[Dict[str, Any]]:
+    """Get all data_items for a specific date, optionally filtered by namespaces"""
+    try:
+        # Validate date format
+        try:
+            parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Parse namespaces parameter if provided
+        namespace_list = None
+        if namespaces:
+            namespace_list = [ns.strip() for ns in namespaces.split(",")]
+        
+        # Get data items for the date
+        data_items = database.get_data_items_by_date(date, namespace_list)
+        
+        logger.info(f"[DATA_ITEMS API] Retrieved {len(data_items)} data items for date {date} with namespaces {namespace_list}")
+        
+        return data_items
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting data items for {date}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get data items")
