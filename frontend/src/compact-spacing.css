@@ -217,17 +217,17 @@ li {
 
 /* Calendar view compression */
 .calendar-day {
-  min-height: 40px !important;
-  padding: 0.25rem !important;
+  min-height: 160px !important;
+  padding: 1rem !important;
 }
 
 .calendar-day-header {
-  padding: 0.375rem !important;
-  font-size: 0.625rem !important;
+  padding: 1.5rem !important;
+  font-size: 1rem !important;
 }
 
 .calendar-day-number {
-  font-size: 0.625rem !important;
+  font-size: 1.125rem !important;
 }
 
 /* Settings compression */
@@ -446,6 +446,21 @@ body {
   .nav-button {
     padding: 0.375rem !important;
     font-size: 0.625rem !important;
+  }
+  
+  /* Calendar mobile - doubled sizes */
+  .calendar-day {
+    min-height: 120px !important;
+    padding: 0.5rem !important;
+  }
+  
+  .calendar-day-header {
+    padding: 1rem !important;
+    font-size: 0.875rem !important;
+  }
+  
+  .calendar-day-number {
+    font-size: 1rem !important;
   }
 }
 
