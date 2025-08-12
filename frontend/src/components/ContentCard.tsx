@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, Clock } from "lucide-react";
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // Data type definitions
 export interface DailySummaryData {
@@ -346,14 +348,25 @@ const ConversationNode = ({
             )}
           </div>
           
-          <p className="text-sm leading-relaxed mb-2 text-newspaper-headline">
-            {node.content}
-          </p>
+          <div className="prose prose-sm max-w-none mb-2 text-newspaper-headline
+            prose-headings:text-newspaper-headline
+            prose-p:text-newspaper-headline
+            prose-p:leading-relaxed
+            prose-ul:list-none
+            prose-ul:pl-0
+            prose-li:pl-0
+            prose-li:mb-1">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {node.content}
+            </ReactMarkdown>
+          </div>
           
           {node.replacedOriginal && (
-            <p className="text-xs text-muted-foreground italic mb-2">
-              (Replaced: "{node.replacedOriginal}")
-            </p>
+            <div className="prose prose-xs max-w-none text-muted-foreground italic mb-2">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {`(Replaced: "${node.replacedOriginal}")`}
+              </ReactMarkdown>
+            </div>
           )}
           
           {/* Cluster expansion */}

@@ -188,10 +188,10 @@ export const ExtendedNewsCard = () => {
                     </pre>
                   );
                 },
-                // Support for lists
-                ul: ({children}) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                ol: ({children}) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                li: ({children}) => <li className="ml-4 mb-1">{children}</li>,
+                // Support for lists - without bullet points
+                ul: ({children}) => <ul className="list-none mb-2">{children}</ul>,
+                ol: ({children}) => <ol className="list-none mb-2">{children}</ol>,
+                li: ({children}) => <li className="mb-1">{children}</li>,
                 // Support for blockquotes
                 blockquote: ({children}) => (
                   <blockquote className="border-l-4 border-gray-300 pl-4 italic my-2">{children}</blockquote>
