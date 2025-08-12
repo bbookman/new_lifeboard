@@ -30,6 +30,9 @@ print_error() {
 
 # Function to kill existing processes
 cleanup_processes() {
+
+
+    
     print_status "Cleaning up existing processes..."
     
     # Kill Python server processes
@@ -150,10 +153,26 @@ cleanup_on_exit() {
 # Set up signal handling
 trap cleanup_on_exit SIGINT SIGTERM
 
+# Function to delete logs
+delete_logs() {
+    print_status "Deleting logs directory..."
+    if [ -d "logs" ]; then
+        rm -rf "logs"
+        print_success "Logs directory deleted."
+    else
+        print_warning "Logs directory not found, nothing to delete."
+    fi
+}
+
 # Main execution
 echo ""
 print_status "🚀 Starting Lifeboard Full Stack..."
 echo ""
+
+# Check for --delete-logs flag
+if [ "$1" == "--delete-logs" ]; then
+    delete_logs
+fi
 
 # Create logs directory if it doesn't exist
 mkdir -p logs

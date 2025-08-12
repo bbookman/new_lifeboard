@@ -15,9 +15,11 @@ import pytz
 from services.startup import StartupService
 from services.weather_service import WeatherService
 from services.news_service import NewsService
+from services.ingestion import IngestionService
 from core.database import DatabaseService
 from core.dependencies import get_startup_service_dependency
 from config.factory import get_config
+from sources.limitless import LimitlessSource
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,13 @@ def get_news_service(database: DatabaseService = Depends(get_database_service)) 
     """Get news service instance"""
     config = get_config()
     return NewsService(database, config.news)
+
+
+def get_ingestion_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> IngestionService:
+    """Get ingestion service from startup service (fixed dependency injection)"""
+    if not startup_service.ingestion_service:
+        raise HTTPException(status_code=503, detail="Ingestion service not available")
+    return startup_service.ingestion_service
 
 
 def get_user_timezone_aware_now(startup_service: StartupService) -> datetime:
@@ -407,6 +416,225 @@ async def debug_markdown_raw(
     except Exception as e:
         logger.error(f"Error in raw markdown debug endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Debug endpoint error: {str(e)}")
+
+
+@router.post("/api/limitless/fetch/{date}")
+async def fetch_limitless_for_date(
+    date: str,
+    database: DatabaseService = Depends(get_database_service),
+    ingestion_service: IngestionService = Depends(get_ingestion_service)
+) -> Dict[str, Any]:
+    """
+    Fetch Limitless data for a specific date on-demand.
+    This endpoint automatically fetches data from the Limitless API for the specified date,
+    processes it through the existing pipeline, and stores it in the database.
+    """
+    try:
+        logger.info(f"[OnDemandFetch] Starting on-demand fetch for date: {date}")
+        
+        # Validate date format
+        try:
+            parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
+            logger.debug(f"[OnDemandFetch] Parsed date: {parsed_date}")
+        except ValueError:
+            logger.error(f"[OnDemandFetch] Invalid date format: {date}")
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Check if data already exists (optional optimization)
+        existing_items = database.get_data_items_by_date(date, namespaces=['limitless'])
+        if existing_items:
+            logger.info(f"[OnDemandFetch] Data already exists for {date}: {len(existing_items)} items")
+            return {
+                "success": True,
+                "message": f"Data already exists for {date}",
+                "items_processed": 0,
+                "items_existing": len(existing_items),
+                "date": date
+            }
+        
+        logger.debug(f"[OnDemandFetch] No existing data found for {date}, proceeding with fetch")
+        
+        # Get configuration and create Limitless source
+        config = get_config()
+        if not config.limitless.is_api_key_configured():
+            logger.error("[OnDemandFetch] Limitless API key not configured")
+            raise HTTPException(status_code=503, detail="Limitless API key not configured")
+        
+        logger.debug(f"[OnDemandFetch] Creating LimitlessSource with config")
+        limitless_source = LimitlessSource(config.limitless)
+        
+        # Test API connectivity first
+        logger.debug(f"[OnDemandFetch] Testing Limitless API connectivity")
+        connection_ok = await limitless_source.test_connection()
+        if not connection_ok:
+            logger.error("[OnDemandFetch] Failed to connect to Limitless API")
+            raise HTTPException(status_code=503, detail="Failed to connect to Limitless API")
+        
+        logger.info(f"[OnDemandFetch] Successfully connected to Limitless API")
+        
+        # Calculate date range for fetching (fetch for the entire day in user's timezone)
+        user_timezone = config.limitless.timezone
+        logger.debug(f"[OnDemandFetch] User timezone: {user_timezone}")
+        
+        try:
+            tz = pytz.timezone(user_timezone)
+            # Start of day in user timezone
+            start_of_day = tz.localize(datetime.combine(parsed_date, datetime.min.time()))
+            # End of day in user timezone  
+            end_of_day = tz.localize(datetime.combine(parsed_date, datetime.max.time()))
+            
+            # Convert to UTC for API call
+            start_utc = start_of_day.astimezone(pytz.UTC)
+            end_utc = end_of_day.astimezone(pytz.UTC)
+            
+            logger.debug(f"[OnDemandFetch] Date range: {start_utc} to {end_utc}")
+            
+        except Exception as e:
+            logger.error(f"[OnDemandFetch] Error calculating date range: {e}")
+            raise HTTPException(status_code=500, detail="Error calculating date range")
+        
+        # Fetch data from Limitless API for the specific date range
+        logger.info(f"[OnDemandFetch] Fetching data from Limitless API for date range")
+        items_fetched = []
+        
+        try:
+            # Use the existing fetch_items method with since parameter
+            # Note: Limitless API might not support end date filtering, so we'll filter afterwards
+            async for item in limitless_source.fetch_items(since=start_utc, limit=1000):
+                # Filter items that fall within our target date
+                if item.created_at:
+                    item_date_utc = item.created_at
+                    if item_date_utc.tzinfo is None:
+                        item_date_utc = item_date_utc.replace(tzinfo=timezone.utc)
+                    
+                    # Check if item falls within our target date range
+                    if start_utc <= item_date_utc <= end_utc:
+                        items_fetched.append(item)
+                        logger.debug(f"[OnDemandFetch] Item {item.source_id} matches date range")
+                    elif item_date_utc > end_utc:
+                        # We've moved past our target date, stop fetching
+                        logger.debug(f"[OnDemandFetch] Item {item.source_id} past target date, stopping fetch")
+                        break
+                    else:
+                        logger.debug(f"[OnDemandFetch] Item {item.source_id} before target date, continuing")
+                else:
+                    # If no created_at, include it (fallback)
+                    items_fetched.append(item)
+                    logger.debug(f"[OnDemandFetch] Item {item.source_id} has no created_at, including")
+            
+            logger.info(f"[OnDemandFetch] Fetched {len(items_fetched)} items for {date}")
+            
+        except Exception as e:
+            logger.error(f"[OnDemandFetch] Error fetching data from Limitless API: {e}")
+            raise HTTPException(status_code=503, detail=f"Error fetching data from Limitless API: {str(e)}")
+        
+        if not items_fetched:
+            logger.info(f"[OnDemandFetch] No data found for {date}")
+            return {
+                "success": True,
+                "message": f"No data found for {date}",
+                "items_processed": 0,
+                "items_existing": 0,
+                "date": date
+            }
+        
+        # Register the source with ingestion service if not already registered
+        if 'limitless' not in ingestion_service.sources:
+            logger.debug(f"[OnDemandFetch] Registering Limitless source with ingestion service")
+            ingestion_service.register_source(limitless_source)
+        
+        # Process items through existing pipeline
+        logger.info(f"[OnDemandFetch] Processing {len(items_fetched)} items through ingestion pipeline")
+        
+        processor = ingestion_service.processors.get('limitless', ingestion_service.default_processor)
+        processed_count = 0
+        stored_count = 0
+        errors = []
+        
+        try:
+            # Check if processor supports batch processing
+            if hasattr(processor, 'process_batch') and callable(getattr(processor, 'process_batch')):
+                logger.debug(f"[OnDemandFetch] Using batch processing for {len(items_fetched)} items")
+                try:
+                    processed_items = await processor.process_batch(items_fetched)
+                    
+                    # Store each processed item
+                    for processed_item in processed_items:
+                        try:
+                            await ingestion_service._store_processed_item(processed_item, type('MockResult', (), {'errors': errors})())
+                            stored_count += 1
+                            processed_count += 1
+                            logger.debug(f"[OnDemandFetch] Stored processed item: {processed_item.source_id}")
+                        except Exception as e:
+                            error_msg = f"Error storing item {processed_item.source_id}: {str(e)}"
+                            logger.error(f"[OnDemandFetch] {error_msg}")
+                            errors.append(error_msg)
+                            processed_count += 1
+                            
+                except Exception as e:
+                    logger.error(f"[OnDemandFetch] Batch processing failed: {e}")
+                    # Fall back to individual processing
+                    logger.info(f"[OnDemandFetch] Falling back to individual processing")
+                    for item in items_fetched:
+                        try:
+                            processed_item = processor.process(item)
+                            await ingestion_service._store_processed_item(processed_item, type('MockResult', (), {'errors': errors})())
+                            stored_count += 1
+                            processed_count += 1
+                            logger.debug(f"[OnDemandFetch] Individually processed and stored: {item.source_id}")
+                        except Exception as e:
+                            error_msg = f"Error processing item {item.source_id}: {str(e)}"
+                            logger.error(f"[OnDemandFetch] {error_msg}")
+                            errors.append(error_msg)
+                            processed_count += 1
+            else:
+                # Use individual processing
+                logger.debug(f"[OnDemandFetch] Using individual processing (no batch support)")
+                for item in items_fetched:
+                    try:
+                        processed_item = processor.process(item)
+                        await ingestion_service._store_processed_item(processed_item, type('MockResult', (), {'errors': errors})())
+                        stored_count += 1
+                        processed_count += 1
+                        logger.debug(f"[OnDemandFetch] Individually processed and stored: {item.source_id}")
+                    except Exception as e:
+                        error_msg = f"Error processing item {item.source_id}: {str(e)}"
+                        logger.error(f"[OnDemandFetch] {error_msg}")
+                        errors.append(error_msg)
+                        processed_count += 1
+            
+        except Exception as e:
+            logger.error(f"[OnDemandFetch] Critical error during processing: {e}")
+            raise HTTPException(status_code=500, detail=f"Error processing data: {str(e)}")
+        
+        # Process embeddings for the newly stored items
+        logger.info(f"[OnDemandFetch] Processing embeddings for newly stored items")
+        try:
+            embedding_result = await ingestion_service.process_pending_embeddings(batch_size=32)
+            logger.debug(f"[OnDemandFetch] Embedding processing result: {embedding_result}")
+        except Exception as e:
+            logger.warning(f"[OnDemandFetch] Error processing embeddings (non-critical): {e}")
+        
+        # Verify final result
+        final_items = database.get_data_items_by_date(date, namespaces=['limitless'])
+        
+        logger.info(f"[OnDemandFetch] On-demand fetch completed for {date}: processed={processed_count}, stored={stored_count}, final_count={len(final_items)}")
+        
+        return {
+            "success": True,
+            "message": f"Successfully fetched and processed data for {date}",
+            "items_processed": processed_count,
+            "items_stored": stored_count,
+            "items_final": len(final_items),
+            "errors": errors,
+            "date": date
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[OnDemandFetch] Critical error in fetch endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/api/data_items/{date}")

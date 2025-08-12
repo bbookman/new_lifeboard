@@ -37,15 +37,96 @@ interface ExtendedNewsCardProps {
 export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, 'selectedDate'>) => {
   const [markdownContent, setMarkdownContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [fetchAttempted, setFetchAttempted] = useState<Set<string>>(new Set());
+  const [autoFetching, setAutoFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     console.log(`[ExtendedNewsCard] useEffect triggered with selectedDate:`, selectedDate);
+    console.log(`[ExtendedNewsCard] useEffect - current state:`, {
+      markdownContent: markdownContent.length > 0 ? `${markdownContent.length} chars` : 'empty',
+      loading,
+      fetchAttempted: Array.from(fetchAttempted),
+      autoFetching,
+      fetchError
+    });
+    
+    // Reset fetch attempted state when date changes
+    if (selectedDate) {
+      console.log(`[ExtendedNewsCard] Date changed to: ${selectedDate}, resetting fetch state`);
+      setFetchError(null);
+      setAutoFetching(false);
+      // Clear markdown content to force refetch for new date
+      setMarkdownContent('');
+    }
+    
+    /**
+     * Trigger automatic fetch for a specific date when no data exists
+     */
+    const triggerAutomaticFetch = async (targetDate: string) => {
+      try {
+        console.log(`[ExtendedNewsCard] Starting automatic fetch for date: ${targetDate}`);
+        setAutoFetching(true);
+        setFetchError(null);
+        
+        // Mark this date as attempted
+        setFetchAttempted(prev => new Set([...prev, targetDate]));
+        
+        // Call the on-demand fetch API
+        const fetchApiUrl = `http://localhost:8000/calendar/api/limitless/fetch/${targetDate}`;
+        console.log(`[ExtendedNewsCard] Calling automatic fetch API: ${fetchApiUrl}`);
+        
+        const fetchResponse = await fetch(fetchApiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        console.log(`[ExtendedNewsCard] Automatic fetch API response status: ${fetchResponse.status}`);
+        
+        if (fetchResponse.ok) {
+          const fetchResult = await fetchResponse.json();
+          console.log(`[ExtendedNewsCard] Automatic fetch result:`, fetchResult);
+          
+          if (fetchResult.success) {
+            console.log(`[ExtendedNewsCard] Automatic fetch successful: ${fetchResult.message}`);
+            
+            // Wait a moment for data to be processed
+            setTimeout(async () => {
+              console.log(`[ExtendedNewsCard] Refetching data after successful automatic fetch`);
+              // Refetch the data to display it
+              await fetchLimitlessMarkdown(false); // Pass false to skip auto-fetch on retry
+            }, 1000);
+            
+          } else {
+            console.error(`[ExtendedNewsCard] Automatic fetch failed:`, fetchResult.message);
+            setFetchError(`Failed to fetch data: ${fetchResult.message}`);
+            setMarkdownContent('');
+          }
+        } else {
+          const errorText = await fetchResponse.text();
+          console.error(`[ExtendedNewsCard] Automatic fetch API error:`, fetchResponse.status, errorText);
+          setFetchError(`Failed to fetch data: ${fetchResponse.status} ${fetchResponse.statusText}`);
+          setMarkdownContent('');
+        }
+        
+      } catch (error) {
+        console.error(`[ExtendedNewsCard] Error during automatic fetch:`, error);
+        setFetchError(`Network error during automatic fetch: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setMarkdownContent('');
+      } finally {
+        setAutoFetching(false);
+        setLoading(false);
+      }
+    };
+
     /**
      * Fetch cleaned markdown from limitless data_items
      * Gets markdown content from data_items.metadata.cleaned_markdown
-     * Only displays data for the requested date - no fallback behavior
+     * Automatically triggers on-demand fetch if no data exists
      */
-    const fetchLimitlessMarkdown = async () => {
+    const fetchLimitlessMarkdown = async (allowAutoFetch: boolean = true) => {
       try {
         // Debug selectedDate prop
         console.log(`[ExtendedNewsCard] Component received selectedDate prop:`, selectedDate, typeof selectedDate);
@@ -66,28 +147,45 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
         
         console.log(`[ExtendedNewsCard] Final targetDate: ${targetDate}`);
         
-        // First, try to fetch data for the target date
-        const apiUrl = `http://localhost:8000/calendar/api/data_items/${targetDate}?namespaces=limitless`;
+        // First, try to fetch data for the target date with cache-busting timestamp
+        const timestamp = Date.now();
+        const apiUrl = `http://localhost:8000/calendar/api/data_items/${targetDate}?namespaces=limitless&_t=${timestamp}`;
         console.log(`[ExtendedNewsCard] API URL: ${apiUrl}`);
+        console.log(`[ExtendedNewsCard] FETCH: Making API request at ${new Date().toISOString()}`);
         
-        let response = await fetch(apiUrl);
+        let response = await fetch(apiUrl, {
+          // Add cache-busting headers to prevent browser caching
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
         console.log(`[ExtendedNewsCard] Response status: ${response.status}`);
+        console.log(`[ExtendedNewsCard] Response headers:`, Object.fromEntries(response.headers.entries()));
         
         if (response.ok) {
           let dataItems: DataItem[] = await response.json();
-          console.log(`[ExtendedNewsCard] Received ${dataItems.length} items for ${targetDate}`);
+          console.log(`[ExtendedNewsCard] RECEIVED: ${dataItems.length} items for targetDate=${targetDate}`);
           
-          // Log first item for debugging
+          // Verify all items have correct days_date
+          const dateMismatchItems = dataItems.filter(item => item.days_date !== targetDate);
+          if (dateMismatchItems.length > 0) {
+            console.error(`[ExtendedNewsCard] DATE MISMATCH! Found ${dateMismatchItems.length} items with wrong days_date:`, 
+              dateMismatchItems.map(item => ({id: item.id, days_date: item.days_date})));
+          }
+          
+          // Log first few items for debugging
           if (dataItems.length > 0) {
-            console.log(`[ExtendedNewsCard] First item:`, {
-              id: dataItems[0].id,
-              namespace: dataItems[0].namespace,
-              days_date: dataItems[0].days_date,
-              has_content: !!dataItems[0].content,
-              has_metadata: !!dataItems[0].metadata,
-              has_cleaned_markdown: !!dataItems[0].metadata?.cleaned_markdown,
-              metadata_keys: dataItems[0].metadata ? Object.keys(dataItems[0].metadata) : []
-            });
+            console.log(`[ExtendedNewsCard] First 3 items:`, dataItems.slice(0, 3).map(item => ({
+              id: item.id,
+              namespace: item.namespace,
+              days_date: item.days_date,
+              has_content: !!item.content,
+              has_metadata: !!item.metadata,
+              has_cleaned_markdown: !!item.metadata?.cleaned_markdown,
+              content_preview: item.content?.substring(0, 50) + '...'
+            })));
           }
           
           // No fallback logic - only display data for requested date
@@ -131,11 +229,27 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
               console.log(`[ExtendedNewsCard] Final markdown content length: ${combinedMarkdown.length}`);
             } else {
               console.log(`[ExtendedNewsCard] No displayable markdown content found for ${targetDate}`);
-              setMarkdownContent(''); // Set to empty string if no displayable content
+              
+              // Trigger automatic fetch if no data and not already attempted
+              if (allowAutoFetch && !fetchAttempted.has(targetDate) && !autoFetching) {
+                console.log(`[ExtendedNewsCard] Triggering automatic fetch for ${targetDate}`);
+                await triggerAutomaticFetch(targetDate);
+              } else {
+                console.log(`[ExtendedNewsCard] Automatic fetch already attempted or in progress for ${targetDate}, or auto-fetch disabled`);
+                setMarkdownContent(''); // Set to empty string if no displayable content
+              }
             }
           } else {
             console.log(`[ExtendedNewsCard] No data items found for ${targetDate}`);
-            setMarkdownContent(''); // Set to empty string if no data items
+            
+            // Trigger automatic fetch if no data and not already attempted
+            if (allowAutoFetch && !fetchAttempted.has(targetDate) && !autoFetching) {
+              console.log(`[ExtendedNewsCard] Triggering automatic fetch for ${targetDate} (no items)`);
+              await triggerAutomaticFetch(targetDate);
+            } else {
+              console.log(`[ExtendedNewsCard] Automatic fetch already attempted or in progress for ${targetDate}, or auto-fetch disabled`);
+              setMarkdownContent(''); // Set to empty string if no data items
+            }
           }
         } else {
           console.error('Failed to fetch limitless data:', response.status);
@@ -171,9 +285,13 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
 
       {/* Scrollable Markdown Content Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4 h-[400px]">
-        {loading ? (
+        {loading || autoFetching ? (
           <div className="text-center py-4 text-gray-500 text-sm">
-            Loading Limitless content...
+            {autoFetching ? 'Automatically fetching Limitless data...' : 'Loading Limitless content...'}
+          </div>
+        ) : fetchError ? (
+          <div className="text-center py-4 text-red-500 text-sm">
+            {fetchError}
           </div>
         ) : markdownContent ? (
           <div className="prose prose-sm max-w-none prose-headings:text-newspaper-headline prose-p:text-newspaper-byline prose-hr:border-gray-300">
