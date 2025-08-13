@@ -37,15 +37,6 @@ const sampleNews: NewsArticle[] = [
     timestamp: "3 hours ago",
     category: "Health",
     readTime: "5 min read"
-  },
-  {
-    id: "3",
-    headline: "Space Mission Achieves Historic Milestone",
-    summary: "The latest space exploration mission has successfully completed its primary objectives, gathering valuable data that will inform future missions to distant planets.",
-    author: "Jennifer Martinez",
-    timestamp: "5 hours ago",
-    category: "Science",
-    readTime: "4 min read"
   }
 ];
 
