@@ -210,12 +210,8 @@ async def get_enhanced_day_data(
         # Get 5-day weather forecast starting from this date
         weather_data = weather_service.get_weather_for_date_range(date, 5)
         
-        # Get news data for the date
+        # Get news data for the date (no fallback - show empty if no news for this date)
         news_data = news_service.get_news_by_date(date)
-        
-        # If no news for specific date, get recent news as fallback
-        if not news_data:
-            news_data = news_service.get_latest_news(limit=5)
         
         return {
             "date": date,

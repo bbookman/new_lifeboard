@@ -160,7 +160,6 @@ class TestCalendarAPIUnified(unittest.TestCase):
         self.mock_db.get_markdown_by_date.return_value = '# 2024-01-15\n\nNo data available.'
         mock_weather_service.get_weather_for_date_range.return_value = []
         mock_news_service.get_news_by_date.return_value = []
-        mock_news_service.get_latest_news.return_value = []
         
         self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
         

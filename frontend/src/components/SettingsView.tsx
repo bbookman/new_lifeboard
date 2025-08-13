@@ -1,4 +1,4 @@
-import { SectionHeader } from './SectionHeader';
+import { TwitterManualUpload } from './TwitterManualUpload';
 
 export const SettingsView = () => {
   return (
@@ -9,7 +9,7 @@ export const SettingsView = () => {
         </div>
         <div className="card-content flex items-center justify-between">
           <p className="text-muted">Provide your twitter-x.zip file and import X data</p>
-          <button className="button button-primary">Upload</button>
+          <TwitterManualUpload />
         </div>
       </div>
     </div>
