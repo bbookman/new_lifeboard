@@ -1,5 +1,6 @@
 import { NewsSection } from "./NewsSection";
 import { NewsFeed } from "./NewsFeed";
+import { TwitterFeed } from "./TwitterFeed";
 import { MusicHistory } from "./MusicHistory";
 import { PhotoGallery } from "./PhotoGallery";
 import { useEffect, useState } from "react";
@@ -57,9 +58,10 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
           <NewsSection selectedDate={displayDate} />
         </div>
         
-        {/* Right column - News feed and Music */}
+        {/* Right column - News feed, Twitter, and Music */}
         <div className="lg:col-span-1 space-y-8">
           <NewsFeed selectedDate={displayDate} />
+          <TwitterFeed selectedDate={displayDate} />
           <MusicHistory selectedDate={displayDate} />
         </div>
       </div>

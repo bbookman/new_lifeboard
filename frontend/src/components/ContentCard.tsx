@@ -30,6 +30,8 @@ export interface ContentItemData {
   verified?: boolean;
   source: "twitter" | "news" | "limitless" | "music" | "photo";
   url?: string;
+  hasMedia?: boolean;
+  mediaUrl?: string;
 }
 
 export interface LimitlessContentData {
@@ -148,8 +150,8 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
   const accentColor = getSourceAccentColor(data.source);
 
   return (
-    <div className="flex space-x-3">
-      <div className="flex-1 min-w-0">
+    <div className="flex space-x-3 h-full">
+      <div className="flex-1 min-w-0 flex flex-col h-full">
         {data.content && (
           <>
             <div className="flex items-center space-x-2 mb-1">
@@ -169,9 +171,68 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
               )}
             </div>
           
-            <p className="font-body text-newspaper-headline leading-relaxed mb-3">
-              {extractContentWithoutTitle(data.content)}
-            </p>
+            <div className={`font-body text-newspaper-headline leading-relaxed mb-3 ${!data.hasMedia ? 'flex-1 flex items-center' : ''}`}>
+              <p className={`${!data.hasMedia ? 'text-lg' : ''}`}>
+                {extractContentWithoutTitle(data.content)}
+              </p>
+            </div>
+
+            {/* Display media if available - fill remaining space */}
+            {data.hasMedia && data.mediaUrl && (
+              <div className="flex-1 flex flex-col mb-3">
+                <div className="text-xs text-gray-500 mb-2">🖼️ Media: {data.mediaUrl}</div>
+                <div className="flex-1 bg-gray-100 p-4 rounded-lg border-2 border-blue-200 flex items-center justify-center">
+                  <img 
+                    src={data.mediaUrl}
+                    alt="Tweet media"
+                    className="max-w-full max-h-full rounded-lg border-2 border-red-500 hover:opacity-90 transition-opacity cursor-pointer"
+                    style={{ 
+                      backgroundColor: '#e5e7eb',
+                      objectFit: 'contain',
+                      display: 'block'
+                    }}
+                    onClick={() => {
+                      // Open image in new tab when clicked
+                      window.open(data.mediaUrl, '_blank');
+                    }}
+                    onLoad={(e) => {
+                      console.log(`✅ [ContentCard] Successfully loaded media: ${data.mediaUrl}`);
+                      console.log(`✅ [ContentCard] Image dimensions: ${e.currentTarget.naturalWidth}x${e.currentTarget.naturalHeight}`);
+                      const target = e.currentTarget as HTMLImageElement;
+                      target.style.backgroundColor = 'white';
+                      target.style.borderColor = '#10b981'; // Green border when loaded
+                    }}
+                    onError={(e) => {
+                      console.error(`❌ [ContentCard] Failed to load media: ${data.mediaUrl}`);
+                      console.error(`❌ [ContentCard] Error event:`, e);
+                      
+                      // Test the URL directly
+                      fetch(data.mediaUrl!, { method: 'HEAD', mode: 'no-cors' })
+                        .then(() => console.log(`🌐 [ContentCard] URL is accessible via fetch: ${data.mediaUrl}`))
+                        .catch(err => console.error(`🌐 [ContentCard] URL failed via fetch: ${data.mediaUrl}`, err));
+                      
+                      const target = e.currentTarget as HTMLImageElement;
+                      target.style.borderColor = '#ef4444'; // Red border on error
+                      target.style.backgroundColor = '#fef2f2'; // Light red background
+                      
+                      // Show error message instead of broken image
+                      const errorDiv = document.createElement('div');
+                      errorDiv.textContent = `Failed to load image: ${data.mediaUrl}`;
+                      errorDiv.style.cssText = 'padding: 10px; text-align: center; color: #ef4444; font-size: 12px; word-break: break-all;';
+                      target.style.display = 'none';
+                      target.parentNode?.appendChild(errorDiv);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Debug: Show if hasMedia but no mediaUrl */}
+            {data.hasMedia && !data.mediaUrl && (
+              <div className="mb-3 bg-yellow-50 p-2 rounded-lg text-xs text-yellow-700">
+                ⚠️ Has media but no URL available
+              </div>
+            )}
           
             {(data.likes !== undefined || data.retweets !== undefined) && (
               <div className="flex space-x-6 text-newspaper-byline text-sm">
@@ -383,7 +444,7 @@ const ConversationNode = ({
 
 export const ContentCard = ({ data, className = "" }: ContentCardProps) => {
   return (
-    <Card className={`p-4 hover:shadow-lg transition-shadow ${className}`}>
+    <Card className={`p-4 hover:shadow-lg transition-shadow h-full flex flex-col ${className}`}>
       {data.type === "daily-summary" ? (
         <DailySummaryContent data={data} />
       ) : data.type === "limitless" ? (

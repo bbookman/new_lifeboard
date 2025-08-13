@@ -8,6 +8,14 @@ interface DataItem {
   namespace: string;
   days_date: string;
   metadata?: {
+    processed_response?: {
+      cleaned_markdown?: string;
+      [key: string]: any;
+    };
+    original_response?: {
+      markdown?: string;
+      [key: string]: any;
+    };
     cleaned_markdown?: string;
     markdown?: string;
     original_lifelog?: {
@@ -200,8 +208,14 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
             dataItems.forEach((item, index) => {
               let itemMarkdown = '';
               
-              // Priority order: cleaned_markdown > markdown > original_lifelog.markdown > content
-              if (item.metadata?.cleaned_markdown) {
+              // Priority order: processed_response.cleaned_markdown > original_response.markdown > cleaned_markdown > markdown > content
+              if (item.metadata?.processed_response?.cleaned_markdown) {
+                itemMarkdown = item.metadata.processed_response.cleaned_markdown;
+                console.log(`[ExtendedNewsCard] Item ${index}: Using processed_response.cleaned_markdown (${itemMarkdown.length} chars)`);
+              } else if (item.metadata?.original_response?.markdown) {
+                itemMarkdown = item.metadata.original_response.markdown;
+                console.log(`[ExtendedNewsCard] Item ${index}: Using original_response.markdown (${itemMarkdown.length} chars)`);
+              } else if (item.metadata?.cleaned_markdown) {
                 itemMarkdown = item.metadata.cleaned_markdown;
                 console.log(`[ExtendedNewsCard] Item ${index}: Using cleaned_markdown (${itemMarkdown.length} chars)`);
               } else if (item.metadata?.markdown) {
