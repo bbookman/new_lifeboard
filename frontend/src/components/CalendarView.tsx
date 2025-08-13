@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { SectionHeader } from './SectionHeader';
 import { getTodayYYYYMMDD } from '../lib/utils';
 
 interface CalendarDay {
@@ -9,6 +8,7 @@ interface CalendarDay {
   hasEvents?: boolean; // Keep for general data presence
   hasNewsEvents?: boolean;
   hasLimitlessEvents?: boolean;
+  hasTwitterEvents?: boolean;
 }
 
 interface DaysWithDataResponse {
@@ -25,6 +25,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   const [allDaysWithData, setAllDaysWithData] = useState<Set<string>>(new Set());
   const [newsDaysWithData, setNewsDaysWithData] = useState<Set<string>>(new Set());
   const [limitlessDaysWithData, setLimitlessDaysWithData] = useState<Set<string>>(new Set());
+  const [twitterDaysWithData, setTwitterDaysWithData] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [serverToday, setServerToday] = useState<string>('');
   
@@ -72,6 +73,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
           setAllDaysWithData(new Set(data.all || []));
           setNewsDaysWithData(new Set(data.news || []));
           setLimitlessDaysWithData(new Set(data.limitless || []));
+          setTwitterDaysWithData(new Set(data.twitter || []));
           // Add more sets for other namespaces as needed
         }
       } else {
@@ -81,6 +83,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
           setAllDaysWithData(new Set());
           setNewsDaysWithData(new Set());
           setLimitlessDaysWithData(new Set());
+          setTwitterDaysWithData(new Set());
         }
       }
     } catch (error) {
@@ -95,6 +98,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         setAllDaysWithData(new Set());
         setNewsDaysWithData(new Set());
         setLimitlessDaysWithData(new Set());
+        setTwitterDaysWithData(new Set());
       }
     } finally {
       if (!signal?.aborted) {
@@ -159,6 +163,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       const hasEvents = allDaysWithData.has(dateString); // General data presence
       const hasNewsEvents = newsDaysWithData.has(dateString);
       const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
+      const hasTwitterEvents = twitterDaysWithData.has(dateString);
       
       days.push({
         date: day,
@@ -166,7 +171,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         isToday,
         hasEvents,
         hasNewsEvents,
-        hasLimitlessEvents
+        hasLimitlessEvents,
+        hasTwitterEvents
       });
     }
     
@@ -275,13 +281,16 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
                     }}
                   >
                     <span className="calendar-day-number">{day.date}</span>
-                    {day.isCurrentMonth && (day.hasNewsEvents || day.hasLimitlessEvents) && (
+                    {day.isCurrentMonth && (day.hasNewsEvents || day.hasLimitlessEvents || day.hasTwitterEvents) && (
                       <div className="calendar-icons-container">
                         {day.hasLimitlessEvents && (
                           <img src="/src/assets/limitless-logo.svg" alt="Limitless Data" className="calendar-icon limitless-icon" />
                         )}
                         {day.hasNewsEvents && (
                           <span className="calendar-icon news-icon">📰</span>
+                        )}
+                        {day.hasTwitterEvents && (
+                          <img src="/src/assets/logo-black.png" alt="Twitter Data" className="calendar-icon twitter-icon" />
                         )}
                       </div>
                     )}
