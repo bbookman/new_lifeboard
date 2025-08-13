@@ -346,6 +346,34 @@ class IngestionService(BaseService):
         
         return namespaced_id
     
+    async def ingest_items(self, namespace: str, data_items: List[DataItem]) -> IngestionResult:
+        """Ingest multiple DataItems through the standard processing pipeline"""
+        result = IngestionResult()
+        result.start_time = datetime.now(timezone.utc)
+        
+        logger.info(f"Ingesting {len(data_items)} items for namespace: {namespace}")
+        
+        try:
+            # Process each item using the standard processing method
+            for item in data_items:
+                logger.debug(f"Processing item: {item.source_id}")
+                await self._process_and_store_item(item, result)
+                result.items_processed += 1
+                logger.debug(f"Successfully processed item: {item.source_id}")
+            
+            result.end_time = datetime.now(timezone.utc)
+            
+            logger.info(f"Ingestion completed for {namespace}: {result.items_processed} processed, "
+                       f"{result.items_stored} stored, {len(result.errors)} errors")
+            
+        except Exception as e:
+            error_msg = f"Error during batch ingestion for {namespace}: {str(e)}"
+            logger.error(error_msg)
+            result.errors.append(error_msg)
+            result.end_time = datetime.now(timezone.utc)
+        
+        return result
+    
     async def full_sync_all_sources(self, limit_per_source: int = 1000) -> Dict[str, IngestionResult]:
         """Perform full sync for all registered sources"""
         results = {}
