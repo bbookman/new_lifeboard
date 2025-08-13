@@ -28,16 +28,33 @@ export const TwitterManualUpload = () => {
         body: formData,
       });
 
-      const result = await response.json();
-
-      if (response.ok) {
-        setUploadMessage(result.message || 'Upload successful!');
-      } else {
-        setUploadMessage(result.message || 'Upload failed.');
+      if (!response.ok) {
+        // Handle non-200 responses
+        if (response.status === 404) {
+          setUploadMessage('Upload endpoint not found. Please check server configuration.');
+        } else {
+          setUploadMessage(`Upload failed with status: ${response.status}`);
+        }
+        return;
       }
+
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        console.error('Failed to parse response as JSON:', jsonError);
+        setUploadMessage('Server response was not valid JSON. Upload may have succeeded.');
+        return;
+      }
+
+      setUploadMessage(result.message || 'Upload successful!');
     } catch (error) {
       console.error('Error uploading file:', error);
-      setUploadMessage('An error occurred during upload.');
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        setUploadMessage('Failed to connect to server. Please check if the backend is running.');
+      } else {
+        setUploadMessage('An error occurred during upload.');
+      }
     } finally {
       setUploading(false);
       // Reset the file input
