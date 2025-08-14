@@ -57,7 +57,7 @@ function App() {
       {/* Horizontal Navigation Bar */}
       <div className="flex justify-between items-center w-full px-4 py-2 bg-white shadow-md">
         <NavigationSidebar
-          items={navigationItems}
+          items={navigationItems.filter(item => item.id !== 'chat')}
           activeItem={activeView}
           onItemClick={handleNavigation}
         />
