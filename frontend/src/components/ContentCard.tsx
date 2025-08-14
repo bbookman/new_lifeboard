@@ -138,7 +138,7 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
   const extractTitle = (content: string) => {
     // Extract title from content (first line before \n\n)
     const lines = content.split('\n\n');
-    return lines[0] || content.substring(0, 100);
+    return lines[0] || content;
   };
 
   const extractContentWithoutTitle = (content: string) => {
@@ -151,7 +151,7 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
 
   return (
     <div className="flex space-x-3 h-full">
-      <div className="flex-1 min-w-0 flex flex-col h-full">
+      <div className="flex-1 flex flex-col h-full">
         {data.content && (
           <>
             <div className="flex items-center space-x-2 mb-1">
@@ -160,12 +160,12 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
                   href={data.url} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="font-body font-semibold text-blue-600 underline truncate"
+                  className="font-body font-semibold text-blue-600 underline"
                 >
                   {extractTitle(data.content)}
                 </a>
               ) : (
-                <span className="font-body font-semibold text-newspaper-headline truncate">
+                <span className="font-body font-semibold text-newspaper-headline">
                   {extractTitle(data.content)}
                 </span>
               )}
@@ -180,7 +180,6 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
             {/* Display media if available - fill remaining space */}
             {data.hasMedia && data.mediaUrl && (
               <div className="flex-1 flex flex-col mb-3">
-                <div className="text-xs text-gray-500 mb-2">🖼️ Media: {data.mediaUrl}</div>
                 <div className="flex-1 bg-gray-100 p-4 rounded-lg border-2 border-blue-200 flex items-center justify-center">
                   <img 
                     src={data.mediaUrl}
