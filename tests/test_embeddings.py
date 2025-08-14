@@ -209,9 +209,13 @@ class TestEmbeddingService:
     @pytest.mark.asyncio
     async def test_embedding_error_handling(self, embedding_service):
         """Test error handling during embedding generation"""
+        # Import ServiceStatus for proper status setting
+        from core.base_service import ServiceStatus
+        
         mock_model = Mock()
         mock_model.encode.side_effect = Exception("Encoding failed")
         embedding_service.model = mock_model
+        embedding_service._status = ServiceStatus.READY  # Prevent real model loading
         
         # Should return zeros on error
         result = await embedding_service.embed_text("test text")

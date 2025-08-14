@@ -14,16 +14,12 @@ try:
     config = create_production_config()
     print("✅ Config creation successful")
     
-    # Test the AutoSyncConfig
-    auto_sync = config.auto_sync
-    print(f"✅ AutoSync config: enabled={auto_sync.enabled}, delay={auto_sync.startup_sync_delay_seconds}, auto_register={auto_sync.auto_register_sources}")
-    
-    # Check that the problematic attribute doesn't exist
-    if hasattr(auto_sync, 'startup_sync_enabled'):
-        print("❌ ERROR: startup_sync_enabled still exists!")
+    # Test that auto_sync was properly removed (as per development log)
+    if hasattr(config, 'auto_sync'):
+        print("❌ ERROR: auto_sync field still exists in AppConfig!")
         sys.exit(1)
     else:
-        print("✅ startup_sync_enabled properly removed")
+        print("✅ auto_sync field properly removed from AppConfig")
     
     # Test the TwitterConfig
     twitter_config = config.twitter

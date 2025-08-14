@@ -346,4 +346,23 @@ class EmbeddingService(BaseService):
     def cleanup(self):
         """Clean up resources (legacy method for backwards compatibility)"""
         import asyncio
-        asyncio.create_task(self._shutdown_service())
+        try:
+            # Try to create a task if there's a running loop
+            asyncio.create_task(self._shutdown_service())
+        except RuntimeError:
+            # No running event loop, run the shutdown directly
+            try:
+                asyncio.run(self._shutdown_service())
+            except Exception:
+                # Fallback to synchronous cleanup
+                self._sync_cleanup()
+    
+    def _sync_cleanup(self):
+        """Synchronous cleanup for cases where async is not available"""
+        if hasattr(self, 'model') and self.model is not None:
+            try:
+                del self.model
+            except Exception:
+                pass
+        self.model = None
+        self.is_loaded = False

@@ -1,0 +1,1 @@
+"""Migration versions for Lifeboard database schema management"""
