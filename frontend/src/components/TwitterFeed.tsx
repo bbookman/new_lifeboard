@@ -418,7 +418,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
             )}
             
             {/* Current slide indicator */}
-            <div className="text-xs text-gray-500 bg-white px-2 py-1 rounded">
+            <div className="text-xs text-gray-500 bg-white px-3 py-1 rounded whitespace-nowrap">
               {current + 1} of {twitterData.length}
             </div>
           </div>
