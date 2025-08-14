@@ -193,7 +193,8 @@ class TestJSONParsingDebugging:
         # Test the defensive fix directly - raw timestamp string should be handled gracefully
         result = JSONMetadataParser.parse_metadata(problem_timestamp)
         assert result is not None, "Defensive fix should handle raw strings"
-        assert result == {"raw_value": problem_timestamp}, "Raw string should be wrapped in raw_value structure"
+        # ISO timestamps are returned as-is, not wrapped, for better usability
+        assert result == problem_timestamp, "Valid ISO timestamp should be returned as-is"
 
 
 if __name__ == "__main__":

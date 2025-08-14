@@ -182,11 +182,8 @@ class TwoKeyMetadataMigration(BaseMigration):
         logger.info("Starting two-key metadata migration...")
         
         # Add new columns for semantic processing status tracking
-        try:
-            conn.execute("ALTER TABLE data_items ADD COLUMN semantic_status TEXT DEFAULT 'pending'")
-        except sqlite3.OperationalError:
-            # Column already exists
-            pass
+        # Note: semantic_status is handled by 0007_add_semantic_status_tracking migration
+        # This was originally here but moved to a separate migration for better organization
             
         try:
             conn.execute("ALTER TABLE data_items ADD COLUMN semantic_processed_at TIMESTAMP")
@@ -331,7 +328,10 @@ class MigrationRunner:
             IndexesMigration(),
             ChatMessagesMigration(),
             WeatherTableMigration(),
+            SemanticDeduplicationMigration(),
+            SemanticStatusTrackingMigration(),
             TwoKeyMetadataMigration(),
+            IngestionStatusMigration(),
         ]
     
     @contextmanager
@@ -446,3 +446,75 @@ class MigrationRunner:
                     "applied_count": 0,
                     "pending_count": len(self.migrations)
                 }
+
+
+# Wrapper classes for module-based migrations in versions/ directory
+class VersionMigrationAdapter(BaseMigration):
+    """Adapter to use module-based migrations with the class-based system"""
+    
+    def __init__(self, module_name: str, version: str, description: str):
+        self._module_name = module_name
+        self._version = version
+        self._description = description
+        self._module = None
+    
+    @property
+    def version(self) -> str:
+        return self._version
+    
+    @property
+    def description(self) -> str:
+        return self._description
+    
+    def _get_module(self):
+        """Import the migration module"""
+        if self._module is None:
+            import importlib
+            self._module = importlib.import_module(f"core.migrations.versions.{self._module_name}")
+        return self._module
+    
+    def up(self, conn: sqlite3.Connection) -> None:
+        """Apply the migration"""
+        module = self._get_module()
+        module.up(conn)
+    
+    def down(self, conn: sqlite3.Connection) -> None:
+        """Rollback the migration"""
+        module = self._get_module()
+        if hasattr(module, 'down'):
+            module.down(conn)
+        else:
+            super().down(conn)
+
+
+class SemanticDeduplicationMigration(VersionMigrationAdapter):
+    """Migration for semantic deduplication tables"""
+    
+    def __init__(self):
+        super().__init__(
+            "0006_add_semantic_deduplication_tables",
+            "0006_add_semantic_deduplication_tables", 
+            "Add semantic deduplication tables"
+        )
+
+
+class SemanticStatusTrackingMigration(VersionMigrationAdapter):
+    """Migration for semantic status tracking"""
+    
+    def __init__(self):
+        super().__init__(
+            "0007_add_semantic_status_tracking",
+            "0007_add_semantic_status_tracking",
+            "Add semantic status tracking"
+        )
+
+
+class IngestionStatusMigration(VersionMigrationAdapter):
+    """Migration for ingestion status column"""
+    
+    def __init__(self):
+        super().__init__(
+            "0008_add_ingestion_status_to_data_items",
+            "0008_add_ingestion_status_to_data_items",
+            "Add ingestion status to data_items"
+        )
