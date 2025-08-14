@@ -415,6 +415,8 @@ async def lifespan(app: FastAPI):
                 logger.info("LIFESPAN: Monitoring task cancelled successfully")
             except Exception as e:
                 logger.warning(f"LIFESPAN: Error cancelling monitoring task: {e}")
+
+        
     
     except KeyboardInterrupt as e:
         logger.warning(f"LIFESPAN: KeyboardInterrupt received: {e}")
@@ -1701,117 +1703,41 @@ async def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port:
     print("\n🚀 Starting Lifeboard Full Stack Application...")
     print("=" * 60)
     
-    frontend_info = None
-    backend_started = False
+    # Import orchestration classes
+    from core.orchestration import FullStackOrchestrator
+    
+    orchestrator = FullStackOrchestrator()
+    startup_result = None
     
     try:
-        # Step 1: Handle existing processes
-        if kill_existing:
-            print("🧹 Cleaning up existing processes...")
-            kill_frontend_processes()
-            # The existing backend kill logic is handled in run_server()
+        # Use orchestrator for startup coordination
+        startup_result = await orchestrator.orchestrate_startup(
+            host=host,
+            backend_port=port,
+            frontend_port=frontend_port,
+            no_auto_port=no_auto_port,
+            no_frontend=no_frontend,
+            kill_existing=kill_existing
+        )
         
-        # Step 2: Resolve backend port
-        backend_port = port
-        if not no_auto_port:
-            try:
-                backend_port = find_available_port(port, host)
-                if backend_port != port:
-                    print(f"🔄 Backend port {port} was in use, using: {backend_port}")
-                else:
-                    print(f"✅ Backend using requested port: {backend_port}")
-            except RuntimeError as e:
-                print(f"❌ Backend auto-port failed: {e}")
-                if not no_frontend:
-                    print("💡 Try --no-frontend to start backend only")
-                exit(1)
-        else:
-            print(f"🎯 Backend using exact port: {backend_port} (auto-port disabled)")
+        if not startup_result["success"]:
+            error_msg = startup_result.get("error", "Unknown startup error")
+            print(f"\n❌ Application startup failed: {error_msg}")
+            logger.error(f"FULLSTACK: Application startup failed: {error_msg}")
+            exit(1)
         
-        # Step 3: Handle frontend setup (unless disabled)
-        if not no_frontend:
-            print("\n📦 Checking frontend environment...")
-            
-            # Check Node.js
-            if not is_node_installed():
-                print("❌ Node.js is not installed or not available in PATH")
-                print("💡 Install Node.js or use --no-frontend to start backend only")
-                exit(1)
-            
-            # Check and install dependencies if needed
-            if not check_frontend_dependencies():
-                print("📦 Frontend dependencies not found, installing...")
-                if not install_frontend_dependencies():
-                    print("❌ Failed to install frontend dependencies")
-                    print("💡 Try running 'npm install' in the frontend directory manually")
-                    print("💡 Or use --no-frontend to start backend only")
-                    exit(1)
-            
-            # Resolve frontend port
-            resolved_frontend_port = frontend_port
-            if not no_auto_port:
-                # Check if frontend port is available using the existing backend function
-                import socket
-                def check_port_available(port: int, host: str = "0.0.0.0") -> bool:
-                    try:
-                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                            s.bind((host, port))
-                            return True
-                    except OSError:
-                        return False
-                
-                if not check_port_available(frontend_port):
-                    print(f"🔄 Frontend port {frontend_port} is in use, finding alternative...")
-                    try:
-                        resolved_frontend_port = find_available_port(frontend_port, max_attempts=50)
-                        print(f"✅ Frontend using available port: {resolved_frontend_port}")
-                    except RuntimeError as e:
-                        print(f"❌ Frontend auto-port failed: {e}")
-                        print("💡 Try --no-frontend to start backend only")
-                        exit(1)
-                else:
-                    print(f"✅ Frontend using requested port: {resolved_frontend_port}")
-            else:
-                # Check if port is available for exact port mode
-                import socket
-                def check_port_available(port: int, host: str = "0.0.0.0") -> bool:
-                    try:
-                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                            s.bind((host, port))
-                            return True
-                    except OSError:
-                        return False
-                
-                if not check_port_available(frontend_port):
-                    print(f"❌ Frontend port {frontend_port} is in use (auto-port disabled)")
-                    print("💡 Use a different --frontend-port or enable auto-port")
-                    exit(1)
-                print(f"🎯 Frontend using exact port: {resolved_frontend_port} (auto-port disabled)")
-            
-            # Start frontend server
-            print(f"\n🌐 Starting frontend development server...")
-            frontend_info = start_frontend_server(resolved_frontend_port, backend_port)
-            
-            if not frontend_info['success']:
-                print(f"❌ Frontend server failed to start: {frontend_info['error']}")
-                print("💡 Check the error above or use --no-frontend to start backend only")
-                exit(1)
-            else:
-                print(f"✅ Frontend server started successfully!")
-                if 'warning' in frontend_info:
-                    print(f"⚠️  {frontend_info['warning']}")
-        
-        # Step 4: Start backend server
+        # Start backend server
         print(f"\n🔧 Starting backend API server...")
         
         # Store frontend process for cleanup
-        if frontend_info:
+        frontend_info = startup_result.get("frontend_info")
+        if frontend_info and frontend_info.process:
             global _frontend_process
-            _frontend_process = frontend_info['process']
+            _frontend_process = frontend_info.process
         
         # Start backend (this will block)
-        backend_started = True
-        await run_server(host=host, port=backend_port, debug=debug, kill_existing=kill_existing)
+        resolved_backend_port = startup_result["backend_port"]
+        await run_server(host=host, port=resolved_backend_port, debug=debug, kill_existing=kill_existing)
         
     except KeyboardInterrupt:
         print("\n\n⏹️  Shutting down application...")
@@ -1819,18 +1745,9 @@ async def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port:
         print(f"\n❌ Application startup failed: {e}")
         logger.error(f"FULLSTACK: Application startup failed: {e}")
     finally:
-        # Cleanup frontend process if it was started
-        if frontend_info and frontend_info.get('process'):
-            try:
-                print("🧹 Stopping frontend server...")
-                frontend_info['process'].terminate()
-                import time
-                time.sleep(2)
-                if frontend_info['process'].poll() is None:
-                    frontend_info['process'].kill()
-                print("✅ Frontend server stopped")
-            except Exception as e:
-                logger.warning(f"FRONTEND: Error stopping frontend process: {e}")
+        # Use orchestrator for cleanup
+        frontend_info = startup_result.get("frontend_info") if startup_result else None
+        orchestrator.cleanup_processes_on_exit(frontend_info)
         
         print("👋 Lifeboard application stopped")
 

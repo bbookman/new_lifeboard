@@ -310,7 +310,7 @@ class CleanUpCrewService:
                     total_days_processed=sum(stats['days'] for stats in status_stats.values()),
                     total_items_processed=total_items,
                     total_clusters_created=cluster_count,
-                    avg_processing_time=0.0,  # TODO: Calculate from processing logs
+                    avg_processing_time=0.0,  # Processing time calculation not yet implemented
                     success_rate=success_rate,
                     last_updated=datetime.now(timezone.utc)
                 )
