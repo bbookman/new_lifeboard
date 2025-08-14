@@ -8,10 +8,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from config.factory import create_config
+    from config.factory import create_production_config
     print("✅ Config import successful")
     
-    config = create_config()
+    config = create_production_config()
     print("✅ Config creation successful")
     
     # Test the AutoSyncConfig

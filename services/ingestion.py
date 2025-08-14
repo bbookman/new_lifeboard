@@ -222,7 +222,7 @@ class IngestionService(BaseService):
             processed_item = processor.process(item)
             
             # Store the processed item
-            await self._store_processed_item(processed_item, result)
+            await self._store_processed_item(processed_item, result, ingestion_status=ingestion_mode)
             
         except Exception as e:
             error_msg = f"Error processing item {item.source_id}: {str(e)}"

@@ -37,15 +37,16 @@ class DatabaseService:
             raise RuntimeError(f"Database initialization failed: {result['errors']}")
     
     def store_data_item(self, id: str, namespace: str, source_id: str, 
-                       content: str, metadata: Dict = None, days_date: str = None):
+                       content: str, metadata: Dict = None, days_date: str = None,
+                       ingestion_status: str = 'complete'):
         """Store data item with namespaced ID"""
         with self.get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO data_items 
-                (id, namespace, source_id, content, metadata, days_date, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (id, namespace, source_id, content, metadata, days_date, updated_at, ingestion_status)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
             """, (id, namespace, source_id, content, 
-                  JSONMetadataParser.serialize_metadata(metadata), days_date))
+                  JSONMetadataParser.serialize_metadata(metadata), days_date, ingestion_status))
             conn.commit()
     
     def get_data_items_by_ids(self, ids: List[str]) -> List[Dict]:
@@ -89,6 +90,16 @@ class DatabaseService:
                 SET embedding_status = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             """, (status, id))
+            conn.commit()
+
+    def update_ingestion_status(self, item_id: str, status: str):
+        """Update ingestion status for a data item"""
+        with self.get_connection() as conn:
+            conn.execute("""
+                UPDATE data_items
+                SET ingestion_status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (status, item_id))
             conn.commit()
     
     def get_pending_embeddings(self, limit: int = 100) -> List[Dict]:

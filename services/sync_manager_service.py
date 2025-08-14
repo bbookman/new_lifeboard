@@ -144,7 +144,8 @@ class SyncManagerService(BaseService):
             result = await self.ingestion_service.ingest_from_source(
                 namespace=namespace,
                 force_full_sync=force_full_sync,
-                limit=1000
+                limit=1000,
+                ingestion_mode='partial'
             )
             
             logger.info(f"Immediate sync completed for {namespace}: "

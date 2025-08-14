@@ -160,19 +160,19 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
                   href={data.url} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="font-body font-semibold text-blue-600 underline"
+                  className="font-body font-semibold text-blue-600 underline text-base"
                 >
                   {extractTitle(data.content)}
                 </a>
               ) : (
-                <span className="font-body font-semibold text-newspaper-headline">
+                <span className="font-body font-semibold text-newspaper-headline text-base">
                   {extractTitle(data.content)}
                 </span>
               )}
             </div>
           
             <div className={`font-body text-newspaper-headline leading-relaxed mb-3 ${!data.hasMedia ? 'flex-1 flex items-center' : ''}`}>
-              <p className={`${!data.hasMedia ? 'text-lg' : ''}`}>
+              <p className={`${!data.hasMedia ? 'text-lg' : 'text-base'}`}>
                 {extractContentWithoutTitle(data.content)}
               </p>
             </div>
