@@ -3,8 +3,9 @@ import { NewsFeed } from "./NewsFeed";
 import { TwitterFeed } from "./TwitterFeed";
 import { MusicHistory } from "./MusicHistory";
 import { PhotoGallery } from "./PhotoGallery";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getTodayYYYYMMDD } from "../lib/utils";
+import { useWebSocket, DayUpdateData } from "../hooks/useWebSocket";
 
 interface DayViewProps {
   selectedDate?: string;
@@ -18,6 +19,7 @@ interface DayViewProps {
  */
 export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
   const [displayDate, setDisplayDate] = useState<string>('');
+  const [dataRefreshTrigger, setDataRefreshTrigger] = useState<number>(0);
   
   useEffect(() => {
     const initializeDate = async () => {
@@ -30,6 +32,34 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
     };
     initializeDate();
   }, [selectedDate]);
+
+  // Handle WebSocket day update notifications
+  const handleDayUpdate = useCallback((data: DayUpdateData) => {
+    console.log('[DayView] Received day update:', data);
+    
+    // Check if the update is for the currently displayed date
+    if (data.days_date === displayDate && data.status === 'complete') {
+      console.log(`[DayView] Complete data available for ${displayDate}, triggering refresh`);
+      
+      // Trigger a re-render to fetch updated data
+      setDataRefreshTrigger(prev => prev + 1);
+    }
+  }, [displayDate]);
+
+  // Initialize WebSocket connection
+  const { isConnected } = useWebSocket({
+    autoConnect: true,
+    onDayUpdate: handleDayUpdate,
+    onConnect: () => {
+      console.log('[DayView] WebSocket connected');
+    },
+    onDisconnect: () => {
+      console.log('[DayView] WebSocket disconnected');
+    },
+    onError: (error) => {
+      console.error('[DayView] WebSocket error:', error);
+    }
+  });
   
   /**
    * Format date for display
@@ -55,14 +85,14 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left column - News (main content) */}
         <div className="lg:col-span-2 lg:border-r lg:border-newspaper-divider lg:pr-8">
-          <NewsSection selectedDate={displayDate} />
+          <NewsSection selectedDate={displayDate} key={`news-${displayDate}-${dataRefreshTrigger}`} />
         </div>
         
         {/* Right column - News feed, Twitter, and Music */}
         <div className="lg:col-span-1 space-y-8">
-          <NewsFeed selectedDate={displayDate} />
-          <TwitterFeed selectedDate={displayDate} />
-          <MusicHistory selectedDate={displayDate} />
+          <NewsFeed selectedDate={displayDate} key={`newsfeed-${displayDate}-${dataRefreshTrigger}`} />
+          <TwitterFeed selectedDate={displayDate} key={`twitter-${displayDate}-${dataRefreshTrigger}`} />
+          <MusicHistory selectedDate={displayDate} key={`music-${displayDate}-${dataRefreshTrigger}`} />
         </div>
       </div>
       
@@ -72,7 +102,7 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
       {/* Bottom sections */}
       <div>
         {/* Photo gallery */}
-        <PhotoGallery selectedDate={displayDate} />
+        <PhotoGallery selectedDate={displayDate} key={`gallery-${displayDate}-${dataRefreshTrigger}`} />
       </div>
       
       
