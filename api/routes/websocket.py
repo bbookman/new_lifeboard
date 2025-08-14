@@ -6,23 +6,27 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from services.websocket_manager import WebSocketManager, MessageType
+from services.websocket_manager import (
+    WebSocketManager, 
+    MessageType, 
+    get_websocket_manager as get_global_websocket_manager
+)
 from services.clean_up_crew_service import CleanUpCrewService, ProcessingStatus
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
-# Global WebSocket manager instance
-websocket_manager: Optional[WebSocketManager] = None
-
 
 def get_websocket_manager() -> WebSocketManager:
     """Get the global WebSocket manager instance"""
-    global websocket_manager
-    if websocket_manager is None:
-        websocket_manager = WebSocketManager(heartbeat_interval=30)
-    return websocket_manager
+    manager = get_global_websocket_manager()
+    if manager is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="WebSocket manager not initialized. Server may be starting up."
+        )
+    return manager
 
 
 async def get_clean_up_crew_service() -> CleanUpCrewService:
@@ -246,20 +250,4 @@ async def setup_websocket_integration(crew_service: CleanUpCrewService, manager:
     logger.info("WebSocket integration with CleanUpCrewService established")
 
 
-async def start_websocket_manager():
-    """Start the global WebSocket manager"""
-    global websocket_manager
-    if websocket_manager is None:
-        websocket_manager = WebSocketManager()
-    
-    if not websocket_manager.is_running:
-        await websocket_manager.start()
-        logger.info("WebSocket manager started")
-
-
-async def stop_websocket_manager():
-    """Stop the global WebSocket manager"""
-    global websocket_manager
-    if websocket_manager and websocket_manager.is_running:
-        await websocket_manager.stop()
-        logger.info("WebSocket manager stopped")
+# WebSocketManager lifecycle is now managed globally in api/server.py lifespan

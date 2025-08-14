@@ -72,7 +72,8 @@ class SyncManagerService(BaseService):
                         self.ingestion_service.ingest_from_source(
                             namespace=namespace,
                             force_full_sync=force_full_sync,
-                            limit=1000
+                            limit=1000,
+                            ingestion_mode='complete'  # Scheduled syncs are complete
                         ),
                         timeout=300.0  # 5 minute timeout
                     )

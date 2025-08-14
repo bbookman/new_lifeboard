@@ -405,3 +405,26 @@ class WebSocketManager:
         
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+
+# Global WebSocketManager instance
+_websocket_manager: Optional[WebSocketManager] = None
+
+
+def get_websocket_manager() -> Optional[WebSocketManager]:
+    """Get the global WebSocketManager instance"""
+    return _websocket_manager
+
+
+def set_websocket_manager(manager: WebSocketManager) -> None:
+    """Set the global WebSocketManager instance"""
+    global _websocket_manager
+    _websocket_manager = manager
+    logger.info("Global WebSocketManager instance set")
+
+
+def clear_websocket_manager() -> None:
+    """Clear the global WebSocketManager instance"""
+    global _websocket_manager
+    _websocket_manager = None
+    logger.info("Global WebSocketManager instance cleared")

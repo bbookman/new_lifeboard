@@ -99,7 +99,8 @@ class IngestionService(BaseService):
     async def ingest_from_source(self, 
                                 namespace: str, 
                                 force_full_sync: bool = False,
-                                limit: int = 1000) -> IngestionResult:
+                                limit: int = 1000,
+                                ingestion_mode: str = 'partial') -> IngestionResult:
         """Ingest data from a specific source"""
         if namespace not in self.sources:
             raise ValueError(f"Source {namespace} not registered")
@@ -181,6 +182,10 @@ class IngestionService(BaseService):
         finally:
             result.end_time = datetime.now(timezone.utc)
             logger.info(f"Ingestion completed for {namespace}: {result.to_dict()}")
+            
+            # Send WebSocket notifications for complete ingestions
+            if ingestion_mode == 'complete' and result.success and result.items_stored > 0:
+                await self._send_completion_notifications(items, namespace)
         
         return result
     
@@ -566,3 +571,36 @@ class IngestionService(BaseService):
         # Use the configured user timezone for all namespaces to ensure consistent date extraction
         # This ensures days_date reflects the user's local date regardless of data source
         return self.config.limitless.timezone
+    
+    async def _send_completion_notifications(self, items: List[DataItem], namespace: str) -> None:
+        """Send WebSocket notifications for completed ingestion"""
+        try:
+            from services.websocket_manager import get_websocket_manager
+            
+            websocket_manager = get_websocket_manager()
+            if not websocket_manager:
+                logger.debug("WebSocketManager not available, skipping notifications")
+                return
+            
+            # Track unique days_date values from processed items
+            unique_dates = set()
+            for item in items:
+                days_date = self._extract_days_date(item)
+                if days_date:
+                    unique_dates.add(days_date)
+            
+            # Send day update notifications for each unique date
+            for days_date in unique_dates:
+                logger.info(f"Sending completion notification for {namespace} on {days_date}")
+                await websocket_manager.send_day_update(
+                    days_date=days_date,
+                    update_data={
+                        "status": "complete",
+                        "source": namespace,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "items_count": len([item for item in items if self._extract_days_date(item) == days_date])
+                    }
+                )
+                
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notifications: {e}")
