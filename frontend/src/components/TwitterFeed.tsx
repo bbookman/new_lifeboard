@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import { 
   Carousel, 
   CarouselContent, 
@@ -159,14 +159,75 @@ const convertDataItemToContentItem = (dataItem: DataItem): ContentItemData => {
  * Data comes from data_items table where namespace='twitter'
  * @param selectedDate - The date to display tweets for (YYYY-MM-DD format)
  */
-export const TwitterFeed = ({ selectedDate }: TwitterFeedProps) => {
+const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   const [twitterData, setTwitterData] = useState<ContentItemData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
+  
+  // Auto-advance state
+  const [isAutoAdvanceEnabled, setIsAutoAdvanceEnabled] = useState(true);
+  const [isPaused, setIsPaused] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(5000);
+  const currentIndexRef = useRef(0);
+  const isAutoAdvancingRef = useRef(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timeRemainingRef = useRef(5000);
 
-  console.log(`[TwitterFeed] Received selectedDate: ${selectedDate}`);
+  // Only log when selectedDate actually changes
+  const prevSelectedDateRef = useRef<string>();
+  if (prevSelectedDateRef.current !== selectedDate) {
+    console.log(`[TwitterFeed] Selected date changed: ${prevSelectedDateRef.current} → ${selectedDate}`);
+    prevSelectedDateRef.current = selectedDate;
+  }
+
+  // Stable timer functions
+  const startAutoAdvance = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    if (!api || !isAutoAdvanceEnabled || isPaused || twitterData.length <= 1) {
+      return;
+    }
+
+    const intervalId = Date.now();
+    console.log(`[TwitterFeed] Starting stable auto-advance timer ${intervalId}`);
+    
+    timerRef.current = setInterval(() => {
+      timeRemainingRef.current -= 100;
+      setTimeRemaining(timeRemainingRef.current);
+      
+      // Only log every second to reduce console noise
+      if (timeRemainingRef.current % 1000 === 0) {
+        console.log(`[TwitterFeed] Stable timer: ${timeRemainingRef.current}ms remaining`);
+      }
+      
+      if (timeRemainingRef.current <= 0) {
+        // Time to advance
+        const currentIndex = currentIndexRef.current;
+        const nextIndex = (currentIndex + 1) % twitterData.length;
+        console.log(`[TwitterFeed] Stable timer: Auto-advancing from ${currentIndex} to ${nextIndex}`);
+        
+        isAutoAdvancingRef.current = true;
+        currentIndexRef.current = nextIndex;
+        api.scrollTo(nextIndex);
+        
+        // Reset timer
+        timeRemainingRef.current = 5000;
+        setTimeRemaining(5000);
+      }
+    }, 100);
+  };
+
+  const stopAutoAdvance = () => {
+    if (timerRef.current) {
+      console.log(`[TwitterFeed] Stopping stable auto-advance timer`);
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     const fetchTweets = async () => {
@@ -224,12 +285,42 @@ export const TwitterFeed = ({ selectedDate }: TwitterFeedProps) => {
       return;
     }
 
-    setCurrent(api.selectedScrollSnap());
+    const updateCurrent = () => {
+      const newCurrent = api.selectedScrollSnap();
+      setCurrent(newCurrent);
+      
+      // Only update ref and reset timer if this isn't from auto-advance
+      if (!isAutoAdvancingRef.current) {
+        currentIndexRef.current = newCurrent;
+        // Reset timer when user manually navigates
+        timeRemainingRef.current = 5000;
+        setTimeRemaining(5000);
+        console.log(`[TwitterFeed] Manual navigation to ${newCurrent}, timer reset`);
+      } else {
+        // Auto-advance just completed, clear the flag
+        isAutoAdvancingRef.current = false;
+        console.log(`[TwitterFeed] Auto-advance to ${newCurrent} completed`);
+      }
+    };
 
-    api.on("select", () => {
-      setCurrent(api.selectedScrollSnap());
-    });
+    updateCurrent(); // Set initial value
+    api.on("select", updateCurrent);
+
+    return () => {
+      api.off("select", updateCurrent);
+    };
   }, [api]);
+
+  // Auto-advance state management
+  useEffect(() => {
+    if (isAutoAdvanceEnabled && !isPaused && api && twitterData.length > 1) {
+      startAutoAdvance();
+    } else {
+      stopAutoAdvance();
+    }
+    
+    return stopAutoAdvance;
+  }, [api, isAutoAdvanceEnabled, isPaused, twitterData.length]);
 
   // Loading state
   if (loading) {
@@ -281,7 +372,11 @@ export const TwitterFeed = ({ selectedDate }: TwitterFeedProps) => {
         </div>
       ) : (
         // Multiple tweets - use carousel with fixed size (3x larger)
-        <div className="w-full h-[450px] border border-gray-200 rounded-lg overflow-hidden relative">
+        <div 
+          className="w-full h-[450px] border border-gray-200 rounded-lg overflow-hidden relative"
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
+        >
           <Carousel 
             className="w-full h-full" 
             opts={{ align: "start", loop: true }}
@@ -298,23 +393,40 @@ export const TwitterFeed = ({ selectedDate }: TwitterFeedProps) => {
             </CarouselContent>
           </Carousel>
           
-          {/* Dots indicator at bottom - positioned inside fixed container */}
-          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2">
-            {twitterData.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => api?.scrollTo(index)}
-                className={`w-3 h-3 rounded-full transition-colors ${
-                  index === current 
-                    ? 'bg-newspaper-byline' 
-                    : 'bg-newspaper-divider hover:bg-newspaper-byline/60'
-                }`}
-                aria-label={`Go to tweet ${index + 1}`}
-              />
-            ))}
+          {/* Auto-advance controls at bottom - replaces dots */}
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-3">
+            <button
+              onClick={() => setIsAutoAdvanceEnabled(!isAutoAdvanceEnabled)}
+              className={`px-3 py-2 text-sm rounded-lg transition-colors flex items-center space-x-2 ${
+                isAutoAdvanceEnabled 
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              aria-label={isAutoAdvanceEnabled ? 'Disable auto-advance' : 'Enable auto-advance'}
+            >
+              <span>{isAutoAdvanceEnabled ? '⏸️' : '▶️'}</span>
+              <span>Auto</span>
+            </button>
+            
+            {isAutoAdvanceEnabled && !isPaused && twitterData.length > 1 && (
+              <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-blue-500 transition-all duration-100 ease-linear rounded-full"
+                  style={{ width: `${((5000 - timeRemaining) / 5000) * 100}%` }}
+                />
+              </div>
+            )}
+            
+            {/* Current slide indicator */}
+            <div className="text-xs text-gray-500 bg-white px-2 py-1 rounded">
+              {current + 1} of {twitterData.length}
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 };
+
+// Memoized export to prevent unnecessary re-renders
+export const TwitterFeed = memo(TwitterFeedComponent);
