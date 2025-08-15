@@ -50,13 +50,22 @@
 - 🚀 **100% Consistency**: All tests use identical patterns and data
 - 🚀 **Enterprise-Grade Quality**: Professional testing framework with documentation
 
-**✅ PHASE 1 FOUNDATION COMPLETE - READY FOR PHASE 2**
+**✅ PHASES 1-2 COMPLETE - FOUNDATION AND CORE SERVICES STABILIZED**
 
-**Next Phase: Core Services Coverage (Phase 2)**  
-*Now enabled by robust infrastructure:*
-- 📋 Database Service Tests (using shared database fixtures)
-- 📋 Embedding Service Tests (using shared service mocks)
-- 📋 Ingestion Service Tests (using comprehensive fixture system)
+**Current Phase: Data Sources Coverage (Phase 3)** 🔄 **IN PROGRESS**  
+*Building on foundation and core services:*
+- ✅ Limitless Source Tests (comprehensive coverage complete)
+- ✅ News Source Tests (integration and deduplication complete) **← LATEST COMPLETION**
+- 📋 Weather Source Tests (forecast retrieval, caching logic)
+- 📋 Twitter Source Tests (archive processing, data extraction)
+
+**📊 Latest Achievement (3.2 News Source Tests):**
+- 🎯 **80% Code Coverage** achieved on `sources/news.py` (161 statements, 33 missed)
+- 🧪 **26 Test Methods** across 2 comprehensive test classes
+- ✅ **100% Pass Rate** with rigorous edge case coverage
+- 🔄 **Deduplication Algorithm** fully tested with URL-based source ID generation
+- 🌐 **API Integration** complete with resilience and error handling
+- 📋 **Database Integration** including existing data checks and query methods
 
 ## Executive Summary
 
@@ -157,8 +166,9 @@ tests/test_vector_store.py ✅ (1,100+ lines, comprehensive coverage)
 ```
 **Coverage**: ✅ Vector storage and retrieval, similarity search, namespace filtering, file persistence, index management, error handling, performance testing, edge cases (12 test classes, 41 test methods, 100% pass rate)
 
-### Phase 3: Data Sources Coverage (Weeks 5-6)  
-**Target**: 75% coverage for sources layer
+### Phase 3: Data Sources Coverage (Weeks 5-6) 🔄 **IN PROGRESS**
+**Target**: 75% coverage for sources layer  
+**Current Status**: 2 of 4 source modules complete (50% progress)
 
 #### 3.1 Limitless Source Tests ✅ COMPLETE
 ```python
@@ -166,12 +176,21 @@ tests/test_limitless_source.py ✅ (470+ lines, comprehensive coverage)
 ```
 **Coverage**: ✅ API integration, data transformation, processor pipeline, error handling, performance testing, edge cases (6 test classes, 19 test methods, 100% pass rate)
 
-#### 3.2 News Source Tests
+#### 3.2 News Source Tests ✅ COMPLETE
 ```python
-tests/test_news_integration.py  
-tests/test_news_deduplication.py
+tests/test_news_integration.py ✅ (550+ lines, comprehensive coverage)
+tests/test_news_deduplication.py ✅ (480+ lines, comprehensive coverage)
 ```
-**Coverage**: Headline fetching, selection algorithm, API resilience
+**Coverage**: ✅ Headline fetching, selection algorithm, API resilience, deduplication logic, edge case handling, database integration (2 test classes, 26 test methods, 100% pass rate, 80% code coverage)
+
+**Implementation Details:**
+- **Integration Testing**: Complete API workflow from configuration validation to DataItem generation
+- **Deduplication Strategy**: URL-based source ID generation with hash consistency
+- **Selection Algorithm**: Fetch-more-select-fewer pattern (retrieve 20, select 5 unique)
+- **Edge Case Coverage**: Invalid articles, malformed JSON, network timeouts, rate limiting
+- **Database Integration**: Existing data checks, count queries, retrieval methods
+- **Configuration Validation**: API key verification, endpoint validation, placeholder detection
+- **Error Resilience**: HTTP errors, connection failures, retry logic, graceful degradation
 
 #### 3.3 Weather Source Tests
 ```python
