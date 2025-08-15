@@ -227,7 +227,7 @@ class IngestionService(BaseService):
             processed_item = processor.process(item)
             
             # Store the processed item
-            await self._store_processed_item(processed_item, result, ingestion_status=ingestion_mode)
+            await self._store_processed_item(processed_item, result)
             
         except Exception as e:
             error_msg = f"Error processing item {item.source_id}: {str(e)}"
@@ -453,7 +453,7 @@ class IngestionService(BaseService):
         health_info = {
             "registered_sources": len(self.sources),
             "source_names": list(self.sources.keys()),
-            "processor_available": self.processor is not None,
+            "processors_available": len(self.processors) > 0,
             "healthy": True
         }
         
