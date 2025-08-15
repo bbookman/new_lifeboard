@@ -14,8 +14,13 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Import fixtures from our fixtures module
+# Import fixtures from all fixture modules
 from tests.fixtures.orchestration_fixtures import *
+from tests.fixtures.config_fixtures import *
+from tests.fixtures.database_fixtures import *
+from tests.fixtures.api_fixtures import *
+from tests.fixtures.service_fixtures import *
+from tests.fixtures.data_fixtures import *
 
 # Configure asyncio for async tests
 @pytest.fixture(scope="session")

@@ -146,7 +146,6 @@ def create_production_config() -> AppConfig:
         ),
         twitter=TwitterConfig(
             enabled=os.getenv("TWITTER_ENABLED", "true").lower() == "true",
-            data_path=os.getenv("PATH_TO_TWITTER_DATA"),
             delete_after_import=os.getenv("DELETE_AFTER_IMPORT", "false").lower() == "true",
             sync_interval_hours=int(os.getenv("TWITTER_SYNC_INTERVAL_HOURS", "24"))
         ),

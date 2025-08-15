@@ -23,11 +23,11 @@ try:
     
     # Test the TwitterConfig
     twitter_config = config.twitter
-    print(f"✅ Twitter config: enabled={twitter_config.enabled}, data_path={twitter_config.data_path}, delete_after_import={twitter_config.delete_after_import}")
+    print(f"✅ Twitter config: enabled={twitter_config.enabled}, delete_after_import={twitter_config.delete_after_import}")
     
     # Check that the new attributes exist
-    if not hasattr(twitter_config, 'data_path'):
-        print("❌ ERROR: data_path missing from TwitterConfig!")
+    if hasattr(twitter_config, 'data_path'):
+        print("❌ ERROR: data_path should not be in TwitterConfig!")
         sys.exit(1)
     if not hasattr(twitter_config, 'delete_after_import'):
         print("❌ ERROR: delete_after_import missing from TwitterConfig!")

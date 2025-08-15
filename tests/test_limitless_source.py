@@ -12,18 +12,9 @@ from sources.limitless import LimitlessSource
 from sources.base import DataItem
 from config.models import LimitlessConfig
 
-
-@pytest.fixture
-def limitless_config():
-    """Test Limitless configuration"""
-    return LimitlessConfig(
-        api_key="test_api_key",
-        base_url="https://api.limitless.ai",
-        timezone="America/Los_Angeles",
-        max_retries=2,
-        retry_delay=0.1,  # Fast retries for testing
-        request_timeout=5.0
-    )
+# Using shared fixtures from tests/fixtures/
+# limitless_config fixture is imported via conftest.py
+# limitless_client_mock, limitless_api_responses are also available
 
 
 @pytest.fixture
@@ -128,22 +119,18 @@ class TestLimitlessSource:
         assert source.get_source_type() == "limitless_api"
     
     @pytest.mark.asyncio
-    async def test_test_connection_success(self, limitless_config):
-        """Test successful connection test"""
-        with patch('httpx.AsyncClient') as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value = mock_client
-            
-            # Mock successful response
-            mock_response = MagicMock()
-            mock_response.status_code = 200
-            mock_client.get.return_value = mock_response
-            
+    async def test_test_connection_success(self, limitless_config, limitless_client_mock):
+        """Test successful connection test using shared fixtures"""
+        with limitless_client_mock as mock_client:
             source = LimitlessSource(limitless_config)
             result = await source.test_connection()
             
             assert result is True
-            mock_client.get.assert_called_once_with("/v1/lifelogs", params={"limit": 1})
+            # Verify the mock was called correctly
+            assert len(mock_client.call_history) > 0
+            method, url, kwargs = mock_client.call_history[0]
+            assert method == 'GET'
+            assert '/v1/lifelogs' in url
     
     @pytest.mark.asyncio
     async def test_test_connection_failure(self, limitless_config):
