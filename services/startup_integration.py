@@ -19,7 +19,7 @@ from services.scheduler import AsyncScheduler
 from services.semantic_deduplication_service import SemanticDeduplicationService
 from services.clean_up_crew_service import CleanUpCrewService
 from services.websocket_manager import WebSocketManager
-from api.routes.websocket import setup_websocket_integration, start_websocket_manager
+from api.routes.websocket import setup_websocket_integration
 
 logger = logging.getLogger(__name__)
 
@@ -166,39 +166,20 @@ class CleanUpCrewBootstrap:
         logger.info("Running Clean Up Crew database migrations...")
         
         try:
-            # Check if migration is needed
-            with database_service.get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT name FROM sqlite_master 
-                    WHERE type='table' AND name='migrations'
-                """)
-                if not cursor.fetchone():
-                    logger.warning("Migrations table not found - skipping migration check")
-                    return
-                
-                # Check if semantic status migration exists
-                cursor = conn.execute("""
-                    SELECT COUNT(*) FROM migrations 
-                    WHERE name = '0007_add_semantic_status_tracking'
-                """)
-                if cursor.fetchone()[0] > 0:
-                    logger.info("Semantic status migration already applied")
-                    return
+            # Use the proper MigrationRunner to handle all migrations
+            from core.migrations.runner import MigrationRunner
             
-            # Apply migration
-            from core.migrations.versions.0007_add_semantic_status_tracking import up
+            migration_runner = MigrationRunner(database_service.db_path)
+            result = migration_runner.run_migrations()
             
-            with database_service.get_connection() as conn:
-                up(conn)
-                
-                # Record migration
-                conn.execute("""
-                    INSERT INTO migrations (name, applied_at) 
-                    VALUES ('0007_add_semantic_status_tracking', CURRENT_TIMESTAMP)
-                """)
-                conn.commit()
-            
-            logger.info("Semantic status migration applied successfully")
+            if result["success"]:
+                if result["applied_migrations"]:
+                    logger.info(f"Successfully applied migrations: {result['applied_migrations']}")
+                else:
+                    logger.info("All migrations already applied")
+            else:
+                logger.error(f"Migration failed: {result['errors']}")
+                raise RuntimeError(f"Migration failed: {'; '.join(result['errors'])}")
             
         except Exception as e:
             logger.error(f"Migration failed: {e}")
