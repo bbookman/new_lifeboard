@@ -116,17 +116,7 @@ echo "✅ Cleanup complete."
 echo ""
 echo "📦 Installing dependencies..."
 
-# Check Python version and virtual environment
-echo "🐍 Setting up Python environment..."
-export PYTHONPATH=$(pwd):$PYTHONPATH
 
-# Install Python dependencies
-if [ -f "requirements.txt" ]; then
-    echo "  • Installing Python dependencies..."
-    pip install -r requirements.txt
-else
-    echo "  ⚠️  No requirements.txt found"
-fi
 
 # Install frontend dependencies
 if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then

@@ -16,6 +16,7 @@ from services.startup import StartupService
 from services.weather_service import WeatherService
 from services.news_service import NewsService
 from services.ingestion import IngestionService
+from services.sync_status_service import get_sync_status_service, SyncStatusService
 from core.database import DatabaseService
 from core.dependencies import get_startup_service_dependency
 from config.factory import get_config
@@ -109,7 +110,7 @@ async def get_days_with_data(
     year: Optional[int] = None,
     month: Optional[int] = None,
     database: DatabaseService = Depends(get_database_service)
-) -> Dict[str, List[str]]:
+) -> Dict[str, Any]:
     """Get list of dates that have data available"""
     logger.info(f"[CALENDAR API] Request received - year: {year}, month: {month}")
     
@@ -147,8 +148,23 @@ async def get_days_with_data(
         else:
             result = result_data
         
-        logger.info(f"[CALENDAR API] Returning response: {result}")
-        return result
+        # Get sync status if available
+        sync_status = None
+        try:
+            sync_service = get_sync_status_service()
+            if sync_service:
+                sync_status = sync_service.get_overall_status()
+        except Exception as e:
+            logger.warning(f"[CALENDAR API] Could not get sync status: {e}")
+        
+        # Combine data with sync status
+        response = {
+            "data": result,
+            "sync_status": sync_status
+        }
+        
+        logger.info(f"[CALENDAR API] Returning response with sync status: data={len(result)} namespaces, sync_complete={sync_status['is_complete'] if sync_status else 'unknown'}")
+        return response
         
     except Exception as e:
         logger.error(f"[CALENDAR API] Error getting days with data: {e}")

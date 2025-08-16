@@ -140,9 +140,36 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
           console.log(`[useLimitlessData] Automatic fetch successful: ${fetchResult.message}`);
           
           // Wait a moment for data to be processed, then refetch
-          setTimeout(() => {
+          setTimeout(async () => {
             console.log(`[useLimitlessData] Refetching data after successful automatic fetch`);
-            fetchData(targetDate, false); // Pass false to skip auto-fetch on retry
+            
+            // Fetch data manually without auto-fetch to avoid loops
+            try {
+              const timestamp = Date.now();
+              const apiUrl = `http://localhost:8000/calendar/api/data_items/${targetDate}?namespaces=limitless&_t=${timestamp}`;
+              const response = await fetch(apiUrl, {
+                headers: {
+                  'Cache-Control': 'no-cache, no-store, must-revalidate',
+                  'Pragma': 'no-cache',
+                  'Expires': '0'
+                }
+              });
+              
+              if (response.ok) {
+                const dataItems: DataItem[] = await response.json();
+                console.log(`[useLimitlessData] Refetch received: ${dataItems.length} items`);
+                
+                if (dataItems.length > 0) {
+                  const combinedMarkdown = extractMarkdownContent(dataItems);
+                  if (combinedMarkdown.trim().length > 0) {
+                    setMarkdownContent(combinedMarkdown);
+                    console.log(`[useLimitlessData] Refetch set markdown content length: ${combinedMarkdown.length}`);
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('[useLimitlessData] Error during refetch:', error);
+            }
           }, 1000);
           
         } else {
@@ -241,7 +268,7 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
       setMarkdownContent('');
       setLoading(false);
     }
-  }, [extractMarkdownContent, fetchAttempted, autoFetching, triggerAutoFetch]);
+  }, [extractMarkdownContent, fetchAttempted, autoFetching]);
 
   /**
    * Reset all state to initial values

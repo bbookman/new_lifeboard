@@ -7,6 +7,7 @@ from services.scheduler import AsyncScheduler
 from services.ingestion import IngestionService
 from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
+from services.sync_status_service import SyncStatusService, set_sync_status_service
 from sources.limitless import LimitlessSource
 from sources.news import NewsSource
 from sources.weather import WeatherSource
@@ -32,6 +33,7 @@ class StartupService:
         self.scheduler: Optional[AsyncScheduler] = None
         self.sync_manager: Optional[SyncManagerService] = None
         self.chat_service: Optional[ChatService] = None
+        self.sync_status_service: Optional[SyncStatusService] = None
         self.startup_complete = False
         self.logging_setup_result: Optional[Dict[str, Any]] = None
         
@@ -65,14 +67,17 @@ class StartupService:
             # 3. Register data sources
             await self._register_data_sources(startup_result)
             
-            # 4. Initialize scheduler and sync management
+            # 4. Initialize sync status service
+            await self._initialize_sync_status_service(startup_result)
+            
+            # 5. Initialize scheduler and sync management
             await self._initialize_sync_services(startup_result)
             await self._start_auto_sync(startup_result)
             
-            # 5. Perform startup sync
-            await self._perform_startup_sync(startup_result)
+            # 6. Start background sync
+            await self._start_background_sync(startup_result)
             
-            # 6. Perform startup health check
+            # 7. Perform startup health check
             health_status = await self._perform_startup_health_check()
             startup_result["health_check"] = health_status
             
@@ -295,6 +300,25 @@ class StartupService:
             logger.error(error_msg)
             raise Exception(error_msg)
     
+    async def _initialize_sync_status_service(self, startup_result: Dict[str, Any]):
+        """Initialize sync status tracking service"""
+        try:
+            logger.info("Initializing sync status service...")
+            
+            self.sync_status_service = SyncStatusService(self.config)
+            await self.sync_status_service.initialize()
+            
+            # Set as global instance for easy access
+            set_sync_status_service(self.sync_status_service)
+            
+            startup_result["services_initialized"].append("sync_status")
+            logger.info("Sync status service initialized successfully")
+            
+        except Exception as e:
+            error_msg = f"Failed to initialize sync status service: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+    
     async def _initialize_sync_services(self, startup_result: Dict[str, Any]):
         """Initialize scheduler and sync management services"""
         try:
@@ -341,41 +365,98 @@ class StartupService:
             startup_result["errors"].append(error_msg)
             startup_result["auto_sync_started"] = False
     
-    async def _perform_startup_sync(self, startup_result: Dict[str, Any]):
-        """Perform initial sync on startup if configured"""
+    async def _start_background_sync(self, startup_result: Dict[str, Any]):
+        """Start background sync process without blocking startup"""
         try:
-            logger.info("Waiting 60s before startup sync...")
-            await asyncio.sleep(60)
+            logger.info("Starting background sync process...")
             
-            logger.info("Starting startup sync...")
+            if not self.sync_status_service:
+                logger.warning("Sync status service not available - skipping background sync")
+                return
+                
+            # Mark global sync as started
+            self.sync_status_service.start_global_sync()
             
-            startup_sync_results = {}
+            # Register all sources with sync status service
             for namespace in startup_result.get("sources_registered", []):
+                # Source type mapping
+                source_type_map = {
+                    "limitless": "limitless_api",
+                    "news": "news_api",
+                    "twitter": "twitter_archive", 
+                    "weather": "weather_api"
+                }
+                source_type = source_type_map.get(namespace, "unknown")
+                self.sync_status_service.register_source(namespace, source_type)
+            
+            # Start background sync task
+            asyncio.create_task(self._background_sync_worker(startup_result.get("sources_registered", [])))
+            
+            startup_result["background_sync_started"] = True
+            logger.info("Background sync process started successfully")
+            
+        except Exception as e:
+            error_msg = f"Failed to start background sync: {str(e)}"
+            logger.error(error_msg)
+            startup_result["errors"].append(error_msg)
+            startup_result["background_sync_started"] = False
+    
+    async def _background_sync_worker(self, registered_sources: List[str]):
+        """Background worker that performs the actual sync operations"""
+        try:
+            logger.info("Background sync worker started")
+            
+            # Wait a brief moment to let the server finish starting up completely
+            await asyncio.sleep(5)
+            
+            sync_results = {}
+            
+            for namespace in registered_sources:
                 try:
+                    logger.info(f"Starting background sync for {namespace}")
+                    self.sync_status_service.start_source_sync(namespace)
+                    
                     # Check if this source should be synced based on time interval
                     should_sync = await self.sync_manager.should_sync_on_startup(namespace)
                     
                     if should_sync:
-                        logger.info(f"Performing startup sync for {namespace}")
+                        logger.info(f"Performing background sync for {namespace}")
                         result = await self.sync_manager.trigger_immediate_sync(namespace, force_full_sync=False)
-                        startup_sync_results[namespace] = result.to_dict()
-                        logger.info(f"Startup sync completed for {namespace}: {result.items_processed} processed")
+                        
+                        # Update sync status with results
+                        self.sync_status_service.complete_source_sync(
+                            namespace, 
+                            result.items_processed, 
+                            result.items_stored
+                        )
+                        
+                        sync_results[namespace] = result.to_dict()
+                        logger.info(f"Background sync completed for {namespace}: {result.items_processed} processed")
+                        
                     else:
-                        logger.info(f"Skipping startup sync for {namespace} - not due for sync yet")
-                        startup_sync_results[namespace] = {"skipped": True, "reason": "Not due for sync"}
+                        logger.info(f"Skipping background sync for {namespace} - not due for sync yet")
+                        self.sync_status_service.skip_source_sync(namespace, "Not due for sync")
+                        sync_results[namespace] = {"skipped": True, "reason": "Not due for sync"}
                     
                 except Exception as e:
-                    error_msg = f"Startup sync failed for {namespace}: {str(e)}"
+                    error_msg = f"Background sync failed for {namespace}: {str(e)}"
                     logger.error(error_msg)
-                    startup_sync_results[namespace] = {"error": error_msg}
+                    self.sync_status_service.fail_source_sync(namespace, error_msg)
+                    sync_results[namespace] = {"error": error_msg}
             
-            startup_result["startup_sync_results"] = startup_sync_results
-            logger.info("Startup sync completed for all sources")
+            # Mark global sync as complete
+            self.sync_status_service.complete_global_sync()
+            
+            logger.info("Background sync worker completed for all sources")
             
         except Exception as e:
-            error_msg = f"Startup sync failed: {str(e)}"
-            logger.error(error_msg)
-            startup_result["errors"].append(error_msg)
+            logger.error(f"Critical error in background sync worker: {e}")
+            if self.sync_status_service:
+                # Mark any remaining sources as failed
+                for namespace in registered_sources:
+                    source_status = self.sync_status_service.get_source_status(namespace)
+                    if source_status and source_status['status'] in ['pending', 'in_progress']:
+                        self.sync_status_service.fail_source_sync(namespace, f"Worker error: {str(e)}")
     
     async def _perform_startup_health_check(self) -> Dict[str, Any]:
         """Perform health check after startup"""
@@ -386,6 +467,7 @@ class StartupService:
             "ingestion_service_healthy": False,
             "scheduler_healthy": False,
             "sync_manager_healthy": False,
+            "sync_status_healthy": False,
             "overall_healthy": False
         }
         
@@ -427,6 +509,15 @@ class StartupService:
                 except:
                     health_status["sync_manager_healthy"] = False
             
+            # Check sync status service
+            if self.sync_status_service:
+                try:
+                    sync_status_health = await self.sync_status_service.get_service_health()
+                    health_status["sync_status_healthy"] = sync_status_health.get("is_ready", False)
+                    health_status["sync_status_details"] = sync_status_health
+                except:
+                    health_status["sync_status_healthy"] = False
+            
             # Overall health
             core_services_healthy = all([
                 health_status["database_healthy"],
@@ -441,6 +532,8 @@ class StartupService:
                 sync_services_healthy = health_status["scheduler_healthy"]
             if self.sync_manager:
                 sync_services_healthy = sync_services_healthy and health_status["sync_manager_healthy"]
+            if self.sync_status_service:
+                sync_services_healthy = sync_services_healthy and health_status["sync_status_healthy"]
             
             health_status["overall_healthy"] = core_services_healthy and sync_services_healthy
             
@@ -563,7 +656,8 @@ class StartupService:
                 "ingestion_service": self.ingestion_service is not None,
                 "chat_service": self.chat_service is not None,
                 "scheduler": self.scheduler is not None,
-                "sync_manager": self.sync_manager is not None
+                "sync_manager": self.sync_manager is not None,
+                "sync_status": self.sync_status_service is not None
             }
         }
         

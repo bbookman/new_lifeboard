@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { LimitlessDataActions, LimitlessDataState } from './useLimitlessData';
 
 /**
@@ -9,6 +9,8 @@ export const useAutoFetch = (
   selectedDate: string | undefined,
   limitlessData: LimitlessDataState & LimitlessDataActions
 ) => {
+  const prevSelectedDateRef = useRef<string | undefined>();
+
   /**
    * Get the target date for fetching
    * Uses selectedDate if provided, otherwise today's date
@@ -32,6 +34,12 @@ export const useAutoFetch = (
    * Handle date changes and trigger appropriate fetching
    */
   useEffect(() => {
+    // Only run when selectedDate actually changes
+    if (prevSelectedDateRef.current === selectedDate) {
+      console.log(`[useAutoFetch] selectedDate unchanged (${selectedDate}), skipping`);
+      return;
+    }
+
     console.log(`[useAutoFetch] useEffect triggered with selectedDate:`, selectedDate);
     console.log(`[useAutoFetch] useEffect - current state:`, {
       markdownContentLength: limitlessData.markdownContent.length,
@@ -52,7 +60,10 @@ export const useAutoFetch = (
     // Fetch data for the target date
     console.log(`[useAutoFetch] Fetching data for target date: ${targetDate}`);
     limitlessData.fetchData(targetDate, true);
-  }, [selectedDate, getTargetDate, limitlessData]);
+
+    // Update the ref to track the current value
+    prevSelectedDateRef.current = selectedDate;
+  }, [selectedDate]);
 
   return {
     getTargetDate
