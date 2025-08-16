@@ -11,9 +11,29 @@ interface CalendarDay {
   hasTwitterEvents?: boolean;
 }
 
+interface SyncStatus {
+  is_complete: boolean;
+  is_in_progress: boolean;
+  completed_sources: number;
+  failed_sources: number;
+  in_progress_sources: number;
+  total_sources: number;
+  overall_progress: number;
+  sources: Record<string, {
+    namespace: string;
+    source_type: string;
+    status: string;
+    progress_percentage: number;
+    error_message?: string;
+  }>;
+}
+
 interface DaysWithDataResponse {
-  [key: string]: string[]; // Allows for dynamic keys like 'news', 'limitless', etc.
-  all: string[]; // Still expect 'all' to be present
+  data: {
+    [key: string]: string[]; // Allows for dynamic keys like 'news', 'limitless', etc.
+    all: string[]; // Still expect 'all' to be present
+  };
+  sync_status?: SyncStatus;
 }
 
 interface CalendarViewProps {
@@ -28,6 +48,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   const [twitterDaysWithData, setTwitterDaysWithData] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [serverToday, setServerToday] = useState<string>('');
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -66,15 +87,22 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       });
       
       if (response.ok) {
-        const data: DaysWithDataResponse = await response.json();
-        console.log(`[CALENDAR] Received data for ${Object.keys(data).length} namespaces`);
+        const responseData: DaysWithDataResponse = await response.json();
+        console.log(`[CALENDAR] Received data for ${Object.keys(responseData.data || {}).length} namespaces`);
         
         if (!signal?.aborted) {
+          const data = responseData.data || {};
           setAllDaysWithData(new Set(data.all || []));
           setNewsDaysWithData(new Set(data.news || []));
           setLimitlessDaysWithData(new Set(data.limitless || []));
           setTwitterDaysWithData(new Set(data.twitter || []));
-          // Add more sets for other namespaces as needed
+          
+          // Update sync status
+          setSyncStatus(responseData.sync_status || null);
+          
+          if (responseData.sync_status) {
+            console.log(`[CALENDAR] Sync status: ${responseData.sync_status.completed_sources}/${responseData.sync_status.total_sources} complete`);
+          }
         }
       } else {
         console.error(`[CALENDAR] HTTP Error:`, response.status, response.statusText);
@@ -84,6 +112,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
           setNewsDaysWithData(new Set());
           setLimitlessDaysWithData(new Set());
           setTwitterDaysWithData(new Set());
+          setSyncStatus(null);
         }
       }
     } catch (error) {
@@ -99,6 +128,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         setNewsDaysWithData(new Set());
         setLimitlessDaysWithData(new Set());
         setTwitterDaysWithData(new Set());
+        setSyncStatus(null);
       }
     } finally {
       if (!signal?.aborted) {
@@ -111,6 +141,70 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   useEffect(() => {
     console.log(`[CALENDAR] All days with data updated: ${allDaysWithData.size} days`);
   }, [allDaysWithData]);
+
+  // WebSocket for real-time sync updates
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+
+    const connectWebSocket = () => {
+      try {
+        ws = new WebSocket('ws://localhost:8000/ws/processing');
+        
+        ws.onopen = () => {
+          console.log('[CALENDAR] WebSocket connected for sync updates');
+          // Subscribe to sync status updates
+          ws?.send(JSON.stringify({
+            type: 'subscribe',
+            topics: ['sync_status', 'sync_progress']
+          }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            console.log('[CALENDAR] WebSocket message received:', message);
+            
+            if (message.type === 'sync_status' || message.type === 'sync_progress') {
+              // Refresh calendar data when sync updates occur
+              fetchDaysWithData(currentDate.getFullYear(), currentDate.getMonth());
+            }
+          } catch (error) {
+            console.error('[CALENDAR] Error parsing WebSocket message:', error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.log('[CALENDAR] WebSocket error:', error);
+        };
+
+        ws.onclose = () => {
+          console.log('[CALENDAR] WebSocket disconnected');
+          // Attempt to reconnect after 5 seconds
+          reconnectTimeout = setTimeout(connectWebSocket, 5000);
+        };
+
+      } catch (error) {
+        console.error('[CALENDAR] Failed to connect WebSocket:', error);
+        // Attempt to reconnect after 5 seconds
+        reconnectTimeout = setTimeout(connectWebSocket, 5000);
+      }
+    };
+
+    // Only connect WebSocket if sync is not complete
+    if (!syncStatus || !syncStatus.is_complete) {
+      connectWebSocket();
+    }
+
+    return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, [currentDate, syncStatus?.is_complete]); // Reconnect when month changes or sync completes
 
   // Fetch data when component mounts or date changes
   useEffect(() => {
@@ -216,8 +310,103 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   
   return (
     <div className="calendar-view">
-
+      {/* Sync Status Banner */}
+      {syncStatus && !syncStatus.is_complete && (
+        <div className="sync-status-banner mb-6">
+          <div className="card">
+            <div className="card-content" style={{ padding: '1rem' }}>
+              <div className="alert" style={{ 
+                backgroundColor: '#e3f2fd', 
+                border: '1px solid #2196f3',
+                borderRadius: '8px',
+                padding: '1rem'
+              }}>
+                <div className="flex items-center gap-3 mb-3">
+                  <span style={{ fontSize: '1.2rem' }}>📡</span>
+                  <div>
+                    <strong>Data syncing in progress</strong>
+                    <div style={{ fontSize: '0.9rem', color: '#666' }}>
+                      {syncStatus.completed_sources} of {syncStatus.total_sources} sources complete 
+                      ({Math.round(syncStatus.overall_progress)}%)
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Progress Bar */}
+                <div style={{ 
+                  backgroundColor: '#f0f0f0', 
+                  borderRadius: '4px', 
+                  height: '8px',
+                  marginBottom: '1rem',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    backgroundColor: '#2196f3',
+                    height: '100%',
+                    width: `${syncStatus.overall_progress}%`,
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+                
+                {/* Source Status */}
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                  {Object.entries(syncStatus.sources).map(([namespace, source]) => (
+                    <div key={namespace} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      fontSize: '0.85rem'
+                    }}>
+                      <span>
+                        {source.status === 'completed' ? '✅' : 
+                         source.status === 'in_progress' ? '⏳' : 
+                         source.status === 'failed' ? '❌' : '⭕'}
+                      </span>
+                      <span style={{ textTransform: 'capitalize' }}>
+                        {namespace}
+                      </span>
+                      {source.status === 'in_progress' && (
+                        <span style={{ color: '#666' }}>
+                          ({Math.round(source.progress_percentage)}%)
+                        </span>
+                      )}
+                      {source.error_message && (
+                        <span style={{ color: '#d32f2f', fontSize: '0.8rem' }}>
+                          Error
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
+      {syncStatus && syncStatus.is_complete && (
+        <div className="sync-complete-banner mb-6">
+          <div className="card">
+            <div className="card-content" style={{ padding: '1rem' }}>
+              <div className="alert" style={{ 
+                backgroundColor: '#e8f5e8', 
+                border: '1px solid #4caf50',
+                borderRadius: '8px',
+                padding: '1rem'
+              }}>
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: '1.2rem' }}>✅</span>
+                  <strong style={{ color: '#2e7d32' }}>All data sources synchronized</strong>
+                  <span style={{ fontSize: '0.9rem', color: '#666', marginLeft: '1rem' }}>
+                    {syncStatus.total_sources} sources up to date
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Calendar Header */}
       <div className="card mb-8">
         <div className="card-header">

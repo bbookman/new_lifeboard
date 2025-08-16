@@ -31,7 +31,7 @@ from config.factory import create_production_config
 from core.dependencies import get_dependency_registry
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings
+from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings, websocket, sync_status
 
 logger = logging.getLogger(__name__)
 
@@ -640,6 +640,8 @@ app.include_router(system.router)
 app.include_router(weather.router)
 app.include_router(settings.router)
 app.include_router(headings.router)
+app.include_router(websocket.router)
+app.include_router(sync_status.router)
 
 # Mount static files for simple HTML UI
 static_dir = project_root / "static"

@@ -3,6 +3,25 @@
 # Full Stack Lifeboard Startup Script
 # Starts both backend API server and frontend React development server
 
+
+'''
+# Install frontend dependencies
+if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+    echo "🌐 Setting up frontend environment..."
+    echo "  • Installing Node.js dependencies..."
+    cd frontend
+    npm install
+    cd ..
+else
+    echo "  ⚠️  No frontend directory or package.json found"
+fi
+
+echo "✅ Dependencies installed."
+echo ""
+'''
+
+
+
 set -e
 
 # Colors for output
@@ -75,6 +94,40 @@ cleanup_processes() {
 start_backend() {
     print_status "Starting Python backend API server..."
     cd "$(dirname "$0")"
+
+    # --- Python Virtual Environment Setup ---
+    if [ -z "$VIRTUAL_ENV" ]; then
+        print_status "No active virtual environment. Searching for one..."
+        # Find the first file named "activate" within a "bin" directory
+        VENV_ACTIVATE=$(find . -type f -path "*/bin/activate" -not -path "./node_modules/*" -not -path "./frontend/node_modules/*" -not -path "./.git/*" -print -quit)
+
+        if [ -n "$VENV_ACTIVATE" ]; then
+            VENV_DIR=$(dirname "$(dirname "$VENV_ACTIVATE")")
+            print_status "Found virtual environment in '$VENV_DIR'. Activating..."
+            source "$VENV_ACTIVATE"
+        else
+            print_warning "No existing virtual environment found. Creating 'venv'..."
+            if command -v python3 &> /dev/null; then
+                python3 -m venv venv
+                print_status "Activating new virtual environment..."
+                source venv/bin/activate
+            else
+                print_error "'python3' not found. Cannot create a virtual environment."
+                return 1 # Abort starting the backend
+            fi
+        fi
+    else
+        print_status "Running in active virtual environment: $VIRTUAL_ENV"
+    fi
+
+    # --- Install dependencies ---
+    if [ -f "requirements.txt" ]; then
+        print_status "Installing Python dependencies..."
+        pip install -r requirements.txt > logs/pip_install.log 2>&1
+        print_success "Python dependencies installed."
+    else
+        print_warning "requirements.txt not found. Skipping dependency installation."
+    fi
     
     # Start backend in background
     python -m uvicorn api.server:app --reload --port 8000 > logs/backend.log 2>&1 &
@@ -99,6 +152,15 @@ start_frontend() {
     if [ ! -d "node_modules" ]; then
         print_warning "Node modules not found. Installing dependencies..."
         npm install
+    fi
+
+    # Build the frontend if it hasn't been built yet
+    if [ ! -d "dist" ]; then
+        print_status "Frontend build not found. Building frontend..."
+        npm run build > ../logs/frontend_build.log 2>&1
+        print_success "Frontend built successfully."
+    else
+        print_status "Frontend already built. Skipping build step."
     fi
     
     # Start frontend in background
