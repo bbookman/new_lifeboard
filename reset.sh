@@ -5,8 +5,7 @@
 # This script provides a complete clean environment setup:
 # 1. Stops all running Lifeboard services (frontend + backend)
 # 2. Clears all data (databases, logs, cache files, vector stores)
-# 3. Reinstalls dependencies (Python + Node.js)
-# 4. Starts the application with both frontend and backend servers
+# 3. Starts the application with both frontend and backend servers
 #
 # Usage: ./reset.sh
 # 
@@ -113,24 +112,6 @@ find . -name "*.pyc" -type f -delete
 
 echo "✅ Cleanup complete."
 
-echo ""
-echo "📦 Installing dependencies..."
-
-
-
-# Install frontend dependencies
-if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
-    echo "🌐 Setting up frontend environment..."
-    echo "  • Installing Node.js dependencies..."
-    cd frontend
-    npm install
-    cd ..
-else
-    echo "  ⚠️  No frontend directory or package.json found"
-fi
-
-echo "✅ Dependencies installed."
-echo ""
 
 # Verify required files exist
 echo "🔍 Verifying application files..."
