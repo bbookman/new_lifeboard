@@ -443,6 +443,37 @@ class TwitterConfig(BaseModel):
         return self.enabled
 
 
+class DocumentsConfig(BaseModel):
+    """User documents configuration"""
+    enabled: bool = True
+    default_user_id: str = "default_user"
+    auto_save_interval_seconds: int = 30
+    max_title_length: int = 200
+    max_content_length: int = 100000  # 100KB limit for documents
+    chunking_enabled: bool = True
+    chunk_size: int = 1000  # Characters per chunk for vector indexing
+    chunk_overlap: int = 200  # Overlap between chunks
+    search_results_limit: int = 20
+    
+    @field_validator('max_title_length', 'max_content_length', 'chunk_size', 'chunk_overlap', 'search_results_limit')
+    @classmethod
+    def validate_positive_ints(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_int(v, field_name)
+    
+    @field_validator('auto_save_interval_seconds')
+    @classmethod
+    def validate_auto_save_interval(cls, v):
+        if v < 10:  # Minimum 10 seconds to avoid excessive saves
+            raise ValueError("Auto-save interval must be at least 10 seconds")
+        return v
+    
+    @field_validator('default_user_id')
+    @classmethod
+    def validate_user_id(cls, v):
+        return StringValidator.validate_non_empty_string(v, "Default user ID")
+
+
 class AppConfig(BaseModel):
     """Main application configuration"""
     database: DatabaseConfig = DatabaseConfig()
@@ -452,6 +483,7 @@ class AppConfig(BaseModel):
     news: NewsConfig = NewsConfig()
     weather: WeatherConfig = WeatherConfig()
     twitter: TwitterConfig = TwitterConfig()
+    documents: DocumentsConfig = DocumentsConfig()
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     logging: LoggingConfig = LoggingConfig()

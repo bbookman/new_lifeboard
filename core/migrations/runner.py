@@ -332,6 +332,7 @@ class MigrationRunner:
             SemanticStatusTrackingMigration(),
             TwoKeyMetadataMigration(),
             IngestionStatusMigration(),
+            UserDocumentsMigration(),
         ]
     
     @contextmanager
@@ -517,4 +518,15 @@ class IngestionStatusMigration(VersionMigrationAdapter):
             "0008_add_ingestion_status_to_data_items",
             "0008_add_ingestion_status_to_data_items",
             "Add ingestion status to data_items"
+        )
+
+
+class UserDocumentsMigration(VersionMigrationAdapter):
+    """Migration for user documents tables"""
+    
+    def __init__(self):
+        super().__init__(
+            "0009_add_user_documents",
+            "0009_add_user_documents",
+            "Add user documents tables for Notes & Prompts feature"
         )

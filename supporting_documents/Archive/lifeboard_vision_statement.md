@@ -1,6 +1,6 @@
 # Lifeboard Vision Statement
 
-Lifeboard is an interactive reflection space and powerful planning assistant where there is infinite opportunity for discovery and planning. Seamlessly pulling from your digital history—conversations, activities, moods, and experiences —it transforms each day into a personal newspaper. With AI assistance that you can engage through natural conversation, you'll rediscover meaning in the everyday and take control of your future journey.
+Lifeboard is an interactive reflection space where there is infinite opportunity for discovery. Seamlessly pulling from your digital history—conversations, activities, moods, and experiences —it transforms each day into a personal newspaper. With AI assistance that you can engage through natural conversation, you'll rediscover meaning in the everyday and take control of your future journey.
   
 But you don't always have to know where to look. Lifeboard invites serendipity through random resurfacing of forgotten moments and AI-guided discovery journeys—because some of life's richest memories are the ones you didn't expect to find.  
 

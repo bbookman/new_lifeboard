@@ -7,6 +7,7 @@ from services.scheduler import AsyncScheduler
 from services.ingestion import IngestionService
 from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
+from services.document_service import DocumentService
 from services.sync_status_service import SyncStatusService, set_sync_status_service
 from sources.limitless import LimitlessSource
 from sources.news import NewsSource
@@ -33,6 +34,7 @@ class StartupService:
         self.scheduler: Optional[AsyncScheduler] = None
         self.sync_manager: Optional[SyncManagerService] = None
         self.chat_service: Optional[ChatService] = None
+        self.document_service: Optional[DocumentService] = None
         self.sync_status_service: Optional[SyncStatusService] = None
         self.startup_complete = False
         self.logging_setup_result: Optional[Dict[str, Any]] = None
@@ -63,6 +65,9 @@ class StartupService:
             
             # 2.5. Initialize chat service (Phase 7)
             await self._initialize_chat_service(startup_result)
+            
+            # 2.6. Initialize document service
+            await self._initialize_document_service(startup_result)
             
             # 3. Register data sources
             await self._register_data_sources(startup_result)
@@ -198,6 +203,29 @@ class StartupService:
             
         except Exception as e:
             error_msg = f"Failed to initialize chat service: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+    
+    async def _initialize_document_service(self, startup_result: Dict[str, Any]):
+        """Initialize the document service"""
+        try:
+            logger.info("Initializing document service...")
+            
+            self.document_service = DocumentService(
+                database=self.database,
+                vector_store=self.vector_store,
+                embedding_service=self.embedding_service,
+                config=self.config
+            )
+            
+            # Initialize the document service
+            await self.document_service._initialize_service()
+            
+            startup_result["services_initialized"].append("documents")
+            logger.info("Document service initialized successfully")
+            
+        except Exception as e:
+            error_msg = f"Failed to initialize document service: {str(e)}"
             logger.error(error_msg)
             raise Exception(error_msg)
     
@@ -594,6 +622,21 @@ class StartupService:
             else:
                 logger.info("SHUTDOWN_SERVICE: No chat service to close")
             
+            # Close document service
+            if self.document_service:
+                logger.info("SHUTDOWN_SERVICE: Closing document service...")
+                try:
+                    await asyncio.wait_for(self.document_service._shutdown_service(), timeout=5.0)
+                    logger.info("SHUTDOWN_SERVICE: Document service closed successfully")
+                except asyncio.TimeoutError:
+                    logger.warning("SHUTDOWN_SERVICE: Document service shutdown timeout")
+                    shutdown_errors.append("Document service shutdown timeout")
+                except Exception as e:
+                    logger.error(f"SHUTDOWN_SERVICE: Error closing document service: {e}")
+                    shutdown_errors.append(f"Document service error: {e}")
+            else:
+                logger.info("SHUTDOWN_SERVICE: No document service to close")
+            
             # Database cleanup (uses context managers, no explicit cleanup needed)
             if self.database:
                 logger.info("SHUTDOWN_SERVICE: Database uses context managers - no explicit cleanup needed")
@@ -655,6 +698,7 @@ class StartupService:
                 "embedding_service": self.embedding_service is not None,
                 "ingestion_service": self.ingestion_service is not None,
                 "chat_service": self.chat_service is not None,
+                "document_service": self.document_service is not None,
                 "scheduler": self.scheduler is not None,
                 "sync_manager": self.sync_manager is not None,
                 "sync_status": self.sync_status_service is not None
