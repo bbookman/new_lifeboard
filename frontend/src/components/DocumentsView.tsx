@@ -125,20 +125,26 @@ export const DocumentsView = () => {
       setLoading(true);
       setError(null);
       
+      // Fetch all documents first
       const params = new URLSearchParams();
-      params.append('q', searchQuery);
       if (selectedType !== 'all') {
         params.append('document_type', selectedType);
       }
-      params.append('limit', '20');
+      params.append('limit', '50');
       
-      const response = await fetch(`http://localhost:8000/api/documents/search?${params}`);
+      const response = await fetch(`http://localhost:8000/api/documents?${params}`);
       if (!response.ok) {
-        throw new Error('Search failed');
+        throw new Error('Failed to fetch documents');
       }
       
-      const data = await response.json();
-      setDocuments(data.results.map((result: any) => ({ ...result.document, selected: false })));
+      const data: DocumentListResponse = await response.json();
+      
+      // Filter documents by title using simple "like" logic
+      const filteredDocuments = data.documents.filter(doc => 
+        doc.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      
+      setDocuments(filteredDocuments.map(doc => ({ ...doc, selected: false })));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
