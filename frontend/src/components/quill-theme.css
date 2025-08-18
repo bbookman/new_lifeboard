@@ -1,0 +1,190 @@
+/* Custom Quill.js theming for DocumentsView */
+
+/* Toolbar styling */
+.ql-toolbar.ql-snow {
+  border-top: 1px solid hsl(var(--border));
+  border-left: 1px solid hsl(var(--border));
+  border-right: 1px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border));
+  background-color: hsl(var(--muted/0.5));
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  padding: 8px;
+}
+
+/* Editor container */
+.ql-container.ql-snow {
+  border-bottom: 1px solid hsl(var(--border));
+  border-left: 1px solid hsl(var(--border));
+  border-right: 1px solid hsl(var(--border));
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  background-color: hsl(var(--background));
+  font-family: inherit;
+}
+
+/* Editor content area */
+.ql-editor {
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 16px;
+  min-height: 400px;
+}
+
+/* Placeholder text */
+.ql-editor.ql-blank::before {
+  color: hsl(var(--muted-foreground));
+  font-style: normal;
+  opacity: 0.7;
+}
+
+/* Toolbar button styling */
+.ql-toolbar .ql-stroke {
+  stroke: hsl(var(--foreground));
+}
+
+.ql-toolbar .ql-fill {
+  fill: hsl(var(--foreground));
+}
+
+.ql-toolbar button:hover {
+  background-color: hsl(var(--accent));
+}
+
+.ql-toolbar button.ql-active {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.ql-toolbar button.ql-active .ql-stroke {
+  stroke: hsl(var(--primary-foreground));
+}
+
+.ql-toolbar button.ql-active .ql-fill {
+  fill: hsl(var(--primary-foreground));
+}
+
+/* Dropdown styling */
+.ql-toolbar .ql-picker {
+  color: hsl(var(--foreground));
+}
+
+.ql-toolbar .ql-picker-options {
+  background-color: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+}
+
+.ql-toolbar .ql-picker-item:hover {
+  background-color: hsl(var(--accent));
+}
+
+/* Header sizes */
+.ql-editor h1 { 
+  font-size: 2em; 
+  font-weight: 700;
+  margin-bottom: 0.5em;
+}
+
+.ql-editor h2 { 
+  font-size: 1.5em; 
+  font-weight: 600;
+  margin-bottom: 0.4em;
+}
+
+.ql-editor h3 { 
+  font-size: 1.25em; 
+  font-weight: 600;
+  margin-bottom: 0.3em;
+}
+
+/* Lists */
+.ql-editor ol,
+.ql-editor ul {
+  padding-left: 1.5em;
+}
+
+/* Code blocks */
+.ql-editor pre {
+  background-color: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  padding: 12px;
+  margin: 8px 0;
+  font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+}
+
+/* Inline code */
+.ql-editor code {
+  background-color: hsl(var(--muted));
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+}
+
+/* Blockquotes */
+.ql-editor blockquote {
+  border-left: 4px solid hsl(var(--primary));
+  margin: 16px 0;
+  padding: 8px 16px;
+  background-color: hsl(var(--muted/0.5));
+}
+
+/* Links */
+.ql-editor a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+
+.ql-editor a:hover {
+  color: hsl(var(--primary/0.8));
+}
+
+/* Read-only Quill styling */
+.quill-readonly .ql-container {
+  border: none !important;
+  background-color: transparent !important;
+}
+
+.quill-readonly .ql-editor {
+  padding: 0 !important;
+  color: hsl(var(--foreground));
+  font-size: 16px;
+  line-height: 1.7;
+  min-height: auto !important;
+}
+
+.quill-readonly .ql-editor p {
+  margin-bottom: 1em;
+}
+
+.quill-readonly .ql-editor p:last-child {
+  margin-bottom: 0;
+}
+
+.quill-readonly .ql-editor h1,
+.quill-readonly .ql-editor h2,
+.quill-readonly .ql-editor h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.quill-readonly .ql-editor h1:first-child,
+.quill-readonly .ql-editor h2:first-child,
+.quill-readonly .ql-editor h3:first-child {
+  margin-top: 0;
+}
+
+.quill-readonly .ql-editor ol,
+.quill-readonly .ql-editor ul {
+  margin-bottom: 1em;
+}
+
+.quill-readonly .ql-editor blockquote {
+  margin: 1em 0;
+}
+
+.quill-readonly .ql-editor pre {
+  margin: 1em 0;
+}

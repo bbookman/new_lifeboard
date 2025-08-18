@@ -5,12 +5,13 @@ import { CalendarView } from './components/CalendarView'
 import { DayView } from './components/DayView'
 import { ChatView } from './components/ChatView'
 import { SettingsView } from './components/SettingsView'
+import { DocumentsView } from './components/DocumentsView'
 import { DateNavigation } from './components/DateNavigation'
 
 const navigationItems = [
   { id: 'day', label: 'Day', icon: '📅', path: '/day' },
   { id: 'calendar', label: 'Calendar', icon: '🗓️', path: '/calendar' },
-  { id: 'chat', label: 'Chat', icon: '💬', path: '/chat' },
+  { id: 'documents', label: 'Notes & Prompts', icon: '📝', path: '/documents' },
   { id: 'settings', label: 'Settings', icon: '⚙️', path: '/settings' },
 ];
 
@@ -41,6 +42,8 @@ function App() {
         return <DayView selectedDate={selectedDate} onDateChange={handleDateChange} />;
       case 'calendar':
         return <CalendarView onDateSelect={handleDateSelect} />;
+      case 'documents':
+        return <DocumentsView />;
       case 'chat':
         return <ChatView />;
       case 'settings':
