@@ -30,9 +30,10 @@ def get_document_service_for_route(startup_service: StartupService = Depends(get
 # Pydantic models for API requests and responses
 class CreateDocumentRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
-    document_type: str = Field(..., pattern="^(note|prompt|folder)$")
+    document_type: str = Field(..., pattern="^(note|prompt|folder|link)$")
     content_delta: Optional[Dict[str, Any]] = Field(None, description="Quill Delta format content")
     path: str = Field("/", description="Virtual directory path")
+    url: Optional[str] = Field(None, description="URL for link documents")
     user_id: Optional[str] = None
 
     @validator('title')
@@ -64,8 +65,9 @@ class MoveItemRequest(BaseModel):
 
 class UpdateDocumentRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
-    document_type: Optional[str] = Field(None, pattern="^(note|prompt)$", description="Document type")
+    document_type: Optional[str] = Field(None, pattern="^(note|prompt|link)$", description="Document type")
     content_delta: Optional[Dict[str, Any]] = Field(None, description="Quill Delta format content")
+    url: Optional[str] = Field(None, description="URL for link documents")
     user_id: Optional[str] = None
 
     @validator('title')
@@ -84,6 +86,7 @@ class DocumentResponse(BaseModel):
     content_md: str
     path: str
     is_folder: bool
+    url: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -98,6 +101,7 @@ class DocumentResponse(BaseModel):
             content_md=document.content_md,
             path=document.path,
             is_folder=document.is_folder,
+            url=getattr(document, 'url', None),
             created_at=document.created_at.isoformat(),
             updated_at=document.updated_at.isoformat()
         )
@@ -145,7 +149,8 @@ async def create_document(
                 document_type=request.document_type,
                 content_delta=content_delta,
                 user_id=request.user_id,
-                path=request.path
+                path=request.path,
+                url=request.url
             )
         
         return DocumentResponse.from_document(document)
@@ -193,7 +198,8 @@ async def update_document(
             title=request.title,
             document_type=request.document_type,
             content_delta=request.content_delta,
-            user_id=request.user_id
+            user_id=request.user_id,
+            url=request.url
         )
         
         return DocumentResponse.from_document(document)
@@ -231,7 +237,7 @@ async def delete_document(
 @handle_api_exceptions("Failed to list documents", 500, include_details=True)
 async def list_documents(
     user_id: Optional[str] = Query(None),
-    document_type: Optional[str] = Query(None, pattern="^(note|prompt|folder)$"),
+    document_type: Optional[str] = Query(None, pattern="^(note|prompt|folder|link)$"),
     folder_path: Optional[str] = Query(None, description="Filter by folder path"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -283,7 +289,7 @@ async def list_documents(
 async def search_documents(
     q: str = Query(..., min_length=1, description="Search query"),
     user_id: Optional[str] = Query(None),
-    document_type: Optional[str] = Query(None, pattern="^(note|prompt)$"),
+    document_type: Optional[str] = Query(None, pattern="^(note|prompt|link)$"),
     limit: int = Query(20, ge=1, le=50),
     document_service: DocumentService = Depends(get_document_service_for_route)
 ) -> DocumentSearchResponse:

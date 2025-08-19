@@ -30,13 +30,14 @@ class Document:
     id: str
     user_id: str
     title: str
-    document_type: str  # 'note', 'prompt', or 'folder'
+    document_type: str  # 'note', 'prompt', 'folder', or 'link'
     content_delta: Dict[str, Any]  # Quill Delta format
     content_md: str  # Markdown version
     path: str  # Virtual directory path
     is_folder: bool  # True if this is a folder
-    created_at: datetime
-    updated_at: datetime
+    url: Optional[str] = None  # URL for link documents
+    created_at: datetime = None
+    updated_at: datetime = None
 
 
 class DocumentService(BaseService):
@@ -67,10 +68,11 @@ class DocumentService(BaseService):
                             document_type: str,
                             content_delta: Dict[str, Any],
                             user_id: Optional[str] = None,
-                            path: str = "/") -> Document:
+                            path: str = "/",
+                            url: Optional[str] = None) -> Document:
         """Create a new document"""
-        if document_type not in ['note', 'prompt']:
-            raise ValueError("Document type must be 'note' or 'prompt'")
+        if document_type not in ['note', 'prompt', 'link']:
+            raise ValueError("Document type must be 'note', 'prompt', or 'link'")
         
         if user_id is None:
             user_id = self.config.documents.default_user_id
@@ -109,6 +111,7 @@ class DocumentService(BaseService):
             content_md=content_md,
             path=document_path,
             is_folder=False,
+            url=url,
             created_at=now,
             updated_at=now
         )
@@ -128,7 +131,8 @@ class DocumentService(BaseService):
                             title: Optional[str] = None,
                             document_type: Optional[str] = None,  # Added parameter
                             content_delta: Optional[Dict[str, Any]] = None,
-                            user_id: Optional[str] = None) -> Document:
+                            user_id: Optional[str] = None,
+                            url: Optional[str] = None) -> Document:
         """Update an existing document"""
         if user_id is None:
             user_id = self.config.documents.default_user_id
@@ -152,8 +156,8 @@ class DocumentService(BaseService):
         
         # Update document type if provided
         if document_type is not None:
-            if document_type not in ['note', 'prompt']:
-                raise ValueError("Document type must be 'note' or 'prompt'")
+            if document_type not in ['note', 'prompt', 'link']:
+                raise ValueError("Document type must be 'note', 'prompt', or 'link'")
             logger.info(f"[DEBUG] Updating document type from {document.document_type} to {document_type}")
             document.document_type = document_type
         
@@ -167,6 +171,10 @@ class DocumentService(BaseService):
             
             document.content_delta = content_delta
             document.content_md = content_md
+        
+        # Update URL if provided (for link documents)
+        if url is not None:
+            document.url = url
         
         document.updated_at = datetime.now(timezone.utc)
         
@@ -192,7 +200,7 @@ class DocumentService(BaseService):
             with self.database.get_connection() as conn:
                 cursor = conn.execute("""
                     SELECT id, user_id, title, document_type, content_delta, content_md,
-                           path, is_folder, created_at, updated_at
+                           path, is_folder, url, created_at, updated_at
                     FROM user_documents 
                     WHERE id = ? AND user_id = ?
                 """, (doc_id, user_id))
@@ -220,7 +228,7 @@ class DocumentService(BaseService):
             # Build query
             query = """
                 SELECT id, user_id, title, document_type, content_delta, content_md,
-                       path, is_folder, created_at, updated_at
+                       path, is_folder, url, created_at, updated_at
                 FROM user_documents 
                 WHERE user_id = ?
             """
@@ -382,7 +390,7 @@ class DocumentService(BaseService):
                     # Root folder: find items with no subdirectories
                     query = """
                         SELECT id, user_id, title, document_type, content_delta, content_md,
-                               path, is_folder, created_at, updated_at
+                               path, is_folder, url, created_at, updated_at
                         FROM user_documents 
                         WHERE user_id = ? 
                         AND (
@@ -399,7 +407,7 @@ class DocumentService(BaseService):
                     # and has exactly one more level
                     query = """
                         SELECT id, user_id, title, document_type, content_delta, content_md,
-                               path, is_folder, created_at, updated_at
+                               path, is_folder, url, created_at, updated_at
                         FROM user_documents 
                         WHERE user_id = ? AND path LIKE ?
                         AND (
@@ -557,8 +565,8 @@ class DocumentService(BaseService):
             with self.database.get_connection() as conn:
                 conn.execute("""
                     INSERT OR REPLACE INTO user_documents 
-                    (id, user_id, title, document_type, content_delta, content_md, path, is_folder, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, user_id, title, document_type, content_delta, content_md, path, is_folder, url, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     document.id,
                     document.user_id,
@@ -568,6 +576,7 @@ class DocumentService(BaseService):
                     document.content_md,
                     document.path,
                     document.is_folder,
+                    document.url,
                     document.created_at.isoformat(),
                     document.updated_at.isoformat()
                 ))
@@ -588,6 +597,7 @@ class DocumentService(BaseService):
             content_md=row['content_md'],
             path=row['path'] if 'path' in row.keys() else '/',  # Default to root if not present
             is_folder=bool(row['is_folder']) if 'is_folder' in row.keys() else False,  # Default to False if not present
+            url=row['url'] if 'url' in row.keys() else None,  # Default to None if not present
             created_at=datetime.fromisoformat(row['created_at']),
             updated_at=datetime.fromisoformat(row['updated_at'])
         )

@@ -8,7 +8,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Search, FileText, Edit3, Trash2, File, ScrollText, MoreVertical, ChevronDown, ChevronRight, Folder, FolderPlus } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from './ui/radio-group';
+import { Plus, Search, FileText, Edit3, Trash2, File, ScrollText, MoreVertical, ChevronDown, ChevronRight, Folder, FolderPlus, Link, RadioIcon } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import './quill-theme.css';
@@ -17,13 +18,14 @@ interface Document {
   id: string;
   user_id: string;
   title: string;
-  document_type: 'note' | 'prompt' | 'folder';
+  document_type: 'note' | 'prompt' | 'folder' | 'link';
   content_delta: any;
   content_md: string;
   path: string;
   is_folder: boolean;
   created_at: string;
   updated_at: string;
+  url?: string; // For link documents
   selected?: boolean;
 }
 
@@ -39,11 +41,16 @@ export const DocumentsView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState<'all' | 'note' | 'prompt' | 'folder'>('all');
+  const [selectedType, setSelectedType] = useState<'all' | 'note' | 'prompt' | 'folder' | 'link'>('all');
   const [currentFolderPath, setCurrentFolderPath] = useState<string>('/');
   const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showDocumentTypeDialog, setShowDocumentTypeDialog] = useState(false);
+  const [showLinkUrlDialog, setShowLinkUrlDialog] = useState(false);
+  const [selectedDocumentType, setSelectedDocumentType] = useState<'note' | 'prompt' | 'link'>('note');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkTitle, setLinkTitle] = useState('');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteSelectedDialog, setShowDeleteSelectedDialog] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'document'>('list');
@@ -56,15 +63,17 @@ export const DocumentsView = () => {
   const [hasSelectedDocuments, setHasSelectedDocuments] = useState(false);
   const [createForm, setCreateForm] = useState({
     title: '',
-    document_type: 'note' as 'note' | 'prompt',
-    content: ''
+    document_type: 'note' as 'note' | 'prompt' | 'link',
+    content: '',
+    url: ''
   });
   const [createFormDelta, setCreateFormDelta] = useState<any>(null);
   const createQuillRef = useRef<ReactQuill>(null);
   const [editForm, setEditForm] = useState({
     title: '',
-    document_type: 'note' as 'note' | 'prompt',
-    content: ''
+    document_type: 'note' as 'note' | 'prompt' | 'link',
+    content: '',
+    url: ''
   });
   const [editFormDelta, setEditFormDelta] = useState<any>(null);
   const quillRef = useRef<ReactQuill>(null);
@@ -176,7 +185,16 @@ export const DocumentsView = () => {
   };
 
   const getTypeColor = (type: string) => {
-    return type === 'note' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800';
+    switch (type) {
+      case 'note':
+        return 'bg-blue-100 text-blue-800';
+      case 'prompt':
+        return 'bg-purple-100 text-purple-800';
+      case 'link':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
   };
 
   const getPreviewText = (content: string) => {
@@ -191,6 +209,8 @@ export const DocumentsView = () => {
         return <File className="h-4 w-4 text-blue-600" />;
       case 'prompt':
         return <ScrollText className="h-4 w-4 text-purple-600" />;
+      case 'link':
+        return <Link className="h-4 w-4 text-green-600" />;
       default:
         return <File className="h-4 w-4 text-gray-600" />;
     }
@@ -261,6 +281,12 @@ export const DocumentsView = () => {
       return;
     }
     
+    if (document.document_type === 'link' && document.url) {
+      // Open link in new tab
+      window.open(document.url, '_blank');
+      return;
+    }
+    
     // Open document in full-screen view
     setOpenDocument(document);
     setViewMode('document');
@@ -276,8 +302,9 @@ export const DocumentsView = () => {
     
     setEditForm({
       title: document.title,
-      document_type: document.document_type as 'note' | 'prompt',
-      content: plainTextContent
+      document_type: document.document_type as 'note' | 'prompt' | 'link',
+      content: plainTextContent,
+      url: document.url || ''
     });
     setEditFormDelta(document.content_delta);
     setIsEditing(true); // Start in edit mode when clicking on document
@@ -288,7 +315,7 @@ export const DocumentsView = () => {
     setViewMode('list');
     setOpenDocument(null);
     setIsEditing(false);
-    setEditForm({ title: '', document_type: 'note', content: '' });
+    setEditForm({ title: '', document_type: 'note', content: '', url: '' });
     setError(null);
     // Clear any open dialogs when navigating back
     setShowDeleteDialog(false);
@@ -309,7 +336,8 @@ export const DocumentsView = () => {
       setEditForm({
         title: openDocument.title,
         document_type: openDocument.document_type,
-        content: plainTextContent
+        content: plainTextContent,
+        url: openDocument.url || ''
       });
       setIsEditing(true);
     }
@@ -355,7 +383,8 @@ export const DocumentsView = () => {
         body: JSON.stringify({
           title: editForm.title,
           document_type: editForm.document_type,
-          content_delta: deltaContent
+          content_delta: deltaContent,
+          ...(editForm.document_type === 'link' && { url: editForm.url })
         }),
       });
 
@@ -401,7 +430,8 @@ export const DocumentsView = () => {
           title: editForm.title,
           document_type: editForm.document_type,
           content_delta: deltaContent,
-          path: currentFolderPath
+          path: currentFolderPath,
+          ...(editForm.document_type === 'link' && { url: editForm.url })
         }),
       });
 
@@ -448,7 +478,8 @@ export const DocumentsView = () => {
           title: createForm.title,
           document_type: createForm.document_type,
           content_delta: deltaContent,
-          path: currentFolderPath
+          path: currentFolderPath,
+          ...(createForm.document_type === 'link' && { url: createForm.url })
         }),
       });
 
@@ -459,7 +490,7 @@ export const DocumentsView = () => {
       const newDocument: Document = await response.json();
       setDocuments(prev => [newDocument, ...prev]);
       setShowCreateDialog(false);
-      setCreateForm({ title: '', document_type: 'note', content: '' });
+      setCreateForm({ title: '', document_type: 'note', content: '', url: '' });
       setCreateFormDelta(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create document');
@@ -469,21 +500,76 @@ export const DocumentsView = () => {
   };
 
   const openCreateDialog = () => {
-    console.log('➕ openCreateDialog called - clearing delete dialog');
-    // Instead of showing dialog, open full editor for new document
-    setViewMode('document');
-    setOpenDocument(null); // No existing document
-    setIsEditing(true);
-    setEditForm({
-      title: '',
-      document_type: 'note',
-      content: ''
-    });
-    setEditFormDelta(null);
+    console.log('➕ openCreateDialog called - showing document type selection');
+    setShowDocumentTypeDialog(true);
+    setSelectedDocumentType('note');
     setError(null);
     // Clear any open dialogs when creating new document
     setShowDeleteDialog(false);
     setSelectedDocument(null);
+  };
+
+  const handleDocumentTypeSelection = () => {
+    setShowDocumentTypeDialog(false);
+    
+    if (selectedDocumentType === 'link') {
+      // Show link URL input dialog
+      setShowLinkUrlDialog(true);
+      setLinkUrl('');
+      setLinkTitle('');
+    } else {
+      // Open full editor for note/prompt
+      setViewMode('document');
+      setOpenDocument(null); // No existing document
+      setIsEditing(true);
+      setEditForm({
+        title: '',
+        document_type: selectedDocumentType,
+        content: '',
+        url: ''
+      });
+      setEditFormDelta(null);
+    }
+  };
+
+  const handleCreateLink = async () => {
+    if (!linkTitle.trim() || !linkUrl.trim()) {
+      setError('Both title and URL are required');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch('http://localhost:8000/api/documents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: linkTitle,
+          document_type: 'link',
+          url: linkUrl,
+          content_delta: { ops: [{ insert: '\n' }] },
+          path: currentFolderPath
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create link');
+      }
+
+      const newLink: Document = await response.json();
+      setDocuments(prev => [newLink, ...prev]);
+      setShowLinkUrlDialog(false);
+      setLinkUrl('');
+      setLinkTitle('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create link');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCreateFolder = async () => {
@@ -757,7 +843,7 @@ export const DocumentsView = () => {
                       />
                       <Select
                         value={editForm.document_type}
-                        onValueChange={(value: 'note' | 'prompt') =>
+                        onValueChange={(value: 'note' | 'prompt' | 'link') =>
                           setEditForm(prev => ({ ...prev, document_type: value }))
                         }
                       >
@@ -767,6 +853,7 @@ export const DocumentsView = () => {
                         <SelectContent>
                           <SelectItem value="note">Note</SelectItem>
                           <SelectItem value="prompt">Prompt</SelectItem>
+                          <SelectItem value="link">Link</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -774,24 +861,43 @@ export const DocumentsView = () => {
                   
                 </div>
                 
-                {/* Content Section */}
-                <div className="flex-1">
-                  <Label className="text-base font-semibold mb-2 block">
-                    Content
-                  </Label>
-                  <div className="border rounded-lg overflow-hidden">
-                    <ReactQuill
-                      ref={quillRef}
-                      value={editFormDelta}
-                      onChange={handleQuillChange}
-                      modules={quillModules}
-                      formats={quillFormats}
-                      placeholder="Start writing your content here..."
-                      style={{ minHeight: '400px' }}
-                      theme="snow"
+                {/* URL Section for links */}
+                {editForm.document_type === 'link' && (
+                  <div>
+                    <Label htmlFor="edit-url" className="text-base font-semibold mb-2 block">
+                      URL
+                    </Label>
+                    <Input
+                      id="edit-url"
+                      value={editForm.url}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, url: e.target.value }))}
+                      className="text-lg p-3"
+                      placeholder="https://example.com"
+                      type="url"
                     />
                   </div>
-                </div>
+                )}
+                
+                {/* Content Section */}
+                {editForm.document_type !== 'link' && (
+                  <div className="flex-1">
+                    <Label className="text-base font-semibold mb-2 block">
+                      Content
+                    </Label>
+                    <div className="border rounded-lg overflow-hidden">
+                      <ReactQuill
+                        ref={quillRef}
+                        value={editFormDelta}
+                        onChange={handleQuillChange}
+                        modules={quillModules}
+                        formats={quillFormats}
+                        placeholder="Start writing your content here..."
+                        style={{ minHeight: '400px' }}
+                        theme="snow"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -845,7 +951,7 @@ export const DocumentsView = () => {
         <div className="flex items-center gap-2">
           <Button onClick={openCreateDialog} className="flex items-center gap-2">
             <Plus className="h-4 w-4" />
-            New Document
+            New
           </Button>
           <Button 
             onClick={() => setShowCreateFolderDialog(true)} 
@@ -1008,6 +1114,130 @@ export const DocumentsView = () => {
         </div>
       )}
 
+      {/* Document Type Selection Dialog */}
+      <Dialog open={showDocumentTypeDialog} onOpenChange={setShowDocumentTypeDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create New</DialogTitle>
+            <DialogDescription>
+              Choose the type of document you want to create.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-6 py-4">
+            <RadioGroup 
+              value={selectedDocumentType} 
+              onValueChange={(value: 'note' | 'prompt' | 'link') => setSelectedDocumentType(value)}
+              className="grid gap-4"
+            >
+              <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
+                <RadioGroupItem value="note" id="note" />
+                <Label htmlFor="note" className="flex items-center gap-2 cursor-pointer flex-1">
+                  <File className="h-4 w-4 text-blue-600" />
+                  <div>
+                    <div className="font-medium">Note</div>
+                    <div className="text-sm text-muted-foreground">Create a rich text document</div>
+                  </div>
+                </Label>
+              </div>
+              <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
+                <RadioGroupItem value="prompt" id="prompt" />
+                <Label htmlFor="prompt" className="flex items-center gap-2 cursor-pointer flex-1">
+                  <ScrollText className="h-4 w-4 text-purple-600" />
+                  <div>
+                    <div className="font-medium">Prompt</div>
+                    <div className="text-sm text-muted-foreground">Create an AI prompt template</div>
+                  </div>
+                </Label>
+              </div>
+              <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
+                <RadioGroupItem value="link" id="link" />
+                <Label htmlFor="link" className="flex items-center gap-2 cursor-pointer flex-1">
+                  <Link className="h-4 w-4 text-green-600" />
+                  <div>
+                    <div className="font-medium">Link</div>
+                    <div className="text-sm text-muted-foreground">Save a web link bookmark</div>
+                  </div>
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowDocumentTypeDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              onClick={handleDocumentTypeSelection}
+            >
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Link URL Input Dialog */}
+      <Dialog open={showLinkUrlDialog} onOpenChange={setShowLinkUrlDialog}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Create Link</DialogTitle>
+            <DialogDescription>
+              Enter the URL and title for your link bookmark.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="link-title" className="text-right">
+                Title
+              </Label>
+              <Input
+                id="link-title"
+                value={linkTitle}
+                onChange={(e) => setLinkTitle(e.target.value)}
+                className="col-span-3"
+                placeholder="Enter link title..."
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="link-url" className="text-right">
+                URL
+              </Label>
+              <Input
+                id="link-url"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                className="col-span-3"
+                placeholder="https://example.com"
+                type="url"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowLinkUrlDialog(false);
+                setLinkUrl('');
+                setLinkTitle('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              onClick={handleCreateLink}
+              disabled={!linkTitle.trim() || !linkUrl.trim()}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Create Document Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-[525px]">
@@ -1036,7 +1266,7 @@ export const DocumentsView = () => {
               </Label>
               <Select
                 value={createForm.document_type}
-                onValueChange={(value: 'note' | 'prompt') => 
+                onValueChange={(value: 'note' | 'prompt' | 'link') => 
                   setCreateForm(prev => ({ ...prev, document_type: value }))
                 }
               >
@@ -1046,13 +1276,30 @@ export const DocumentsView = () => {
                 <SelectContent>
                   <SelectItem value="note">Note</SelectItem>
                   <SelectItem value="prompt">Prompt</SelectItem>
+                  <SelectItem value="link">Link</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-4 items-start gap-4">
-              <Label className="text-right pt-2">
-                Content
-              </Label>
+            {createForm.document_type === 'link' && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="url" className="text-right">
+                  URL
+                </Label>
+                <Input
+                  id="url"
+                  value={createForm.url}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, url: e.target.value }))}
+                  className="col-span-3"
+                  placeholder="https://example.com"
+                  type="url"
+                />
+              </div>
+            )}
+            {createForm.document_type !== 'link' && (
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label className="text-right pt-2">
+                  Content
+                </Label>
               <div className="col-span-3 border rounded-lg overflow-hidden">
                 <ReactQuill
                   ref={createQuillRef}
@@ -1066,6 +1313,7 @@ export const DocumentsView = () => {
                 />
               </div>
             </div>
+            )}
           </div>
           <DialogFooter>
             <Button
