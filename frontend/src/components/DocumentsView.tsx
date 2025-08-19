@@ -117,6 +117,20 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     setHasSelectedDocuments(documents.some(doc => doc.selected));
   }, [documents]);
 
+  // Listen for navigation events to force list view
+  useEffect(() => {
+    const handleForceList = () => {
+      setViewMode('list');
+      setOpenDocument(null);
+      setIsEditing(false);
+      setEditForm({ title: '', document_type: 'note', content: '', url: '', home_date: new Date() });
+      setError(null);
+    };
+
+    window.addEventListener('forceDocumentsList', handleForceList);
+    return () => window.removeEventListener('forceDocumentsList', handleForceList);
+  }, []);
+
   // Debug useEffect to monitor delete dialog state
   useEffect(() => {
     console.log('🗑️ Delete dialog state changed:', {
@@ -1311,17 +1325,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
             <Plus className="h-4 w-4" />
             New
           </Button>
-          {/* DEBUG: Test modal button */}
-          <Button 
-            onClick={() => {
-              console.log('🧪 TEST: Forcing modal to show');
-              setShowUniqueNameDialog(true);
-            }}
-            variant="outline"
-            className="bg-red-100"
-          >
-            TEST MODAL
-          </Button>
+
         </div>
       </div>
 

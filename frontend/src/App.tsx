@@ -25,6 +25,10 @@ function App() {
     if (item.id !== 'day') {
       setSelectedDate(undefined);
     }
+    // Force documents view to list mode when navigating to it
+    if (item.id === 'documents') {
+      window.dispatchEvent(new CustomEvent('forceDocumentsList'));
+    }
   };
 
   const handleDateSelect = (date: string) => {
