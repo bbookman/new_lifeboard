@@ -93,6 +93,15 @@ def create_production_config() -> AppConfig:
     # Use override=True to ensure .env values take precedence over shell environment
     load_dotenv(override=True)
     
+    # Debug Twitter configuration loading
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("Loading Twitter configuration...")
+    logger.info(f"TWITTER_BEARER_TOKEN present: {bool(os.getenv('TWITTER_BEARER_TOKEN'))}")
+    logger.info(f"TWITTER_USER_NAME present: {bool(os.getenv('TWITTER_USER_NAME'))}")
+    logger.info(f"TWITTER_BEARER_TOKEN: {os.getenv('TWITTER_BEARER_TOKEN')!r}")
+    logger.info(f"TWITTER_USER_NAME: {os.getenv('TWITTER_USER_NAME')!r}")
+    
     return AppConfig(
         database=DatabaseConfig(
             path=os.getenv("LIFEBOARD_DB_PATH", "lifeboard.db")
@@ -147,7 +156,15 @@ def create_production_config() -> AppConfig:
         twitter=TwitterConfig(
             enabled=os.getenv("TWITTER_ENABLED", "true").lower() == "true",
             delete_after_import=os.getenv("DELETE_AFTER_IMPORT", "false").lower() == "true",
-            sync_interval_hours=int(os.getenv("TWITTER_SYNC_INTERVAL_HOURS", "24"))
+            sync_interval_hours=int(os.getenv("TWITTER_SYNC_INTERVAL_HOURS", "24")),
+            bearer_token=os.getenv("TWITTER_BEARER_TOKEN"),
+            username=os.getenv("TWITTER_USER_NAME"),
+            max_retries=int(os.getenv("TWITTER_MAX_RETRIES", "3")),
+            retry_delay=float(os.getenv("TWITTER_RETRY_DELAY", "1.0")),
+            request_timeout=float(os.getenv("TWITTER_REQUEST_TIMEOUT", "30.0")),
+            rate_limit_max_retries=int(os.getenv("TWITTER_RATE_LIMIT_MAX_RETRIES", "10")),
+            other_error_max_retries=int(os.getenv("TWITTER_OTHER_ERROR_MAX_RETRIES", "3")),
+            inter_call_delay=float(os.getenv("TWITTER_INTER_CALL_DELAY", "3.0"))
         ),
         search=SearchConfig(
             default_limit=int(os.getenv("SEARCH_DEFAULT_LIMIT", "20")),
