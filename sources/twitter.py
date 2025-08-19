@@ -10,6 +10,7 @@ from config.models import TwitterConfig
 from core.database import DatabaseService
 from sources.base import BaseSource, DataItem
 from sources.twitter_processor import TwitterProcessor
+from services.twitter_api_service import TwitterAPIService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class TwitterSource(BaseSource):
         self.db_service = db_service
         self.ingestion_service = ingestion_service
         self.processor = TwitterProcessor()
+        self.api_service = TwitterAPIService(config)
 
     async def import_from_zip(self, zip_path: str) -> Dict[str, Any]:
         """Import Twitter data from a zip archive, only adding new tweets."""
@@ -203,13 +205,84 @@ class TwitterSource(BaseSource):
 
         logger.info(f"Successfully ingested {len(data_items)} tweets")
 
+    async def fetch_today_tweets(self) -> List[Dict[str, Any]]:
+        """Fetch today's tweets from Twitter API"""
+        logger.info("Starting fetch_today_tweets...")
+        logger.info(f"Twitter config state: enabled={self.config.enabled}")
+        logger.info(f"Bearer token configured: {bool(self.config.bearer_token)}")
+        logger.info(f"Username configured: {bool(self.config.username)}")
+        logger.info(f"Bearer token: {self.config.bearer_token!r}")
+        logger.info(f"Username: {self.config.username!r}")
+        logger.info(f"is_api_configured() result: {self.config.is_api_configured()}")
+        
+        if not self.config.is_api_configured():
+            logger.warning("Twitter API not configured. Skipping real-time tweet fetch.")
+            return []
+        
+        try:
+            logger.info("Opening API service context...")
+            async with self.api_service:
+                logger.info("Calling fetch_user_tweets_today...")
+                tweets = await self.api_service.fetch_user_tweets_today()
+                logger.info(f"Fetched {len(tweets)} tweets from Twitter API")
+                logger.debug(f"Tweet IDs: {[t.get('tweet_id') for t in tweets]}")
+                return tweets
+        except Exception as e:
+            logger.error(f"Error fetching tweets from API: {e}", exc_info=True)
+            return []
+
     async def get_data_for_date(self, date: str) -> List[Dict[str, Any]]:
         """Get tweets for a specific date"""
         return self.db_service.get_data_items_by_date(date, [self.namespace])
 
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """Fetch data items from the Twitter source"""
-        # Get Twitter data from the unified data_items table
+        # First, try to fetch new tweets from API if configured
+        if self.config.is_api_configured():
+            try:
+                api_tweets = await self.fetch_today_tweets()
+                if api_tweets:
+                    # Get existing tweet IDs to avoid duplicates
+                    existing_tweet_ids = await self._get_existing_tweet_ids()
+                    
+                    # Filter out existing tweets
+                    new_tweets = [t for t in api_tweets if t['tweet_id'] not in existing_tweet_ids]
+                    
+                    if new_tweets:
+                        logger.info(f"Found {len(new_tweets)} new tweets from API to ingest")
+                        await self._ingest_tweets(new_tweets)
+                        
+                        # Yield the new tweets as DataItems
+                        for tweet in new_tweets:
+                            try:
+                                created_at = datetime.fromisoformat(tweet['created_at']) if tweet.get('created_at') else None
+                                
+                                data_item = DataItem(
+                                    namespace=self.namespace,
+                                    source_id=tweet['tweet_id'],
+                                    content=tweet['text'] or "",
+                                    metadata={
+                                        'media_urls': tweet.get('media_urls', '[]'),
+                                        'original_created_at': tweet.get('created_at'),
+                                        'days_date': tweet.get('days_date'),
+                                        'source_type': 'twitter_api',
+                                        'public_metrics': tweet.get('public_metrics', {}),
+                                        'context_annotations': tweet.get('context_annotations', [])
+                                    },
+                                    created_at=created_at,
+                                    updated_at=datetime.now()
+                                )
+                                
+                                processed_item = self.processor.process(data_item)
+                                yield processed_item
+                                
+                            except Exception as e:
+                                logger.error(f"Error creating DataItem for API tweet {tweet.get('tweet_id', 'unknown')}: {e}")
+                                continue
+            except Exception as e:
+                logger.error(f"Error fetching API tweets: {e}")
+        
+        # Then get existing Twitter data from the unified data_items table
         items = self.db_service.get_data_items_by_namespace(self.namespace, limit)
         
         for item in items:
@@ -261,4 +334,20 @@ class TwitterSource(BaseSource):
 
     async def test_connection(self) -> bool:
         """Test if Twitter source is accessible"""
-        return self.config.is_configured()
+        # Test basic configuration
+        if not self.config.is_configured():
+            return False
+        
+        # If API is configured, test the connection
+        if self.config.is_api_configured():
+            try:
+                async with self.api_service:
+                    user_id = await self.api_service.get_user_id(self.config.username)
+                    logger.info(f"Twitter API connection test successful. User ID: {user_id}")
+                    return True
+            except Exception as e:
+                logger.error(f"Twitter API connection test failed: {e}")
+                return False
+        
+        # If only archive import is configured, return True
+        return True

@@ -432,15 +432,58 @@ class LLMProviderConfig(BaseModel):
         return active_config.is_configured()
 
 
-class TwitterConfig(BaseModel):
+class TwitterConfig(BaseModel, BaseConfigMixin):
     """Twitter source configuration"""
     enabled: bool = True
     sync_interval_hours: int = 24
     delete_after_import: bool = False
+    bearer_token: Optional[str] = None
+    username: Optional[str] = None
+    max_retries: int = 3
+    retry_delay: float = 1.0
+    request_timeout: float = 30.0
+    # Rate limiting improvements
+    rate_limit_max_retries: int = 10
+    other_error_max_retries: int = 3
+    inter_call_delay: float = 3.0
+    
+    @field_validator('bearer_token')
+    @classmethod
+    def validate_bearer_token(cls, v):
+        return APIKeyValidator.validate_api_key_format(v, "Twitter Bearer Token")
+    
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v):
+        # Allow None and empty string, but validate non-empty strings
+        if v is not None and v.strip() != "":
+            return StringValidator.validate_non_empty_string(v, "Twitter Username")
+        return v
+    
+    @field_validator('max_retries', 'sync_interval_hours', 'rate_limit_max_retries', 'other_error_max_retries')
+    @classmethod
+    def validate_positive_ints(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_int(v, field_name)
+    
+    @field_validator('retry_delay', 'request_timeout', 'inter_call_delay')
+    @classmethod
+    def validate_positive_floats(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_float(v, field_name)
+
+    def is_api_configured(self) -> bool:
+        """Check if Twitter API credentials are properly configured"""
+        return (super().is_api_key_configured(
+            self.bearer_token,
+            additional_placeholders={"your token here", "your-token-here", "twitter_bearer_token_here"}
+        ) and self.username is not None and
+        self.username.strip() != "" and
+        self.username != "your user name")
 
     def is_configured(self) -> bool:
-        """Check if Twitter source is properly configured"""
-        return self.enabled
+        """Check if Twitter source is properly configured (archive or API)"""
+        return self.enabled and self.is_api_configured()
 
 
 class DocumentsConfig(BaseModel):
