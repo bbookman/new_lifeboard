@@ -334,6 +334,7 @@ class MigrationRunner:
             IngestionStatusMigration(),
             UserDocumentsMigration(),
             VirtualDirectoriesMigration(),
+            LinkSupportMigration(),
         ]
     
     @contextmanager
@@ -541,4 +542,15 @@ class VirtualDirectoriesMigration(VersionMigrationAdapter):
             "0010_add_virtual_directories", 
             "0010_add_virtual_directories",
             "Add path and is_folder columns for virtual directory support"
+        )
+
+
+class LinkSupportMigration(VersionMigrationAdapter):
+    """Migration for link document support"""
+    
+    def __init__(self):
+        super().__init__(
+            "0011_add_link_support",
+            "0011_add_link_support", 
+            "Add link document type support with URL column"
         )
