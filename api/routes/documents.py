@@ -32,9 +32,11 @@ class CreateDocumentRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     document_type: str = Field(..., pattern="^(note|prompt|folder|link)$")
     content_delta: Optional[Dict[str, Any]] = Field(None, description="Quill Delta format content")
+    content_md: Optional[str] = Field(None, description="Markdown content (ignored, generated from delta)")
     path: str = Field("/", description="Virtual directory path")
+    is_folder: Optional[bool] = Field(None, description="Whether this is a folder (ignored, determined by document_type)")
     url: Optional[str] = Field(None, description="URL for link documents")
-    user_id: Optional[str] = None
+    home_date: Optional[str] = Field(None, description="Home date (ignored, uses created_at)")
 
     @validator('title')
     def validate_title(cls, v):
@@ -46,7 +48,6 @@ class CreateDocumentRequest(BaseModel):
 class CreateFolderRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     parent_path: str = Field("/", description="Parent directory path")
-    user_id: Optional[str] = None
 
     @validator('name')
     def validate_name(cls, v):
@@ -60,15 +61,15 @@ class CreateFolderRequest(BaseModel):
 
 class MoveItemRequest(BaseModel):
     new_parent_path: str = Field(..., description="New parent directory path")
-    user_id: Optional[str] = None
 
 
 class UpdateDocumentRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     document_type: Optional[str] = Field(None, pattern="^(note|prompt|link)$", description="Document type")
     content_delta: Optional[Dict[str, Any]] = Field(None, description="Quill Delta format content")
+    content_md: Optional[str] = Field(None, description="Markdown content (ignored, generated from delta)")
     url: Optional[str] = Field(None, description="URL for link documents")
-    user_id: Optional[str] = None
+    home_date: Optional[str] = Field(None, description="Home date (ignored, uses updated_at)")
 
     @validator('title')
     def validate_title(cls, v):
@@ -79,7 +80,6 @@ class UpdateDocumentRequest(BaseModel):
 
 class DocumentResponse(BaseModel):
     id: str
-    user_id: str
     title: str
     document_type: str
     content_delta: Dict[str, Any]
@@ -87,6 +87,7 @@ class DocumentResponse(BaseModel):
     path: str
     is_folder: bool
     url: Optional[str] = None
+    home_date: str  # Add home_date field
     created_at: str
     updated_at: str
 
@@ -94,7 +95,6 @@ class DocumentResponse(BaseModel):
     def from_document(cls, document: Document) -> 'DocumentResponse':
         return cls(
             id=document.id,
-            user_id=document.user_id,
             title=document.title,
             document_type=document.document_type,
             content_delta=document.content_delta,
@@ -102,6 +102,7 @@ class DocumentResponse(BaseModel):
             path=document.path,
             is_folder=document.is_folder,
             url=getattr(document, 'url', None),
+            home_date=document.created_at.isoformat(),  # Use created_at as home_date
             created_at=document.created_at.isoformat(),
             updated_at=document.updated_at.isoformat()
         )
@@ -138,8 +139,7 @@ async def create_document(
             # Handle folder creation
             document = await document_service.create_folder(
                 name=request.title,
-                parent_path=request.path,
-                user_id=request.user_id
+                parent_path=request.path
             )
         else:
             # Handle regular document creation
@@ -148,7 +148,6 @@ async def create_document(
                 title=request.title,
                 document_type=request.document_type,
                 content_delta=content_delta,
-                user_id=request.user_id,
                 path=request.path,
                 url=request.url
             )
@@ -166,12 +165,11 @@ async def create_document(
 @handle_api_exceptions("Failed to get document", 500, include_details=True)
 async def get_document(
     document_id: str,
-    user_id: Optional[str] = Query(None),
     document_service: DocumentService = Depends(get_document_service_for_route)
 ) -> DocumentResponse:
     """Get a specific document by ID"""
     try:
-        document = document_service.get_document(document_id, user_id)
+        document = document_service.get_document(document_id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         
@@ -198,7 +196,6 @@ async def update_document(
             title=request.title,
             document_type=request.document_type,
             content_delta=request.content_delta,
-            user_id=request.user_id,
             url=request.url
         )
         
@@ -215,12 +212,11 @@ async def update_document(
 @handle_api_exceptions("Failed to delete document", 500, include_details=True)
 async def delete_document(
     document_id: str,
-    user_id: Optional[str] = Query(None),
     document_service: DocumentService = Depends(get_document_service_for_route)
 ) -> Dict[str, str]:
     """Delete a document"""
     try:
-        success = await document_service.delete_document(document_id, user_id)
+        success = await document_service.delete_document(document_id)
         if not success:
             raise HTTPException(status_code=404, detail="Document not found")
         
@@ -236,7 +232,6 @@ async def delete_document(
 @router.get("", response_model=DocumentListResponse)
 @handle_api_exceptions("Failed to list documents", 500, include_details=True)
 async def list_documents(
-    user_id: Optional[str] = Query(None),
     document_type: Optional[str] = Query(None, pattern="^(note|prompt|folder|link)$"),
     folder_path: Optional[str] = Query(None, description="Filter by folder path"),
     limit: int = Query(50, ge=1, le=100),
@@ -249,7 +244,6 @@ async def list_documents(
             # Use folder contents listing when filtering by folder path
             documents = document_service.list_folder_contents(
                 folder_path=folder_path,
-                user_id=user_id,
                 include_folders=(document_type == "folder" or document_type is None)
             )
             # Apply document_type filter if specified and not already handled
@@ -260,7 +254,6 @@ async def list_documents(
         else:
             # Use regular list_documents for backward compatibility
             documents = document_service.list_documents(
-                user_id=user_id,
                 document_type=document_type,
                 limit=limit,
                 offset=offset
@@ -288,7 +281,6 @@ async def list_documents(
 @handle_api_exceptions("Failed to search documents", 500, include_details=True)
 async def search_documents(
     q: str = Query(..., min_length=1, description="Search query"),
-    user_id: Optional[str] = Query(None),
     document_type: Optional[str] = Query(None, pattern="^(note|prompt|link)$"),
     limit: int = Query(20, ge=1, le=50),
     document_service: DocumentService = Depends(get_document_service_for_route)
@@ -297,7 +289,6 @@ async def search_documents(
     try:
         search_results = document_service.search_documents(
             query=q,
-            user_id=user_id,
             document_type=document_type,
             limit=limit
         )
@@ -331,8 +322,7 @@ async def create_folder(
     try:
         folder = await document_service.create_folder(
             name=request.name,
-            parent_path=request.parent_path,
-            user_id=request.user_id
+            parent_path=request.parent_path
         )
         
         return DocumentResponse.from_document(folder)
@@ -348,7 +338,6 @@ async def create_folder(
 @handle_api_exceptions("Failed to list folder contents", 500, include_details=True)
 async def list_folder_contents(
     folder_path: str = Query("/", description="Folder path to list"),
-    user_id: Optional[str] = Query(None),
     include_folders: bool = Query(True, description="Include folders in results"),
     document_service: DocumentService = Depends(get_document_service_for_route)
 ) -> DocumentListResponse:
@@ -356,7 +345,6 @@ async def list_folder_contents(
     try:
         contents = document_service.list_folder_contents(
             folder_path=folder_path,
-            user_id=user_id,
             include_folders=include_folders
         )
         
@@ -388,8 +376,7 @@ async def move_item(
     try:
         success = await document_service.move_item(
             item_id=item_id,
-            new_parent_path=request.new_parent_path,
-            user_id=request.user_id
+            new_parent_path=request.new_parent_path
         )
         
         if not success:
@@ -410,7 +397,6 @@ async def move_item(
 @handle_api_exceptions("Failed to delete folder", 500, include_details=True)
 async def delete_folder(
     folder_path: str = Query(..., description="Folder path to delete"),
-    user_id: Optional[str] = Query(None),
     recursive: bool = Query(False, description="Delete folder and all contents"),
     document_service: DocumentService = Depends(get_document_service_for_route)
 ) -> Dict[str, str]:
@@ -418,7 +404,6 @@ async def delete_folder(
     try:
         success = await document_service.delete_folder(
             folder_path=folder_path,
-            user_id=user_id,
             recursive=recursive
         )
         

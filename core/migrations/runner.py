@@ -1,8 +1,13 @@
 """
 Database migration system for Lifeboard
 
+LEGACY FILE - USE bootstrap_runner.py FOR NEW DEVELOPMENT
+
 This module provides a clean separation of database schema creation
 from the main DatabaseService class, following the single responsibility principle.
+
+For new deployments, use the BootstrapRunner which creates the complete schema
+in a single operation rather than running sequential migrations.
 """
 
 import sqlite3
@@ -10,6 +15,9 @@ import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
 from contextlib import contextmanager
+
+# Import the new bootstrap system
+from .bootstrap_runner import BootstrapRunner
 
 logger = logging.getLogger(__name__)
 
@@ -319,10 +327,19 @@ class TwoKeyMetadataMigration(BaseMigration):
 
 
 class MigrationRunner:
-    """Handles database migration execution"""
+    """
+    LEGACY - Handles database migration execution
+    
+    This class is maintained for backward compatibility but delegates
+    to the new BootstrapRunner for actual database initialization.
+    """
     
     def __init__(self, db_path: str):
         self.db_path = db_path
+        # Use the new bootstrap runner internally
+        self._bootstrap_runner = BootstrapRunner(db_path)
+        
+        # Legacy migration list for compatibility
         self.migrations: List[BaseMigration] = [
             InitialSchemaMigration(),
             IndexesMigration(),
@@ -374,81 +391,44 @@ class MigrationRunner:
         """, (migration.version, migration.description))
     
     def run_migrations(self) -> Dict[str, Any]:
-        """Run all pending migrations"""
-        result = {
-            "success": True,
-            "applied_migrations": [],
-            "errors": []
-        }
+        """
+        LEGACY - Run all pending migrations
         
-        with self.get_connection() as conn:
-            try:
-                # Initialize migration tracking
-                self.initialize_migration_table(conn)
-                
-                # Get applied migrations
-                applied = set(self.get_applied_migrations(conn))
-                
-                # Run pending migrations
-                for migration in self.migrations:
-                    if migration.version not in applied:
-                        try:
-                            logger.info(f"Applying migration {migration.version}: {migration.description}")
-                            migration.up(conn)
-                            self.record_migration(conn, migration)
-                            result["applied_migrations"].append(migration.version)
-                            logger.info(f"Successfully applied migration {migration.version}")
-                        except Exception as e:
-                            error_msg = f"Failed to apply migration {migration.version}: {str(e)}"
-                            logger.error(error_msg)
-                            result["errors"].append(error_msg)
-                            result["success"] = False
-                            break
-                
-                if result["success"]:
-                    conn.commit()
-                else:
-                    conn.rollback()
-                    
-            except Exception as e:
-                error_msg = f"Migration runner failed: {str(e)}"
-                logger.error(error_msg)
-                result["errors"].append(error_msg)
-                result["success"] = False
-                conn.rollback()
+        Now delegates to BootstrapRunner for actual database initialization.
+        """
+        logger.info("Using legacy MigrationRunner interface - delegating to BootstrapRunner")
         
-        return result
+        bootstrap_result = self._bootstrap_runner.initialize_database()
+        
+        # Convert bootstrap result to legacy migration format
+        if bootstrap_result["success"]:
+            if bootstrap_result.get("already_exists", False):
+                return {
+                    "success": True,
+                    "applied_migrations": [],
+                    "errors": []
+                }
+            else:
+                return {
+                    "success": True,
+                    "applied_migrations": ["bootstrap_schema_complete"],
+                    "errors": []
+                }
+        else:
+            return {
+                "success": False,
+                "applied_migrations": [],
+                "errors": bootstrap_result.get("errors", ["Unknown bootstrap error"])
+            }
     
     def get_migration_status(self) -> Dict[str, Any]:
-        """Get current migration status"""
-        with self.get_connection() as conn:
-            try:
-                self.initialize_migration_table(conn)
-                applied = set(self.get_applied_migrations(conn))
-                
-                status = {
-                    "total_migrations": len(self.migrations),
-                    "applied_count": len(applied),
-                    "pending_count": len(self.migrations) - len(applied),
-                    "migrations": []
-                }
-                
-                for migration in self.migrations:
-                    status["migrations"].append({
-                        "version": migration.version,
-                        "description": migration.description,
-                        "applied": migration.version in applied
-                    })
-                
-                return status
-                
-            except Exception as e:
-                return {
-                    "error": str(e),
-                    "total_migrations": len(self.migrations),
-                    "applied_count": 0,
-                    "pending_count": len(self.migrations)
-                }
+        """
+        LEGACY - Get current migration status
+        
+        Now delegates to BootstrapRunner for actual status.
+        """
+        logger.info("Using legacy MigrationRunner interface - delegating to BootstrapRunner")
+        return self._bootstrap_runner.get_migration_status()
 
 
 # Wrapper classes for module-based migrations in versions/ directory

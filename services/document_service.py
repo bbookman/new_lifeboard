@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 class Document:
     """Document data structure"""
     id: str
-    user_id: str
     title: str
     document_type: str  # 'note', 'prompt', 'folder', or 'link'
     content_delta: Dict[str, Any]  # Quill Delta format
@@ -67,15 +66,11 @@ class DocumentService(BaseService):
                             title: str,
                             document_type: str,
                             content_delta: Dict[str, Any],
-                            user_id: Optional[str] = None,
                             path: str = "/",
                             url: Optional[str] = None) -> Document:
         """Create a new document"""
         if document_type not in ['note', 'prompt', 'link']:
             raise ValueError("Document type must be 'note', 'prompt', or 'link'")
-        
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
         
         # Validate title length
         if len(title) > self.config.documents.max_title_length:
@@ -104,7 +99,6 @@ class DocumentService(BaseService):
         now = datetime.now(timezone.utc)
         document = Document(
             id=doc_id,
-            user_id=user_id,
             title=title,
             document_type=document_type,
             content_delta=content_delta,
@@ -131,17 +125,14 @@ class DocumentService(BaseService):
                             title: Optional[str] = None,
                             document_type: Optional[str] = None,  # Added parameter
                             content_delta: Optional[Dict[str, Any]] = None,
-                            user_id: Optional[str] = None,
                             url: Optional[str] = None) -> Document:
         """Update an existing document"""
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
         
         # DIAGNOSTIC LOG: Check what's being requested
         logger.info(f"[DEBUG] update_document called with: doc_id={doc_id}, title={title}, document_type={document_type}")
         
         # Get existing document
-        document = self.get_document(doc_id, user_id)
+        document = self.get_document(doc_id)
         if not document:
             raise ValueError(f"Document {doc_id} not found")
         
@@ -191,19 +182,16 @@ class DocumentService(BaseService):
         logger.info(f"Updated document: {doc_id} - {document.title} (type: {document.document_type})")
         return document
     
-    def get_document(self, doc_id: str, user_id: Optional[str] = None) -> Optional[Document]:
+    def get_document(self, doc_id: str) -> Optional[Document]:
         """Get a document by ID"""
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
-        
         try:
             with self.database.get_connection() as conn:
                 cursor = conn.execute("""
-                    SELECT id, user_id, title, document_type, content_delta, content_md,
+                    SELECT id, title, document_type, content_delta, content_md,
                            path, is_folder, url, created_at, updated_at
                     FROM user_documents 
-                    WHERE id = ? AND user_id = ?
-                """, (doc_id, user_id))
+                    WHERE id = ?
+                """, (doc_id,))
                 
                 row = cursor.fetchone()
                 if not row:
@@ -216,23 +204,19 @@ class DocumentService(BaseService):
             return None
     
     def list_documents(self,
-                      user_id: Optional[str] = None,
                       document_type: Optional[str] = None,
                       limit: int = 50,
                       offset: int = 0) -> List[Document]:
         """List documents with optional filtering"""
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
-        
         try:
             # Build query
             query = """
-                SELECT id, user_id, title, document_type, content_delta, content_md,
+                SELECT id, title, document_type, content_delta, content_md,
                        path, is_folder, url, created_at, updated_at
                 FROM user_documents 
-                WHERE user_id = ?
+                WHERE 1=1
             """
-            params = [user_id]
+            params = []
             
             if document_type:
                 query += " AND document_type = ?"
@@ -251,11 +235,8 @@ class DocumentService(BaseService):
             logger.error(f"Error listing documents: {e}")
             return []
     
-    async def delete_document(self, doc_id: str, user_id: Optional[str] = None) -> bool:
+    async def delete_document(self, doc_id: str) -> bool:
         """Delete a document"""
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
-        
         try:
             # Remove from vector store first
             await self._remove_document_embeddings(doc_id)
@@ -264,8 +245,8 @@ class DocumentService(BaseService):
             with self.database.get_connection() as conn:
                 cursor = conn.execute("""
                     DELETE FROM user_documents 
-                    WHERE id = ? AND user_id = ?
-                """, (doc_id, user_id))
+                    WHERE id = ?
+                """, (doc_id,))
                 
                 if cursor.rowcount > 0:
                     conn.commit()
@@ -281,20 +262,16 @@ class DocumentService(BaseService):
     
     def search_documents(self,
                         query: str,
-                        user_id: Optional[str] = None,
                         document_type: Optional[str] = None,
                         limit: int = 20) -> List[Tuple[Document, float]]:
         """Search documents using FTS5 and vector similarity"""
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
-        
         results = []
         
         # 1. FTS5 text search
-        fts_results = self._search_documents_fts(query, user_id, document_type, limit)
+        fts_results = self._search_documents_fts(query, document_type, limit)
         
         # 2. Vector similarity search
-        vector_results = self._search_documents_vector(query, user_id, document_type, limit)
+        vector_results = self._search_documents_vector(query, document_type, limit)
         
         # 3. Merge and deduplicate results
         doc_scores = {}
@@ -320,12 +297,8 @@ class DocumentService(BaseService):
     
     async def create_folder(self,
                            name: str,
-                           parent_path: str = "/",
-                           user_id: Optional[str] = None) -> Document:
+                           parent_path: str = "/") -> Document:
         """Create a new folder"""
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
-        
         # Validate folder name
         if not name or not name.strip():
             raise ValueError("Folder name cannot be empty")
@@ -340,7 +313,7 @@ class DocumentService(BaseService):
         folder_path = parent_path + name + "/"
         
         # Check if folder already exists
-        if self._path_exists(folder_path, user_id):
+        if self._path_exists(folder_path):
             raise ValueError(f"Folder already exists: {folder_path}")
         
         # Generate folder ID
@@ -350,7 +323,6 @@ class DocumentService(BaseService):
         now = datetime.now(timezone.utc)
         folder = Document(
             id=folder_id,
-            user_id=user_id,
             title=name,
             document_type="folder",
             content_delta={"ops": [{"insert": "\n"}]},  # Empty content
@@ -369,12 +341,8 @@ class DocumentService(BaseService):
     
     def list_folder_contents(self,
                            folder_path: str = "/",
-                           user_id: Optional[str] = None,
                            include_folders: bool = True) -> List[Document]:
         """List immediate contents of a folder"""
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
-        
         # Ensure path formatting
         if not folder_path.startswith('/'):
             folder_path = '/' + folder_path
@@ -389,11 +357,10 @@ class DocumentService(BaseService):
                 if folder_path == '/':
                     # Root folder: find items with no subdirectories
                     query = """
-                        SELECT id, user_id, title, document_type, content_delta, content_md,
+                        SELECT id, title, document_type, content_delta, content_md,
                                path, is_folder, url, created_at, updated_at
                         FROM user_documents 
-                        WHERE user_id = ? 
-                        AND (
+                        WHERE (
                             -- Documents in root: path like '/name' (count slashes = 1, ends without slash)
                             (LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 1 AND NOT path LIKE '%/' AND is_folder = FALSE)
                             OR
@@ -401,15 +368,15 @@ class DocumentService(BaseService):
                             (LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 2 AND path LIKE '%/' AND is_folder = TRUE)
                         )
                     """
-                    params = [user_id]
+                    params = []
                 else:
                     # Non-root folder: find items whose path starts with folder_path
                     # and has exactly one more level
                     query = """
-                        SELECT id, user_id, title, document_type, content_delta, content_md,
+                        SELECT id, title, document_type, content_delta, content_md,
                                path, is_folder, url, created_at, updated_at
                         FROM user_documents 
-                        WHERE user_id = ? AND path LIKE ?
+                        WHERE path LIKE ?
                         AND (
                             -- Documents: path starts with folder_path, no additional slashes
                             (path NOT LIKE ? AND is_folder = FALSE)
@@ -425,7 +392,7 @@ class DocumentService(BaseService):
                     folder_like = folder_path + "%/"
                     # But not nested folders (no slashes between folder_path and final slash)
                     folder_not_like = folder_path + "%/%/"
-                    params = [user_id, like_pattern, doc_not_like, folder_like, folder_not_like]
+                    params = [like_pattern, doc_not_like, folder_like, folder_not_like]
                 
                 if not include_folders:
                     query += " AND is_folder = FALSE"
@@ -443,14 +410,10 @@ class DocumentService(BaseService):
     
     async def move_item(self,
                        item_id: str,
-                       new_parent_path: str,
-                       user_id: Optional[str] = None) -> bool:
+                       new_parent_path: str) -> bool:
         """Move a document or folder to a new location"""
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
-        
         # Get the item to move
-        item = self.get_document(item_id, user_id)
+        item = self.get_document(item_id)
         if not item:
             raise ValueError(f"Item {item_id} not found")
         
@@ -468,7 +431,7 @@ class DocumentService(BaseService):
                 new_path = new_parent_path + item.title
             
             # Check for conflicts
-            if self._path_exists(new_path, user_id):
+            if self._path_exists(new_path):
                 raise ValueError(f"Item already exists at destination: {new_path}")
             
             with self.database.get_connection() as conn:
@@ -481,15 +444,15 @@ class DocumentService(BaseService):
                     conn.execute("""
                         UPDATE user_documents 
                         SET path = REPLACE(path, ?, ?), updated_at = CURRENT_TIMESTAMP
-                        WHERE user_id = ? AND path LIKE ?
-                    """, (old_path_prefix, new_path_prefix, user_id, old_path_prefix + "%"))
+                        WHERE path LIKE ?
+                    """, (old_path_prefix, new_path_prefix, old_path_prefix + "%"))
                 else:
                     # Move single document
                     conn.execute("""
                         UPDATE user_documents 
                         SET path = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ? AND user_id = ?
-                    """, (new_path, item_id, user_id))
+                        WHERE id = ?
+                    """, (new_path, item_id))
                 
                 conn.commit()
                 logger.info(f"Moved item {item_id} from {item.path} to {new_path}")
@@ -501,12 +464,8 @@ class DocumentService(BaseService):
     
     async def delete_folder(self,
                            folder_path: str,
-                           user_id: Optional[str] = None,
                            recursive: bool = False) -> bool:
         """Delete a folder and optionally its contents"""
-        if user_id is None:
-            user_id = self.config.documents.default_user_id
-        
         # Ensure path formatting
         if not folder_path.startswith('/'):
             folder_path = '/' + folder_path
@@ -519,14 +478,14 @@ class DocumentService(BaseService):
                     # Delete folder and all contents
                     cursor = conn.execute("""
                         DELETE FROM user_documents 
-                        WHERE user_id = ? AND path LIKE ?
-                    """, (user_id, folder_path + "%"))
+                        WHERE path LIKE ?
+                    """, (folder_path + "%",))
                 else:
                     # Check if folder is empty
                     cursor = conn.execute("""
                         SELECT COUNT(*) as count FROM user_documents 
-                        WHERE user_id = ? AND path LIKE ? AND path != ?
-                    """, (user_id, folder_path + "%", folder_path))
+                        WHERE path LIKE ? AND path != ?
+                    """, (folder_path + "%", folder_path))
                     
                     if cursor.fetchone()['count'] > 0:
                         raise ValueError("Cannot delete non-empty folder. Use recursive=True")
@@ -534,8 +493,8 @@ class DocumentService(BaseService):
                     # Delete empty folder
                     cursor = conn.execute("""
                         DELETE FROM user_documents 
-                        WHERE user_id = ? AND path = ? AND is_folder = TRUE
-                    """, (user_id, folder_path))
+                        WHERE path = ? AND is_folder = TRUE
+                    """, (folder_path,))
                 
                 conn.commit()
                 logger.info(f"Deleted folder: {folder_path}")
@@ -545,14 +504,14 @@ class DocumentService(BaseService):
             logger.error(f"Error deleting folder {folder_path}: {e}")
             return False
     
-    def _path_exists(self, path: str, user_id: str) -> bool:
+    def _path_exists(self, path: str) -> bool:
         """Check if a path already exists"""
         try:
             with self.database.get_connection() as conn:
                 cursor = conn.execute("""
                     SELECT COUNT(*) as count FROM user_documents 
-                    WHERE user_id = ? AND path = ?
-                """, (user_id, path))
+                    WHERE path = ?
+                """, (path,))
                 
                 return cursor.fetchone()['count'] > 0
         except Exception as e:
@@ -565,11 +524,10 @@ class DocumentService(BaseService):
             with self.database.get_connection() as conn:
                 conn.execute("""
                     INSERT OR REPLACE INTO user_documents 
-                    (id, user_id, title, document_type, content_delta, content_md, path, is_folder, url, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, title, document_type, content_delta, content_md, path, is_folder, url, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     document.id,
-                    document.user_id,
                     document.title,
                     document.document_type,
                     json.dumps(document.content_delta),
@@ -590,7 +548,6 @@ class DocumentService(BaseService):
         """Convert database row to Document object"""
         return Document(
             id=row['id'],
-            user_id=row['user_id'],
             title=row['title'],
             document_type=row['document_type'],
             content_delta=json.loads(row['content_delta']),
@@ -670,7 +627,6 @@ class DocumentService(BaseService):
                             "document_id": document.id,
                             "document_title": document.title,
                             "document_type": document.document_type,
-                            "user_id": document.user_id,
                             "chunk_index": i,
                             "total_chunks": len(chunks)
                         },
@@ -750,7 +706,6 @@ class DocumentService(BaseService):
     
     def _search_documents_fts(self,
                              query: str,
-                             user_id: str,
                              document_type: Optional[str],
                              limit: int) -> List[Tuple[Document, float]]:
         """Search documents using FTS5"""
@@ -759,14 +714,14 @@ class DocumentService(BaseService):
             fts_query = query.replace("'", "''")  # Escape single quotes
             
             sql = """
-                SELECT d.id, d.user_id, d.title, d.document_type, d.content_delta, 
-                       d.content_md, d.path, d.is_folder, d.created_at, d.updated_at, 
+                SELECT d.id, d.title, d.document_type, d.content_delta, 
+                       d.content_md, d.path, d.is_folder, d.url, d.created_at, d.updated_at, 
                        bm25(fts) as score
                 FROM user_documents_fts fts
                 JOIN user_documents d ON d.rowid = fts.rowid
-                WHERE fts MATCH ? AND d.user_id = ?
+                WHERE fts MATCH ?
             """
-            params = [fts_query, user_id]
+            params = [fts_query]
             
             if document_type:
                 sql += " AND d.document_type = ?"
@@ -793,7 +748,6 @@ class DocumentService(BaseService):
     
     def _search_documents_vector(self,
                                 query: str,
-                                user_id: str,
                                 document_type: Optional[str],
                                 limit: int) -> List[Tuple[Document, float]]:
         """Search documents using vector similarity"""
@@ -823,7 +777,7 @@ class DocumentService(BaseService):
             # Get documents and apply filters
             results = []
             for doc_id, score in doc_scores.items():
-                document = self.get_document(doc_id, user_id)
+                document = self.get_document(doc_id)
                 if document and (not document_type or document.document_type == document_type):
                     results.append((document, score))
             

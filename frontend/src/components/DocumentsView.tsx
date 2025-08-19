@@ -9,6 +9,9 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Calendar } from './ui/calendar';
+import { CalendarIcon } from 'lucide-react';
 import { Plus, Search, FileText, Edit3, Trash2, File, ScrollText, MoreVertical, ChevronDown, ChevronRight, Folder, FolderPlus, Link, RadioIcon } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -16,13 +19,13 @@ import './quill-theme.css';
 
 interface Document {
   id: string;
-  user_id: string;
   title: string;
   document_type: 'note' | 'prompt' | 'folder' | 'link';
   content_delta: any;
   content_md: string;
   path: string;
   is_folder: boolean;
+  home_date: string;
   created_at: string;
   updated_at: string;
   url?: string; // For link documents
@@ -36,12 +39,16 @@ interface DocumentListResponse {
   offset: number;
 }
 
-export const DocumentsView = () => {
+interface DocumentsViewProps {
+  initialFilter?: 'all' | 'note' | 'prompt' | 'folder' | 'link';
+}
+
+export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState<'all' | 'note' | 'prompt' | 'folder' | 'link'>('all');
+  const [selectedType, setSelectedType] = useState<'all' | 'note' | 'prompt' | 'folder' | 'link'>(initialFilter);
   const [currentFolderPath, setCurrentFolderPath] = useState<string>('/');
   const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -51,12 +58,15 @@ export const DocumentsView = () => {
   const [selectedDocumentType, setSelectedDocumentType] = useState<'note' | 'prompt' | 'link'>('note');
   const [linkUrl, setLinkUrl] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
+  const [linkHomeDate, setLinkHomeDate] = useState<Date>(new Date());
+  const [showEditLinkDialog, setShowEditLinkDialog] = useState(false);
+  const [editingLink, setEditingLink] = useState<Document | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteSelectedDialog, setShowDeleteSelectedDialog] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'document'>('list');
   const [openDocument, setOpenDocument] = useState<Document | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
-  const [sortBy, setSortBy] = useState<'name' | 'type' | 'modified'>('modified');
+  const [sortBy, setSortBy] = useState<'name' | 'type' | 'modified' | 'home_date'>('modified');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isEditing, setIsEditing] = useState(false);
   const [allSelected, setAllSelected] = useState(false);
@@ -65,7 +75,8 @@ export const DocumentsView = () => {
     title: '',
     document_type: 'note' as 'note' | 'prompt' | 'link',
     content: '',
-    url: ''
+    url: '',
+    home_date: new Date()
   });
   const [createFormDelta, setCreateFormDelta] = useState<any>(null);
   const createQuillRef = useRef<ReactQuill>(null);
@@ -73,7 +84,8 @@ export const DocumentsView = () => {
     title: '',
     document_type: 'note' as 'note' | 'prompt' | 'link',
     content: '',
-    url: ''
+    url: '',
+    home_date: new Date()
   });
   const [editFormDelta, setEditFormDelta] = useState<any>(null);
   const quillRef = useRef<ReactQuill>(null);
@@ -83,7 +95,7 @@ export const DocumentsView = () => {
     toolbar: [
       [{ 'header': [1, 2, 3, false] }],
       ['bold', 'italic', 'code'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
       ['blockquote', 'code-block'],
       ['link'],
       ['clean']
@@ -116,19 +128,19 @@ export const DocumentsView = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const params = new URLSearchParams();
       if (selectedType !== 'all') {
         params.append('document_type', selectedType);
       }
       params.append('folder_path', currentFolderPath);
       params.append('limit', '50');
-      
+
       const response = await fetch(`http://localhost:8000/api/documents?${params}`);
       if (!response.ok) {
         throw new Error('Failed to fetch documents');
       }
-      
+
       const data: DocumentListResponse = await response.json();
       setDocuments(data.documents.map(doc => ({ ...doc, selected: false })));
     } catch (err) {
@@ -147,7 +159,7 @@ export const DocumentsView = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Fetch all documents first
       const params = new URLSearchParams();
       if (selectedType !== 'all') {
@@ -155,19 +167,19 @@ export const DocumentsView = () => {
       }
       params.append('folder_path', currentFolderPath);
       params.append('limit', '50');
-      
+
       const response = await fetch(`http://localhost:8000/api/documents?${params}`);
       if (!response.ok) {
         throw new Error('Failed to fetch documents');
       }
-      
+
       const data: DocumentListResponse = await response.json();
-      
+
       // Filter documents by title using simple "like" logic
-      const filteredDocuments = data.documents.filter(doc => 
+      const filteredDocuments = data.documents.filter(doc =>
         doc.title.toLowerCase().includes(searchQuery.toLowerCase())
       );
-      
+
       setDocuments(filteredDocuments.map(doc => ({ ...doc, selected: false })));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
@@ -225,7 +237,7 @@ export const DocumentsView = () => {
 
   const sortedDocuments = [...documents].sort((a, b) => {
     let comparison = 0;
-    
+
     switch (sortBy) {
       case 'name':
         comparison = a.title.localeCompare(b.title);
@@ -239,12 +251,15 @@ export const DocumentsView = () => {
       case 'created':
         comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         break;
+      case 'home_date':
+        comparison = new Date(a.home_date).getTime() - new Date(b.home_date).getTime();
+        break;
     }
-    
+
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
-  const handleSort = (column: 'name' | 'type' | 'modified' | 'created') => {
+  const handleSort = (column: 'name' | 'type' | 'modified' | 'created' | 'home_date') => {
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
@@ -274,23 +289,23 @@ export const DocumentsView = () => {
 
   const handleDocumentClick = (document: Document) => {
     console.log('📄 handleDocumentClick called with document:', document);
-    
+
     if (document.is_folder) {
       // Navigate into folder
       setCurrentFolderPath(document.path);
       return;
     }
-    
+
     if (document.document_type === 'link' && document.url) {
       // Open link in new tab
       window.open(document.url, '_blank');
       return;
     }
-    
+
     // Open document in full-screen view
     setOpenDocument(document);
     setViewMode('document');
-    
+
     // Set up both Delta and plain text content for editing
     let plainTextContent = '';
     if (document.content_delta?.ops) {
@@ -299,12 +314,13 @@ export const DocumentsView = () => {
         .join('')
         .replace(/\n$/, ''); // Remove trailing newline
     }
-    
+
     setEditForm({
       title: document.title,
       document_type: document.document_type as 'note' | 'prompt' | 'link',
       content: plainTextContent,
-      url: document.url || ''
+      url: document.url || '',
+      home_date: new Date(document.home_date)
     });
     setEditFormDelta(document.content_delta);
     setIsEditing(true); // Start in edit mode when clicking on document
@@ -315,7 +331,7 @@ export const DocumentsView = () => {
     setViewMode('list');
     setOpenDocument(null);
     setIsEditing(false);
-    setEditForm({ title: '', document_type: 'note', content: '', url: '' });
+    setEditForm({ title: '', document_type: 'note', content: '', url: '', home_date: new Date() });
     setError(null);
     // Clear any open dialogs when navigating back
     setShowDeleteDialog(false);
@@ -332,12 +348,13 @@ export const DocumentsView = () => {
           .join('')
           .replace(/\n$/, ''); // Remove trailing newline
       }
-      
+
       setEditForm({
         title: openDocument.title,
         document_type: openDocument.document_type,
         content: plainTextContent,
-        url: openDocument.url || ''
+        url: openDocument.url || '',
+        home_date: new Date(openDocument.home_date)
       });
       setIsEditing(true);
     }
@@ -368,12 +385,17 @@ export const DocumentsView = () => {
 
       // Get the current Delta content from Quill editor
       const quillEditor = quillRef.current?.getEditor();
-      const deltaContent = quillEditor ? quillEditor.getContents() : editFormDelta;
+      let deltaContent = quillEditor ? quillEditor.getContents() : editFormDelta;
 
-      if (!deltaContent) {
-        setError('Unable to save content');
-        return;
+      // Ensure we have a valid Delta object
+      if (!deltaContent || !deltaContent.ops) {
+        deltaContent = { ops: [{ insert: '\n' }] };
       }
+
+      // Convert Delta to plain object to ensure proper serialization
+      const serializedDelta = {
+        ops: deltaContent.ops || [{ insert: '\n' }]
+      };
 
       const response = await fetch(`http://localhost:8000/api/documents/${openDocument.id}`, {
         method: 'PUT',
@@ -383,7 +405,8 @@ export const DocumentsView = () => {
         body: JSON.stringify({
           title: editForm.title,
           document_type: editForm.document_type,
-          content_delta: deltaContent,
+          content_delta: serializedDelta,
+          home_date: editForm.home_date.toISOString(),
           ...(editForm.document_type === 'link' && { url: editForm.url })
         }),
       });
@@ -393,7 +416,7 @@ export const DocumentsView = () => {
       }
 
       const updatedDocument: Document = await response.json();
-      setDocuments(prev => prev.map(doc => 
+      setDocuments(prev => prev.map(doc =>
         doc.id === openDocument.id ? updatedDocument : doc
       ));
       setOpenDocument(updatedDocument); // Update the open document with latest data
@@ -417,36 +440,55 @@ export const DocumentsView = () => {
 
       // Get the current Delta content from Quill editor
       const quillEditor = quillRef.current?.getEditor();
-      const deltaContent = quillEditor ? quillEditor.getContents() : editFormDelta || {
-        ops: [{ insert: '\n' }]
+      let deltaContent = quillEditor ? quillEditor.getContents() : editFormDelta;
+
+      // Ensure we have a valid Delta object
+      if (!deltaContent || !deltaContent.ops) {
+        deltaContent = { ops: [{ insert: '\n' }] };
+      }
+
+      // Convert Delta to plain object to ensure proper serialization
+      const serializedDelta = {
+        ops: deltaContent.ops || [{ insert: '\n' }]
       };
+
+      // Prepare the request payload with all potentially required fields
+      const payload = {
+        title: editForm.title,
+        document_type: editForm.document_type,
+        content_delta: serializedDelta,
+        content_md: '', // Add empty markdown content as fallback
+        path: currentFolderPath,
+        is_folder: false, // Explicitly set as not a folder
+        home_date: editForm.home_date.toISOString(),
+        ...(editForm.document_type === 'link' && { url: editForm.url })
+      };
+
+      console.log('🚀 Creating document with payload:', payload);
 
       const response = await fetch('http://localhost:8000/api/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          title: editForm.title,
-          document_type: editForm.document_type,
-          content_delta: deltaContent,
-          path: currentFolderPath,
-          ...(editForm.document_type === 'link' && { url: editForm.url })
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create document');
+        const errorText = await response.text();
+        console.error('❌ Server error response:', errorText);
+        throw new Error(`Failed to create document: ${response.status} ${response.statusText}`);
       }
 
       const newDocument: Document = await response.json();
       setDocuments(prev => [newDocument, ...prev]);
-      
+
       // Switch to viewing the newly created document
       setOpenDocument(newDocument);
       setIsEditing(false);
-      
+
     } catch (err) {
+      console.error('❌ Error in handleCreateFromFullView:', err);
       setError(err instanceof Error ? err.message : 'Failed to create document');
     } finally {
       setLoading(false);
@@ -465,34 +507,52 @@ export const DocumentsView = () => {
 
       // Get the current Delta content from Create Quill editor
       const createQuillEditor = createQuillRef.current?.getEditor();
-      const deltaContent = createQuillEditor ? createQuillEditor.getContents() : createFormDelta || {
-        ops: [{ insert: '\n' }]
+      let deltaContent = createQuillEditor ? createQuillEditor.getContents() : createFormDelta;
+
+      // Ensure we have a valid Delta object
+      if (!deltaContent || !deltaContent.ops) {
+        deltaContent = { ops: [{ insert: '\n' }] };
+      }
+
+      // Convert Delta to plain object to ensure proper serialization
+      const serializedDelta = {
+        ops: deltaContent.ops || [{ insert: '\n' }]
       };
+
+      const payload = {
+        title: createForm.title,
+        document_type: createForm.document_type,
+        content_delta: serializedDelta,
+        content_md: '', // Add empty markdown content as fallback
+        path: currentFolderPath,
+        is_folder: false, // Explicitly set as not a folder
+        home_date: createForm.home_date.toISOString(),
+        ...(createForm.document_type === 'link' && { url: createForm.url })
+      };
+
+      console.log('🚀 Creating document with payload:', payload);
 
       const response = await fetch('http://localhost:8000/api/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          title: createForm.title,
-          document_type: createForm.document_type,
-          content_delta: deltaContent,
-          path: currentFolderPath,
-          ...(createForm.document_type === 'link' && { url: createForm.url })
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create document');
+        const errorText = await response.text();
+        console.error('❌ Server error response:', errorText);
+        throw new Error(`Failed to create document: ${response.status} ${response.statusText}`);
       }
 
       const newDocument: Document = await response.json();
       setDocuments(prev => [newDocument, ...prev]);
       setShowCreateDialog(false);
-      setCreateForm({ title: '', document_type: 'note', content: '', url: '' });
+      setCreateForm({ title: '', document_type: 'note', content: '', url: '', home_date: new Date() });
       setCreateFormDelta(null);
     } catch (err) {
+      console.error('❌ Error in handleCreateDocument:', err);
       setError(err instanceof Error ? err.message : 'Failed to create document');
     } finally {
       setLoading(false);
@@ -511,12 +571,13 @@ export const DocumentsView = () => {
 
   const handleDocumentTypeSelection = () => {
     setShowDocumentTypeDialog(false);
-    
+
     if (selectedDocumentType === 'link') {
       // Show link URL input dialog
       setShowLinkUrlDialog(true);
       setLinkUrl('');
       setLinkTitle('');
+      setLinkHomeDate(new Date());
     } else {
       // Open full editor for note/prompt
       setViewMode('document');
@@ -526,7 +587,8 @@ export const DocumentsView = () => {
         title: '',
         document_type: selectedDocumentType,
         content: '',
-        url: ''
+        url: '',
+        home_date: new Date()
       });
       setEditFormDelta(null);
     }
@@ -542,22 +604,31 @@ export const DocumentsView = () => {
       setLoading(true);
       setError(null);
 
+      const payload = {
+        title: linkTitle,
+        document_type: 'link',
+        url: linkUrl,
+        content_delta: { ops: [{ insert: '\n' }] },
+        content_md: '', // Add empty markdown content as fallback
+        path: currentFolderPath,
+        is_folder: false, // Explicitly set as not a folder
+        home_date: linkHomeDate.toISOString()
+      };
+
+      console.log('🚀 Creating link with payload:', payload);
+
       const response = await fetch('http://localhost:8000/api/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          title: linkTitle,
-          document_type: 'link',
-          url: linkUrl,
-          content_delta: { ops: [{ insert: '\n' }] },
-          path: currentFolderPath
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create link');
+        const errorText = await response.text();
+        console.error('❌ Server error response:', errorText);
+        throw new Error(`Failed to create link: ${response.status} ${response.statusText}`);
       }
 
       const newLink: Document = await response.json();
@@ -565,8 +636,69 @@ export const DocumentsView = () => {
       setShowLinkUrlDialog(false);
       setLinkUrl('');
       setLinkTitle('');
+      setLinkHomeDate(new Date());
     } catch (err) {
+      console.error('❌ Error in handleCreateLink:', err);
       setError(err instanceof Error ? err.message : 'Failed to create link');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEditLinkDialog = (link: Document) => {
+    setEditingLink(link);
+    setLinkTitle(link.title);
+    setLinkUrl(link.url || '');
+    setLinkHomeDate(new Date(link.home_date));
+    setShowEditLinkDialog(true);
+    setError(null);
+  };
+
+  const handleEditLink = async () => {
+    if (!editingLink || !linkTitle.trim() || !linkUrl.trim()) {
+      setError('Both title and URL are required');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const payload = {
+        title: linkTitle,
+        document_type: 'link',
+        url: linkUrl,
+        content_delta: { ops: [{ insert: '\n' }] },
+        content_md: '',
+        home_date: linkHomeDate.toISOString()
+      };
+
+      console.log('🚀 Updating link with payload:', payload);
+
+      const response = await fetch(`http://localhost:8000/api/documents/${editingLink.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Server error response:', errorText);
+        throw new Error(`Failed to update link: ${response.status} ${response.statusText}`);
+      }
+
+      const updatedLink: Document = await response.json();
+      setDocuments(prev => prev.map(doc => doc.id === editingLink.id ? updatedLink : doc));
+      setShowEditLinkDialog(false);
+      setEditingLink(null);
+      setLinkUrl('');
+      setLinkTitle('');
+      setLinkHomeDate(new Date());
+    } catch (err) {
+      console.error('❌ Error in handleEditLink:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update link');
     } finally {
       setLoading(false);
     }
@@ -582,21 +714,30 @@ export const DocumentsView = () => {
       setLoading(true);
       setError(null);
 
+      const payload = {
+        title: newFolderName,
+        document_type: 'folder',
+        path: currentFolderPath,
+        content_delta: { ops: [{ insert: '\n' }] },
+        content_md: '', // Add empty markdown content as fallback
+        is_folder: true, // Explicitly set as folder
+        home_date: new Date().toISOString()
+      };
+
+      console.log('🚀 Creating folder with payload:', payload);
+
       const response = await fetch('http://localhost:8000/api/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          title: newFolderName,
-          document_type: 'folder',
-          path: currentFolderPath,
-          content_delta: { ops: [{ insert: '\n' }] }
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create folder');
+        const errorText = await response.text();
+        console.error('❌ Server error response:', errorText);
+        throw new Error(`Failed to create folder: ${response.status} ${response.statusText}`);
       }
 
       const newFolder: Document = await response.json();
@@ -604,6 +745,7 @@ export const DocumentsView = () => {
       setShowCreateFolderDialog(false);
       setNewFolderName('');
     } catch (err) {
+      console.error('❌ Error in handleCreateFolder:', err);
       setError(err instanceof Error ? err.message : 'Failed to create folder');
     } finally {
       setLoading(false);
@@ -614,16 +756,16 @@ export const DocumentsView = () => {
     if (currentFolderPath === '/') {
       return [{ name: 'Root', path: '/' }];
     }
-    
+
     const parts = currentFolderPath.split('/').filter(part => part);
     const breadcrumbs = [{ name: 'Root', path: '/' }];
-    
+
     let currentPath = '';
     for (const part of parts) {
       currentPath += `/${part}`;
       breadcrumbs.push({ name: part, path: currentPath === '/' ? '/' : currentPath });
     }
-    
+
     return breadcrumbs;
   };
 
@@ -657,12 +799,12 @@ export const DocumentsView = () => {
       }
 
       setDocuments(prev => prev.filter(doc => doc.id !== document.id));
-      
+
       // If we're viewing this document, go back to list
       if (openDocument?.id === document.id) {
         handleBackToList();
       }
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete document');
     } finally {
@@ -691,12 +833,12 @@ export const DocumentsView = () => {
       setDocuments(prev => prev.filter(doc => doc.id !== selectedDocument.id));
       setShowDeleteDialog(false);
       setSelectedDocument(null);
-      
+
       // If we're viewing this document, go back to list
       if (openDocument?.id === selectedDocument.id) {
         handleBackToList();
       }
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete document');
     } finally {
@@ -753,13 +895,13 @@ export const DocumentsView = () => {
                     Edit
                   </Button>
                   {openDocument && (
-                    <Button 
+                    <Button
                       onClick={(e) => {
                         console.log('🗑️ Delete button clicked (view mode)', e);
                         e.stopPropagation();
                         openDeleteDialog(openDocument);
                       }}
-                      variant="outline" 
+                      variant="outline"
                       size="sm"
                       className="text-destructive hover:text-destructive"
                     >
@@ -773,7 +915,7 @@ export const DocumentsView = () => {
                   <Button onClick={handleCancelEdit} variant="outline" size="sm">
                     Cancel
                   </Button>
-                  <Button 
+                  <Button
                     onClick={openDocument ? handleSaveEdit : handleCreateFromFullView}
                     disabled={!editForm.title.trim()}
                     size="sm"
@@ -782,13 +924,13 @@ export const DocumentsView = () => {
                     Save
                   </Button>
                   {openDocument && (
-                    <Button 
+                    <Button
                       onClick={(e) => {
                         console.log('🗑️ Delete button clicked (edit mode)', e);
                         e.stopPropagation();
                         openDeleteDialog(openDocument);
                       }}
-                      variant="outline" 
+                      variant="outline"
                       size="sm"
                       className="text-destructive hover:text-destructive"
                     >
@@ -858,9 +1000,39 @@ export const DocumentsView = () => {
                       </Select>
                     </div>
                   </div>
-                  
+
+                  <div className="md:col-span-1 flex justify-end">
+                    <div className="flex flex-col">
+                      <Label className="text-base font-semibold mb-2 block text-right">
+                        Home Date
+                      </Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-[160px] justify-start text-left font-normal"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {editForm.home_date ? (
+                              editForm.home_date.toLocaleDateString()
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                          <Calendar
+                            mode="single"
+                            selected={editForm.home_date}
+                            onSelect={(date) => date && setEditForm(prev => ({ ...prev, home_date: date }))}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
                 </div>
-                
+
                 {/* URL Section for links */}
                 {editForm.document_type === 'link' && (
                   <div>
@@ -877,7 +1049,7 @@ export const DocumentsView = () => {
                     />
                   </div>
                 )}
-                
+
                 {/* Content Section */}
                 {editForm.document_type !== 'link' && (
                   <div className="flex-1">
@@ -921,7 +1093,7 @@ export const DocumentsView = () => {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel 
+              <AlertDialogCancel
                 onClick={() => {
                   console.log('🗑️ Cancel button clicked');
                   setShowDeleteDialog(false);
@@ -953,9 +1125,9 @@ export const DocumentsView = () => {
             <Plus className="h-4 w-4" />
             New
           </Button>
-          <Button 
-            onClick={() => setShowCreateFolderDialog(true)} 
-            variant="outline" 
+          <Button
+            onClick={() => setShowCreateFolderDialog(true)}
+            variant="outline"
             className="flex items-center gap-2"
           >
             <FolderPlus className="h-4 w-4" />
@@ -971,9 +1143,8 @@ export const DocumentsView = () => {
             {index > 0 && <span className="mx-2">/</span>}
             <button
               onClick={() => navigateToFolder(breadcrumb.path)}
-              className={`hover:text-foreground transition-colors ${
-                breadcrumb.path === currentFolderPath ? 'text-foreground font-medium' : ''
-              }`}
+              className={`hover:text-foreground transition-colors ${breadcrumb.path === currentFolderPath ? 'text-foreground font-medium' : ''
+                }`}
             >
               {breadcrumb.name}
             </button>
@@ -995,8 +1166,8 @@ export const DocumentsView = () => {
             <Search className="h-4 w-4" />
           </Button>
         </div>
-        
-        
+
+
       </div>
 
       {/* Loading State */}
@@ -1017,7 +1188,7 @@ export const DocumentsView = () => {
         </div>
       )}
 
-      
+
 
       {/* File System Style List View */}
       {!loading && !error && documents.length > 0 && (
@@ -1042,29 +1213,31 @@ export const DocumentsView = () => {
                   <Trash2 className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </div>
-              <div className="col-span-4 flex items-center gap-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('name')}>
+              <div className="col-span-3 flex items-center gap-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('name')}>
                 Name
                 {sortBy === 'name' && (sortOrder === 'asc' ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
               </div>
-              <div className="col-span-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('type')}>
-                Type
-                {sortBy === 'type' && (sortOrder === 'asc' ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
+              <div className="col-span-1">
+                {/* Edit column for links */}
+              </div>
+              <div className="col-span-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('home_date')}>
+                Home Date
+                {sortBy === 'home_date' && (sortOrder === 'asc' ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
               </div>
               <div className="col-span-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('created')}>
                 Created
                 {sortBy === 'created' && (sortOrder === 'asc' ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
               </div>
-              <div className="col-span-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('modified')}>
+              <div className="col-span-3 cursor-pointer hover:text-foreground" onClick={() => handleSort('modified')}>
                 Modified
                 {sortBy === 'modified' && (sortOrder === 'asc' ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
               </div>
-              <div className="col-span-1"></div>
             </div>
-            
+
             {/* File List Items */}
             {sortedDocuments.map((doc) => (
               <div key={doc.id} className="border-b last:border-b-0">
-                <div 
+                <div
                   className="grid grid-cols-12 gap-4 p-3 hover:bg-muted/50 cursor-pointer transition-colors"
                   onClick={() => handleDocumentClick(doc)}
                 >
@@ -1077,25 +1250,36 @@ export const DocumentsView = () => {
                       onClick={(e) => e.stopPropagation()} // Prevent document click when checkbox is clicked
                     />
                   </div>
-                  <div className="col-span-4 flex items-center gap-2 min-w-0">
+                  <div className="col-span-3 flex items-center gap-2 min-w-0">
                     {getFileIcon(doc.document_type)}
                     <span className="truncate font-medium">{doc.title}</span>
                   </div>
-                  <div className="col-span-2 flex items-center">
-                    <Badge variant="outline" className={getTypeColor(doc.document_type)}>
-                      {doc.document_type}
-                    </Badge>
+                  <div className="col-span-1 flex items-center justify-center">
+                    {doc.document_type === 'link' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditLinkDialog(doc);
+                        }}
+                        title="Edit link"
+                        className="p-1 h-auto w-auto hover:bg-muted"
+                      >
+                        <Edit3 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="col-span-2 flex items-center text-sm text-muted-foreground">
+                    {formatDate(doc.home_date)}
                   </div>
                   <div className="col-span-2 flex items-center text-sm text-muted-foreground">
                     {formatDate(doc.created_at)}
                   </div>
-                  <div className="col-span-2 flex items-center text-sm text-muted-foreground">
-                    {formatDate(doc.updated_at)}
-                  </div>
-                  
-                  <div className="col-span-1 flex items-center justify-end">
-                    <Button 
-                      variant="ghost" 
+                  <div className="col-span-3 flex items-center justify-between text-sm text-muted-foreground">
+                    <span>{formatDate(doc.updated_at)}</span>
+                    <Button
+                      variant="ghost"
                       size="sm"
                       onClick={(e) => {
                         console.log('🗑️ Delete button clicked (list view)', e, doc);
@@ -1119,13 +1303,10 @@ export const DocumentsView = () => {
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Create New</DialogTitle>
-            <DialogDescription>
-              Choose the type of document you want to create.
-            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-6 py-4">
-            <RadioGroup 
-              value={selectedDocumentType} 
+            <RadioGroup
+              value={selectedDocumentType}
               onValueChange={(value: 'note' | 'prompt' | 'link') => setSelectedDocumentType(value)}
               className="grid gap-4"
             >
@@ -1214,6 +1395,36 @@ export const DocumentsView = () => {
                 type="url"
               />
             </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">
+                Home Date
+              </Label>
+              <div className="col-span-3">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {linkHomeDate ? (
+                        linkHomeDate.toLocaleDateString()
+                      ) : (
+                        <span>Pick a date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={linkHomeDate}
+                      onSelect={(date) => date && setLinkHomeDate(date)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -1223,6 +1434,7 @@ export const DocumentsView = () => {
                 setShowLinkUrlDialog(false);
                 setLinkUrl('');
                 setLinkTitle('');
+                setLinkHomeDate(new Date());
               }}
             >
               Cancel
@@ -1233,6 +1445,97 @@ export const DocumentsView = () => {
               disabled={!linkTitle.trim() || !linkUrl.trim()}
             >
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Link Dialog */}
+      <Dialog open={showEditLinkDialog} onOpenChange={setShowEditLinkDialog}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Edit Link</DialogTitle>
+            <DialogDescription>
+              Update the URL, title, and home date for your link bookmark.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-link-title" className="text-right">
+                Title
+              </Label>
+              <Input
+                id="edit-link-title"
+                value={linkTitle}
+                onChange={(e) => setLinkTitle(e.target.value)}
+                className="col-span-3"
+                placeholder="Enter link title..."
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-link-url" className="text-right">
+                URL
+              </Label>
+              <Input
+                id="edit-link-url"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                className="col-span-3"
+                placeholder="https://example.com"
+                type="url"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">
+                Home Date
+              </Label>
+              <div className="col-span-3">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {linkHomeDate ? (
+                        linkHomeDate.toLocaleDateString()
+                      ) : (
+                        <span>Pick a date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={linkHomeDate}
+                      onSelect={(date) => date && setLinkHomeDate(date)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowEditLinkDialog(false);
+                setEditingLink(null);
+                setLinkUrl('');
+                setLinkTitle('');
+                setLinkHomeDate(new Date());
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              onClick={handleEditLink}
+              disabled={!linkTitle.trim() || !linkUrl.trim()}
+            >
+              Update
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1266,7 +1569,7 @@ export const DocumentsView = () => {
               </Label>
               <Select
                 value={createForm.document_type}
-                onValueChange={(value: 'note' | 'prompt' | 'link') => 
+                onValueChange={(value: 'note' | 'prompt' | 'link') =>
                   setCreateForm(prev => ({ ...prev, document_type: value }))
                 }
               >
@@ -1300,19 +1603,19 @@ export const DocumentsView = () => {
                 <Label className="text-right pt-2">
                   Content
                 </Label>
-              <div className="col-span-3 border rounded-lg overflow-hidden">
-                <ReactQuill
-                  ref={createQuillRef}
-                  value={createFormDelta}
-                  onChange={handleCreateQuillChange}
-                  modules={quillModules}
-                  formats={quillFormats}
-                  placeholder="Enter document content..."
-                  style={{ minHeight: '200px' }}
-                  theme="snow"
-                />
+                <div className="col-span-3 border rounded-lg overflow-hidden">
+                  <ReactQuill
+                    ref={createQuillRef}
+                    value={createFormDelta}
+                    onChange={handleCreateQuillChange}
+                    modules={quillModules}
+                    formats={quillFormats}
+                    placeholder="Enter document content..."
+                    style={{ minHeight: '200px' }}
+                    theme="snow"
+                  />
+                </div>
               </div>
-            </div>
             )}
           </div>
           <DialogFooter>
@@ -1346,7 +1649,7 @@ export const DocumentsView = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel 
+            <AlertDialogCancel
               onClick={() => {
                 console.log('🗑️ Cancel button clicked');
                 setShowDeleteDialog(false);
@@ -1375,7 +1678,7 @@ export const DocumentsView = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel 
+            <AlertDialogCancel
               onClick={() => {
                 setShowDeleteSelectedDialog(false);
               }}
