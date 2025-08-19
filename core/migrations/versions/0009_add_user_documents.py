@@ -19,11 +19,11 @@ def up(conn: sqlite3.Connection) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS user_documents (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL DEFAULT 'default_user',
             title TEXT NOT NULL,
             document_type TEXT NOT NULL CHECK (document_type IN ('note', 'prompt')),
             content_delta TEXT NOT NULL,  -- Quill Delta JSON format
             content_md TEXT NOT NULL,     -- Markdown version for search/LLM
+            home_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -40,10 +40,8 @@ def up(conn: sqlite3.Connection) -> None:
     """)
     
     # Create indexes for performance
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_user_id ON user_documents(user_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_type ON user_documents(document_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_updated_at ON user_documents(updated_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_user_type ON user_documents(user_id, document_type)")
     
     # Create triggers to keep FTS5 table in sync
     conn.execute("""
@@ -82,10 +80,8 @@ def down(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TRIGGER IF EXISTS user_documents_ai")
     
     # Drop indexes
-    conn.execute("DROP INDEX IF EXISTS idx_user_documents_user_type")
     conn.execute("DROP INDEX IF EXISTS idx_user_documents_updated_at")
     conn.execute("DROP INDEX IF EXISTS idx_user_documents_type")
-    conn.execute("DROP INDEX IF EXISTS idx_user_documents_user_id")
     
     # Drop tables
     conn.execute("DROP TABLE IF EXISTS user_documents_fts")
