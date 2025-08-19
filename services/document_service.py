@@ -30,9 +30,11 @@ class Document:
     id: str
     user_id: str
     title: str
-    document_type: str  # 'note' or 'prompt'
+    document_type: str  # 'note', 'prompt', or 'folder'
     content_delta: Dict[str, Any]  # Quill Delta format
     content_md: str  # Markdown version
+    path: str  # Virtual directory path
+    is_folder: bool  # True if this is a folder
     created_at: datetime
     updated_at: datetime
 
@@ -64,7 +66,8 @@ class DocumentService(BaseService):
                             title: str,
                             document_type: str,
                             content_delta: Dict[str, Any],
-                            user_id: Optional[str] = None) -> Document:
+                            user_id: Optional[str] = None,
+                            path: str = "/") -> Document:
         """Create a new document"""
         if document_type not in ['note', 'prompt']:
             raise ValueError("Document type must be 'note' or 'prompt'")
@@ -86,6 +89,15 @@ class DocumentService(BaseService):
         if len(content_md) > self.config.documents.max_content_length:
             raise ValueError(f"Content too long (max {self.config.documents.max_content_length} characters)")
         
+        # Ensure path formatting is correct
+        if not path.startswith('/'):
+            path = '/' + path
+        if not path.endswith('/') and path != '/':
+            path += '/'
+        
+        # Create full document path
+        document_path = path + title if path != '/' else '/' + title
+        
         # Create document
         now = datetime.now(timezone.utc)
         document = Document(
@@ -95,6 +107,8 @@ class DocumentService(BaseService):
             document_type=document_type,
             content_delta=content_delta,
             content_md=content_md,
+            path=document_path,
+            is_folder=False,
             created_at=now,
             updated_at=now
         )
@@ -112,22 +126,36 @@ class DocumentService(BaseService):
     async def update_document(self,
                             doc_id: str,
                             title: Optional[str] = None,
+                            document_type: Optional[str] = None,  # Added parameter
                             content_delta: Optional[Dict[str, Any]] = None,
                             user_id: Optional[str] = None) -> Document:
         """Update an existing document"""
         if user_id is None:
             user_id = self.config.documents.default_user_id
         
+        # DIAGNOSTIC LOG: Check what's being requested
+        logger.info(f"[DEBUG] update_document called with: doc_id={doc_id}, title={title}, document_type={document_type}")
+        
         # Get existing document
         document = self.get_document(doc_id, user_id)
         if not document:
             raise ValueError(f"Document {doc_id} not found")
+        
+        # DIAGNOSTIC LOG: Check current document type
+        logger.info(f"[DEBUG] Current document type: {document.document_type}")
         
         # Update fields
         if title is not None:
             if len(title) > self.config.documents.max_title_length:
                 raise ValueError(f"Title too long (max {self.config.documents.max_title_length} characters)")
             document.title = title
+        
+        # Update document type if provided
+        if document_type is not None:
+            if document_type not in ['note', 'prompt']:
+                raise ValueError("Document type must be 'note' or 'prompt'")
+            logger.info(f"[DEBUG] Updating document type from {document.document_type} to {document_type}")
+            document.document_type = document_type
         
         if content_delta is not None:
             # Convert Delta to Markdown
@@ -142,6 +170,9 @@ class DocumentService(BaseService):
         
         document.updated_at = datetime.now(timezone.utc)
         
+        # DIAGNOSTIC LOG: Check document before storing
+        logger.info(f"[DEBUG] Document before storing: type={document.document_type}, title={document.title}")
+        
         # Update in database
         self._store_document(document)
         
@@ -149,7 +180,7 @@ class DocumentService(BaseService):
         if content_delta is not None:
             await self._update_document_embeddings(document)
         
-        logger.info(f"Updated document: {doc_id} - {document.title}")
+        logger.info(f"Updated document: {doc_id} - {document.title} (type: {document.document_type})")
         return document
     
     def get_document(self, doc_id: str, user_id: Optional[str] = None) -> Optional[Document]:
@@ -160,8 +191,8 @@ class DocumentService(BaseService):
         try:
             with self.database.get_connection() as conn:
                 cursor = conn.execute("""
-                    SELECT id, user_id, title, document_type, content_delta, content_md, 
-                           created_at, updated_at
+                    SELECT id, user_id, title, document_type, content_delta, content_md,
+                           path, is_folder, created_at, updated_at
                     FROM user_documents 
                     WHERE id = ? AND user_id = ?
                 """, (doc_id, user_id))
@@ -189,7 +220,7 @@ class DocumentService(BaseService):
             # Build query
             query = """
                 SELECT id, user_id, title, document_type, content_delta, content_md,
-                       created_at, updated_at
+                       path, is_folder, created_at, updated_at
                 FROM user_documents 
                 WHERE user_id = ?
             """
@@ -279,14 +310,255 @@ class DocumentService(BaseService):
         
         return results[:limit]
     
+    async def create_folder(self,
+                           name: str,
+                           parent_path: str = "/",
+                           user_id: Optional[str] = None) -> Document:
+        """Create a new folder"""
+        if user_id is None:
+            user_id = self.config.documents.default_user_id
+        
+        # Validate folder name
+        if not name or not name.strip():
+            raise ValueError("Folder name cannot be empty")
+        
+        # Ensure parent path formatting
+        if not parent_path.startswith('/'):
+            parent_path = '/' + parent_path
+        if not parent_path.endswith('/'):
+            parent_path += '/'
+        
+        # Create folder path
+        folder_path = parent_path + name + "/"
+        
+        # Check if folder already exists
+        if self._path_exists(folder_path, user_id):
+            raise ValueError(f"Folder already exists: {folder_path}")
+        
+        # Generate folder ID
+        folder_id = str(uuid.uuid4())
+        
+        # Create folder document
+        now = datetime.now(timezone.utc)
+        folder = Document(
+            id=folder_id,
+            user_id=user_id,
+            title=name,
+            document_type="folder",
+            content_delta={"ops": [{"insert": "\n"}]},  # Empty content
+            content_md="",
+            path=folder_path,
+            is_folder=True,
+            created_at=now,
+            updated_at=now
+        )
+        
+        # Store in database
+        self._store_document(folder)
+        
+        logger.info(f"Created folder: {folder_path}")
+        return folder
+    
+    def list_folder_contents(self,
+                           folder_path: str = "/",
+                           user_id: Optional[str] = None,
+                           include_folders: bool = True) -> List[Document]:
+        """List immediate contents of a folder"""
+        if user_id is None:
+            user_id = self.config.documents.default_user_id
+        
+        # Ensure path formatting
+        if not folder_path.startswith('/'):
+            folder_path = '/' + folder_path
+        if not folder_path.endswith('/'):
+            folder_path += '/'
+        
+        try:
+            with self.database.get_connection() as conn:
+                # Simplified approach: find items whose parent directory matches folder_path
+                # Extract parent directory from path and compare
+                
+                if folder_path == '/':
+                    # Root folder: find items with no subdirectories
+                    query = """
+                        SELECT id, user_id, title, document_type, content_delta, content_md,
+                               path, is_folder, created_at, updated_at
+                        FROM user_documents 
+                        WHERE user_id = ? 
+                        AND (
+                            -- Documents in root: path like '/name' (count slashes = 1, ends without slash)
+                            (LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 1 AND NOT path LIKE '%/' AND is_folder = FALSE)
+                            OR
+                            -- Folders in root: path like '/name/' (count slashes = 2, ends with slash)  
+                            (LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 2 AND path LIKE '%/' AND is_folder = TRUE)
+                        )
+                    """
+                    params = [user_id]
+                else:
+                    # Non-root folder: find items whose path starts with folder_path
+                    # and has exactly one more level
+                    query = """
+                        SELECT id, user_id, title, document_type, content_delta, content_md,
+                               path, is_folder, created_at, updated_at
+                        FROM user_documents 
+                        WHERE user_id = ? AND path LIKE ?
+                        AND (
+                            -- Documents: path starts with folder_path, no additional slashes
+                            (path NOT LIKE ? AND is_folder = FALSE)
+                            OR
+                            -- Folders: path starts with folder_path, exactly one more slash at end
+                            (path LIKE ? AND path NOT LIKE ? AND is_folder = TRUE)
+                        )
+                    """
+                    like_pattern = folder_path + "%"
+                    # For documents: no additional slashes after the folder path
+                    doc_not_like = folder_path + "%/%"  
+                    # For folders: ends with slash
+                    folder_like = folder_path + "%/"
+                    # But not nested folders (no slashes between folder_path and final slash)
+                    folder_not_like = folder_path + "%/%/"
+                    params = [user_id, like_pattern, doc_not_like, folder_like, folder_not_like]
+                
+                if not include_folders:
+                    query += " AND is_folder = FALSE"
+                
+                query += " ORDER BY is_folder DESC, title ASC"
+                
+                cursor = conn.execute(query, params)
+                rows = cursor.fetchall()
+                
+                return [self._row_to_document(row) for row in rows]
+            
+        except Exception as e:
+            logger.error(f"Error listing folder contents {folder_path}: {e}")
+            return []
+    
+    async def move_item(self,
+                       item_id: str,
+                       new_parent_path: str,
+                       user_id: Optional[str] = None) -> bool:
+        """Move a document or folder to a new location"""
+        if user_id is None:
+            user_id = self.config.documents.default_user_id
+        
+        # Get the item to move
+        item = self.get_document(item_id, user_id)
+        if not item:
+            raise ValueError(f"Item {item_id} not found")
+        
+        # Ensure new parent path formatting
+        if not new_parent_path.startswith('/'):
+            new_parent_path = '/' + new_parent_path
+        if not new_parent_path.endswith('/'):
+            new_parent_path += '/'
+        
+        try:
+            # Calculate new path
+            if item.is_folder:
+                new_path = new_parent_path + item.title + "/"
+            else:
+                new_path = new_parent_path + item.title
+            
+            # Check for conflicts
+            if self._path_exists(new_path, user_id):
+                raise ValueError(f"Item already exists at destination: {new_path}")
+            
+            with self.database.get_connection() as conn:
+                if item.is_folder:
+                    # Move folder and all its contents
+                    old_path_prefix = item.path
+                    new_path_prefix = new_path
+                    
+                    # Update all items in the folder
+                    conn.execute("""
+                        UPDATE user_documents 
+                        SET path = REPLACE(path, ?, ?), updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = ? AND path LIKE ?
+                    """, (old_path_prefix, new_path_prefix, user_id, old_path_prefix + "%"))
+                else:
+                    # Move single document
+                    conn.execute("""
+                        UPDATE user_documents 
+                        SET path = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND user_id = ?
+                    """, (new_path, item_id, user_id))
+                
+                conn.commit()
+                logger.info(f"Moved item {item_id} from {item.path} to {new_path}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error moving item {item_id}: {e}")
+            return False
+    
+    async def delete_folder(self,
+                           folder_path: str,
+                           user_id: Optional[str] = None,
+                           recursive: bool = False) -> bool:
+        """Delete a folder and optionally its contents"""
+        if user_id is None:
+            user_id = self.config.documents.default_user_id
+        
+        # Ensure path formatting
+        if not folder_path.startswith('/'):
+            folder_path = '/' + folder_path
+        if not folder_path.endswith('/'):
+            folder_path += '/'
+        
+        try:
+            with self.database.get_connection() as conn:
+                if recursive:
+                    # Delete folder and all contents
+                    cursor = conn.execute("""
+                        DELETE FROM user_documents 
+                        WHERE user_id = ? AND path LIKE ?
+                    """, (user_id, folder_path + "%"))
+                else:
+                    # Check if folder is empty
+                    cursor = conn.execute("""
+                        SELECT COUNT(*) as count FROM user_documents 
+                        WHERE user_id = ? AND path LIKE ? AND path != ?
+                    """, (user_id, folder_path + "%", folder_path))
+                    
+                    if cursor.fetchone()['count'] > 0:
+                        raise ValueError("Cannot delete non-empty folder. Use recursive=True")
+                    
+                    # Delete empty folder
+                    cursor = conn.execute("""
+                        DELETE FROM user_documents 
+                        WHERE user_id = ? AND path = ? AND is_folder = TRUE
+                    """, (user_id, folder_path))
+                
+                conn.commit()
+                logger.info(f"Deleted folder: {folder_path}")
+                return cursor.rowcount > 0
+                
+        except Exception as e:
+            logger.error(f"Error deleting folder {folder_path}: {e}")
+            return False
+    
+    def _path_exists(self, path: str, user_id: str) -> bool:
+        """Check if a path already exists"""
+        try:
+            with self.database.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT COUNT(*) as count FROM user_documents 
+                    WHERE user_id = ? AND path = ?
+                """, (user_id, path))
+                
+                return cursor.fetchone()['count'] > 0
+        except Exception as e:
+            logger.error(f"Error checking path existence {path}: {e}")
+            return False
+    
     def _store_document(self, document: Document):
         """Store document in database"""
         try:
             with self.database.get_connection() as conn:
                 conn.execute("""
                     INSERT OR REPLACE INTO user_documents 
-                    (id, user_id, title, document_type, content_delta, content_md, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, user_id, title, document_type, content_delta, content_md, path, is_folder, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     document.id,
                     document.user_id,
@@ -294,6 +566,8 @@ class DocumentService(BaseService):
                     document.document_type,
                     json.dumps(document.content_delta),
                     document.content_md,
+                    document.path,
+                    document.is_folder,
                     document.created_at.isoformat(),
                     document.updated_at.isoformat()
                 ))
@@ -312,6 +586,8 @@ class DocumentService(BaseService):
             document_type=row['document_type'],
             content_delta=json.loads(row['content_delta']),
             content_md=row['content_md'],
+            path=row['path'] if 'path' in row.keys() else '/',  # Default to root if not present
+            is_folder=bool(row['is_folder']) if 'is_folder' in row.keys() else False,  # Default to False if not present
             created_at=datetime.fromisoformat(row['created_at']),
             updated_at=datetime.fromisoformat(row['updated_at'])
         )
@@ -474,7 +750,7 @@ class DocumentService(BaseService):
             
             sql = """
                 SELECT d.id, d.user_id, d.title, d.document_type, d.content_delta, 
-                       d.content_md, d.created_at, d.updated_at, 
+                       d.content_md, d.path, d.is_folder, d.created_at, d.updated_at, 
                        bm25(fts) as score
                 FROM user_documents_fts fts
                 JOIN user_documents d ON d.rowid = fts.rowid
