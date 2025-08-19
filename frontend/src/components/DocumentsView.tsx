@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Search, FileText, Edit3, Trash2, File, ScrollText, MoreVertical, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Search, FileText, Edit3, Trash2, File, ScrollText, MoreVertical, ChevronDown, ChevronRight, Folder, FolderPlus } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import './quill-theme.css';
@@ -17,9 +17,11 @@ interface Document {
   id: string;
   user_id: string;
   title: string;
-  document_type: 'note' | 'prompt';
+  document_type: 'note' | 'prompt' | 'folder';
   content_delta: any;
   content_md: string;
+  path: string;
+  is_folder: boolean;
   created_at: string;
   updated_at: string;
   selected?: boolean;
@@ -37,7 +39,10 @@ export const DocumentsView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState<'all' | 'note' | 'prompt'>('all');
+  const [selectedType, setSelectedType] = useState<'all' | 'note' | 'prompt' | 'folder'>('all');
+  const [currentFolderPath, setCurrentFolderPath] = useState<string>('/');
+  const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteSelectedDialog, setShowDeleteSelectedDialog] = useState(false);
@@ -84,11 +89,19 @@ export const DocumentsView = () => {
 
   useEffect(() => {
     fetchDocuments();
-  }, [selectedType]);
+  }, [selectedType, currentFolderPath]);
 
   useEffect(() => {
     setHasSelectedDocuments(documents.some(doc => doc.selected));
   }, [documents]);
+
+  // Debug useEffect to monitor delete dialog state
+  useEffect(() => {
+    console.log('🗑️ Delete dialog state changed:', {
+      showDeleteDialog,
+      selectedDocument: selectedDocument?.title || 'none'
+    });
+  }, [showDeleteDialog, selectedDocument]);
 
   const fetchDocuments = async () => {
     try {
@@ -99,6 +112,7 @@ export const DocumentsView = () => {
       if (selectedType !== 'all') {
         params.append('document_type', selectedType);
       }
+      params.append('folder_path', currentFolderPath);
       params.append('limit', '50');
       
       const response = await fetch(`http://localhost:8000/api/documents?${params}`);
@@ -130,6 +144,7 @@ export const DocumentsView = () => {
       if (selectedType !== 'all') {
         params.append('document_type', selectedType);
       }
+      params.append('folder_path', currentFolderPath);
       params.append('limit', '50');
       
       const response = await fetch(`http://localhost:8000/api/documents?${params}`);
@@ -169,7 +184,16 @@ export const DocumentsView = () => {
   };
 
   const getFileIcon = (type: string) => {
-    return type === 'note' ? <File className="h-4 w-4 text-blue-600" /> : <ScrollText className="h-4 w-4 text-purple-600" />;
+    switch (type) {
+      case 'folder':
+        return <Folder className="h-4 w-4 text-yellow-600" />;
+      case 'note':
+        return <File className="h-4 w-4 text-blue-600" />;
+      case 'prompt':
+        return <ScrollText className="h-4 w-4 text-purple-600" />;
+      default:
+        return <File className="h-4 w-4 text-gray-600" />;
+    }
   };
 
   const getFileSize = (content: string) => {
@@ -229,6 +253,14 @@ export const DocumentsView = () => {
   };
 
   const handleDocumentClick = (document: Document) => {
+    console.log('📄 handleDocumentClick called with document:', document);
+    
+    if (document.is_folder) {
+      // Navigate into folder
+      setCurrentFolderPath(document.path);
+      return;
+    }
+    
     // Open document in full-screen view
     setOpenDocument(document);
     setViewMode('document');
@@ -244,7 +276,7 @@ export const DocumentsView = () => {
     
     setEditForm({
       title: document.title,
-      document_type: document.document_type,
+      document_type: document.document_type as 'note' | 'prompt',
       content: plainTextContent
     });
     setEditFormDelta(document.content_delta);
@@ -252,11 +284,15 @@ export const DocumentsView = () => {
   };
 
   const handleBackToList = () => {
+    console.log('🔙 handleBackToList called - clearing delete dialog');
     setViewMode('list');
     setOpenDocument(null);
     setIsEditing(false);
     setEditForm({ title: '', document_type: 'note', content: '' });
     setError(null);
+    // Clear any open dialogs when navigating back
+    setShowDeleteDialog(false);
+    setSelectedDocument(null);
   };
 
   const handleStartEdit = () => {
@@ -318,6 +354,7 @@ export const DocumentsView = () => {
         },
         body: JSON.stringify({
           title: editForm.title,
+          document_type: editForm.document_type,
           content_delta: deltaContent
         }),
       });
@@ -363,7 +400,8 @@ export const DocumentsView = () => {
         body: JSON.stringify({
           title: editForm.title,
           document_type: editForm.document_type,
-          content_delta: deltaContent
+          content_delta: deltaContent,
+          path: currentFolderPath
         }),
       });
 
@@ -409,7 +447,8 @@ export const DocumentsView = () => {
         body: JSON.stringify({
           title: createForm.title,
           document_type: createForm.document_type,
-          content_delta: deltaContent
+          content_delta: deltaContent,
+          path: currentFolderPath
         }),
       });
 
@@ -430,6 +469,7 @@ export const DocumentsView = () => {
   };
 
   const openCreateDialog = () => {
+    console.log('➕ openCreateDialog called - clearing delete dialog');
     // Instead of showing dialog, open full editor for new document
     setViewMode('document');
     setOpenDocument(null); // No existing document
@@ -441,15 +481,108 @@ export const DocumentsView = () => {
     });
     setEditFormDelta(null);
     setError(null);
+    // Clear any open dialogs when creating new document
+    setShowDeleteDialog(false);
+    setSelectedDocument(null);
+  };
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) {
+      setError('Folder name is required');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch('http://localhost:8000/api/documents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: newFolderName,
+          document_type: 'folder',
+          path: currentFolderPath,
+          content_delta: { ops: [{ insert: '\n' }] }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create folder');
+      }
+
+      const newFolder: Document = await response.json();
+      setDocuments(prev => [newFolder, ...prev]);
+      setShowCreateFolderDialog(false);
+      setNewFolderName('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create folder');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getBreadcrumbs = () => {
+    if (currentFolderPath === '/') {
+      return [{ name: 'Root', path: '/' }];
+    }
+    
+    const parts = currentFolderPath.split('/').filter(part => part);
+    const breadcrumbs = [{ name: 'Root', path: '/' }];
+    
+    let currentPath = '';
+    for (const part of parts) {
+      currentPath += `/${part}`;
+      breadcrumbs.push({ name: part, path: currentPath === '/' ? '/' : currentPath });
+    }
+    
+    return breadcrumbs;
+  };
+
+  const navigateToFolder = (folderPath: string) => {
+    setCurrentFolderPath(folderPath);
   };
 
 
   const openDeleteDialog = (document: Document) => {
+    console.log('🗑️ openDeleteDialog called with document:', document);
     setSelectedDocument(document);
     setShowDeleteDialog(true);
     setError(null);
   };
 
+
+  const handleDeleteDocumentDirect = async (document: Document) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch(`http://localhost:8000/api/documents/${document.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete document');
+      }
+
+      setDocuments(prev => prev.filter(doc => doc.id !== document.id));
+      
+      // If we're viewing this document, go back to list
+      if (openDocument?.id === document.id) {
+        handleBackToList();
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete document');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDeleteDocument = async () => {
     if (!selectedDocument) return;
@@ -472,6 +605,12 @@ export const DocumentsView = () => {
       setDocuments(prev => prev.filter(doc => doc.id !== selectedDocument.id));
       setShowDeleteDialog(false);
       setSelectedDocument(null);
+      
+      // If we're viewing this document, go back to list
+      if (openDocument?.id === selectedDocument.id) {
+        handleBackToList();
+      }
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete document');
     } finally {
@@ -511,141 +650,190 @@ export const DocumentsView = () => {
   // Render full-screen document view (both edit existing and create new)
   if (viewMode === 'document') {
     return (
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Document Header */}
-        <div className="flex justify-between items-start">
-          <div className="flex items-center gap-4">
-            <Button onClick={handleBackToList} variant="outline" size="sm">
-              ← Back to Documents
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            {!isEditing ? (
-              <>
-                <Button onClick={handleStartEdit} variant="outline" size="sm">
-                  <Edit3 className="h-4 w-4 mr-1" />
-                  Edit
-                </Button>
-                {openDocument && (
-                  <Button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openDeleteDialog(openDocument);
-                    }}
-                    variant="outline" 
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete
-                  </Button>
-                )}
-              </>
-            ) : (
-              <>
-                <Button onClick={handleCancelEdit} variant="outline" size="sm">
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={openDocument ? handleSaveEdit : handleCreateFromFullView}
-                  disabled={!editForm.title.trim()}
-                  size="sm"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
-                >
-                  Save
-                </Button>
-                {openDocument && (
-                  <Button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openDeleteDialog(openDocument);
-                    }}
-                    variant="outline" 
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Error Display */}
-        {error && (
-          <div className="bg-destructive/15 border border-destructive/20 rounded-lg p-4">
-            <p className="text-destructive">{error}</p>
-          </div>
-        )}
-
-        {/* Document Content */}
-        <div className="border rounded-lg bg-card">
-          {!isEditing ? (
-            // Read-only WYSIWYG view
-            <div className="p-6">
-              <div className="prose prose-slate max-w-none">
-                <h1 className="text-3xl font-bold tracking-tight mb-6">{openDocument?.title}</h1>
-                <ReactQuill
-                  value={openDocument?.content_delta || { ops: [{ insert: '\n' }] }}
-                  readOnly={true}
-                  modules={{ toolbar: false }}
-                  theme="bubble"
-                  className="quill-readonly"
-                />
-              </div>
+      <>
+        <div className="max-w-6xl mx-auto space-y-6">
+          {/* Document Header */}
+          <div className="flex justify-between items-start">
+            <div className="flex items-center gap-4">
+              <Button onClick={handleBackToList} variant="outline" size="sm">
+                ← Back to Documents
+              </Button>
             </div>
-          ) : (
-            // Edit mode - Full editing interface
-            <div className="p-6 space-y-6">
-              {/* Title and Type Section */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="md:col-span-3">
-                  <Label htmlFor="doc-title" className="text-base font-semibold mb-2 block">
-                    Document Title
-                  </Label>
-                  <Input
-                    id="doc-title"
-                    value={editForm.title}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
-                    className="text-lg p-3"
-                    placeholder="Enter document title..."
+            <div className="flex items-center gap-2">
+              {!isEditing ? (
+                <>
+                  <Button onClick={handleStartEdit} variant="outline" size="sm">
+                    <Edit3 className="h-4 w-4 mr-1" />
+                    Edit
+                  </Button>
+                  {openDocument && (
+                    <Button 
+                      onClick={(e) => {
+                        console.log('🗑️ Delete button clicked (view mode)', e);
+                        e.stopPropagation();
+                        openDeleteDialog(openDocument);
+                      }}
+                      variant="outline" 
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Button onClick={handleCancelEdit} variant="outline" size="sm">
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={openDocument ? handleSaveEdit : handleCreateFromFullView}
+                    disabled={!editForm.title.trim()}
+                    size="sm"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    Save
+                  </Button>
+                  {openDocument && (
+                    <Button 
+                      onClick={(e) => {
+                        console.log('🗑️ Delete button clicked (edit mode)', e);
+                        e.stopPropagation();
+                        openDeleteDialog(openDocument);
+                      }}
+                      variant="outline" 
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="bg-destructive/15 border border-destructive/20 rounded-lg p-4">
+              <p className="text-destructive">{error}</p>
+            </div>
+          )}
+
+          {/* Document Content */}
+          <div className="border rounded-lg bg-card">
+            {!isEditing ? (
+              // Read-only WYSIWYG view
+              <div className="p-6">
+                <div className="prose prose-slate max-w-none">
+                  <h1 className="text-3xl font-bold tracking-tight mb-6">{openDocument?.title}</h1>
+                  <ReactQuill
+                    value={openDocument?.content_delta || { ops: [{ insert: '\n' }] }}
+                    readOnly={true}
+                    modules={{ toolbar: false }}
+                    theme="bubble"
+                    className="quill-readonly"
                   />
+                </div>
+              </div>
+            ) : (
+              // Edit mode - Full editing interface
+              <div className="p-6 space-y-6">
+                {/* Title and Type Section */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="md:col-span-3">
+                    <Label htmlFor="doc-title" className="text-base font-semibold mb-2 block">
+                      Document Title
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="doc-title"
+                        value={editForm.title}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                        className="text-lg p-3"
+                        placeholder="Enter document title..."
+                      />
+                      <Select
+                        value={editForm.document_type}
+                        onValueChange={(value: 'note' | 'prompt') =>
+                          setEditForm(prev => ({ ...prev, document_type: value }))
+                        }
+                      >
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="note">Note</SelectItem>
+                          <SelectItem value="prompt">Prompt</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
                 </div>
                 
-              </div>
-              
-              {/* Content Section */}
-              <div className="flex-1">
-                <Label className="text-base font-semibold mb-2 block">
-                  Content
-                </Label>
-                <div className="border rounded-lg overflow-hidden">
-                  <ReactQuill
-                    ref={quillRef}
-                    value={editFormDelta}
-                    onChange={handleQuillChange}
-                    modules={quillModules}
-                    formats={quillFormats}
-                    placeholder="Start writing your content here..."
-                    style={{ minHeight: '400px' }}
-                    theme="snow"
-                  />
+                {/* Content Section */}
+                <div className="flex-1">
+                  <Label className="text-base font-semibold mb-2 block">
+                    Content
+                  </Label>
+                  <div className="border rounded-lg overflow-hidden">
+                    <ReactQuill
+                      ref={quillRef}
+                      value={editFormDelta}
+                      onChange={handleQuillChange}
+                      modules={quillModules}
+                      formats={quillFormats}
+                      placeholder="Start writing your content here..."
+                      style={{ minHeight: '400px' }}
+                      theme="snow"
+                    />
+                  </div>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Loading indicator for save operations */}
+          {loading && (
+            <div className="text-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
+              <p className="mt-2 text-sm text-muted-foreground">Saving...</p>
             </div>
           )}
         </div>
 
-        {/* Loading indicator for save operations */}
-        {loading && (
-          <div className="text-center py-4">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-2 text-sm text-muted-foreground">Saving...</p>
-          </div>
-        )}
-      </div>
+        {/* Delete Document Confirmation Dialog - Available in document view */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Document</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete "{selectedDocument?.title}"? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel 
+                onClick={() => {
+                  console.log('🗑️ Cancel button clicked');
+                  setShowDeleteDialog(false);
+                  setSelectedDocument(null);
+                }}
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteDocument}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
     );
   }
 
@@ -654,10 +842,37 @@ export const DocumentsView = () => {
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <Button onClick={openCreateDialog} className="flex items-center gap-2">
-          <Plus className="h-4 w-4" />
-          New Document
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={openCreateDialog} className="flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            New Document
+          </Button>
+          <Button 
+            onClick={() => setShowCreateFolderDialog(true)} 
+            variant="outline" 
+            className="flex items-center gap-2"
+          >
+            <FolderPlus className="h-4 w-4" />
+            New Folder
+          </Button>
+        </div>
+      </div>
+
+      {/* Breadcrumb Navigation */}
+      <div className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg">
+        {getBreadcrumbs().map((breadcrumb, index) => (
+          <div key={breadcrumb.path} className="flex items-center">
+            {index > 0 && <span className="mx-2">/</span>}
+            <button
+              onClick={() => navigateToFolder(breadcrumb.path)}
+              className={`hover:text-foreground transition-colors ${
+                breadcrumb.path === currentFolderPath ? 'text-foreground font-medium' : ''
+              }`}
+            >
+              {breadcrumb.name}
+            </button>
+          </div>
+        ))}
       </div>
 
       {/* Search and Filters */}
@@ -777,6 +992,7 @@ export const DocumentsView = () => {
                       variant="ghost" 
                       size="sm"
                       onClick={(e) => {
+                        console.log('🗑️ Delete button clicked (list view)', e, doc);
                         e.stopPropagation();
                         openDeleteDialog(doc);
                       }}
@@ -872,6 +1088,7 @@ export const DocumentsView = () => {
 
 
       {/* Delete Document Confirmation Dialog */}
+      {console.log('🗑️ Rendering delete modal - showDeleteDialog:', showDeleteDialog, 'selectedDocument:', selectedDocument)}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -883,6 +1100,7 @@ export const DocumentsView = () => {
           <AlertDialogFooter>
             <AlertDialogCancel 
               onClick={() => {
+                console.log('🗑️ Cancel button clicked');
                 setShowDeleteDialog(false);
                 setSelectedDocument(null);
               }}
@@ -925,6 +1143,52 @@ export const DocumentsView = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create Folder Dialog */}
+      <Dialog open={showCreateFolderDialog} onOpenChange={setShowCreateFolderDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create New Folder</DialogTitle>
+            <DialogDescription>
+              Create a new folder in {currentFolderPath === '/' ? 'Root' : currentFolderPath}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="folder-name" className="text-right">
+                Name
+              </Label>
+              <Input
+                id="folder-name"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                className="col-span-3"
+                placeholder="Enter folder name..."
+                onKeyPress={(e) => e.key === 'Enter' && handleCreateFolder()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowCreateFolderDialog(false);
+                setNewFolderName('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              onClick={handleCreateFolder}
+              disabled={!newFolderName.trim()}
+            >
+              Create Folder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

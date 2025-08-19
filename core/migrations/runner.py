@@ -333,6 +333,7 @@ class MigrationRunner:
             TwoKeyMetadataMigration(),
             IngestionStatusMigration(),
             UserDocumentsMigration(),
+            VirtualDirectoriesMigration(),
         ]
     
     @contextmanager
@@ -529,4 +530,15 @@ class UserDocumentsMigration(VersionMigrationAdapter):
             "0009_add_user_documents",
             "0009_add_user_documents",
             "Add user documents tables for Notes & Prompts feature"
+        )
+
+
+class VirtualDirectoriesMigration(VersionMigrationAdapter):
+    """Migration for virtual directory support"""
+    
+    def __init__(self):
+        super().__init__(
+            "0010_add_virtual_directories", 
+            "0010_add_virtual_directories",
+            "Add path and is_folder columns for virtual directory support"
         )
