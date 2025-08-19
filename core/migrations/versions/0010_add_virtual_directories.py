@@ -48,7 +48,6 @@ def up(conn: sqlite3.Connection) -> None:
     conn.execute("""
         CREATE TABLE user_documents_new (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL DEFAULT 'default_user',
             title TEXT NOT NULL,
             document_type TEXT NOT NULL CHECK (document_type IN ('note', 'prompt', 'folder')),
             content_delta TEXT NOT NULL,  -- Quill Delta JSON format
@@ -63,7 +62,7 @@ def up(conn: sqlite3.Connection) -> None:
     # Copy existing data
     conn.execute("""
         INSERT INTO user_documents_new 
-        SELECT id, user_id, title, document_type, content_delta, content_md, 
+        SELECT id, title, document_type, content_delta, content_md, 
                created_at, updated_at, path, is_folder
         FROM user_documents
     """)
@@ -78,10 +77,8 @@ def up(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE user_documents_new RENAME TO user_documents")
     
     # Recreate all indexes
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_user_id ON user_documents(user_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_type ON user_documents(document_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_updated_at ON user_documents(updated_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_user_type ON user_documents(user_id, document_type)")
     
     # Create new virtual directory indexes
     conn.execute("""
@@ -94,10 +91,6 @@ def up(conn: sqlite3.Connection) -> None:
         ON user_documents(path, is_folder)
     """)
     
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_documents_user_path 
-        ON user_documents(user_id, path)
-    """)
     
     # Recreate triggers
     conn.execute("""
