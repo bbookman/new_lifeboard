@@ -55,7 +55,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDocumentTypeDialog, setShowDocumentTypeDialog] = useState(false);
   const [showLinkUrlDialog, setShowLinkUrlDialog] = useState(false);
-  const [selectedDocumentType, setSelectedDocumentType] = useState<'note' | 'prompt' | 'link'>('note');
+  const [selectedDocumentType, setSelectedDocumentType] = useState<'folder' | 'note' | 'prompt' | 'link'>('folder');
   const [linkUrl, setLinkUrl] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
   const [linkHomeDate, setLinkHomeDate] = useState<Date>(new Date());
@@ -63,6 +63,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const [editingLink, setEditingLink] = useState<Document | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteSelectedDialog, setShowDeleteSelectedDialog] = useState(false);
+  const [showUniqueNameDialog, setShowUniqueNameDialog] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'document'>('list');
   const [openDocument, setOpenDocument] = useState<Document | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
@@ -123,6 +124,99 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       selectedDocument: selectedDocument?.title || 'none'
     });
   }, [showDeleteDialog, selectedDocument]);
+
+  // Debug useEffect to monitor unique name dialog state
+  useEffect(() => {
+    console.log('🚨 Unique name dialog state changed:', {
+      showUniqueNameDialog,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Check if modal gets reset immediately
+    if (showUniqueNameDialog) {
+      setTimeout(() => {
+        console.log('⏰ Modal state after 100ms:', showUniqueNameDialog);
+      }, 100);
+      
+      setTimeout(() => {
+        console.log('⏰ Modal state after 500ms:', showUniqueNameDialog);
+      }, 500);
+    }
+  }, [showUniqueNameDialog]);
+
+  const checkUniqueTitle = async (title: string, documentType: string, excludeId?: string) => {
+    console.log('🔍 checkUniqueTitle called with:', { title, documentType, excludeId });
+    
+    // Skip uniqueness check for links
+    if (documentType === 'link') {
+      console.log('📎 Skipping check for link document type');
+      return true;
+    }
+
+    try {
+      // Fetch all documents in batches to check for duplicates
+      let allDocuments: Document[] = [];
+      let offset = 0;
+      const limit = 100; // Maximum allowed by API
+      
+      console.log('📚 Starting to fetch documents for uniqueness check');
+      
+      while (true) {
+        const params = new URLSearchParams();
+        params.append('limit', limit.toString());
+        params.append('offset', offset.toString());
+        
+        console.log(`🔎 Fetching batch: offset=${offset}, limit=${limit}`);
+        
+        const response = await fetch(`http://localhost:8000/api/documents?${params}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch documents for name validation');
+        }
+
+        const data: DocumentListResponse = await response.json();
+        allDocuments = allDocuments.concat(data.documents);
+        
+        console.log(`📄 Fetched ${data.documents.length} documents, total so far: ${allDocuments.length}`);
+        
+        // If we got fewer documents than the limit, we've reached the end
+        if (data.documents.length < limit) {
+          break;
+        }
+        
+        offset += limit;
+      }
+      
+      console.log(`📊 Total documents fetched: ${allDocuments.length}`);
+      console.log('🔍 Checking for duplicates...');
+      
+      // Check if any document (excluding the current one being edited) has the same title
+      const duplicateExists = allDocuments.some(doc => {
+        const isSameTitle = doc.title.toLowerCase() === title.toLowerCase();
+        const isNotLink = doc.document_type !== 'link';
+        const isNotExcluded = doc.id !== excludeId;
+        
+        if (isSameTitle && isNotLink && isNotExcluded) {
+          console.log('⚠️ Found duplicate:', { 
+            docTitle: doc.title, 
+            docType: doc.document_type, 
+            docId: doc.id,
+            searchTitle: title,
+            excludeId 
+          });
+        }
+        
+        return isSameTitle && isNotLink && isNotExcluded;
+      });
+      
+      console.log('📝 Duplicate check result:', duplicateExists ? 'DUPLICATE FOUND' : 'UNIQUE');
+      
+      return !duplicateExists;
+    } catch (err) {
+      console.error('❌ Error checking unique title:', err);
+      // If we can't check, allow the operation and let the server handle it
+      return true;
+    }
+  };
 
   const fetchDocuments = async () => {
     try {
@@ -303,6 +397,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     }
 
     // Open document in full-screen view
+    console.log('📄 Setting openDocument to:', document.id, document.title);
     setOpenDocument(document);
     setViewMode('document');
 
@@ -329,6 +424,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const handleBackToList = () => {
     console.log('🔙 handleBackToList called - clearing delete dialog');
     setViewMode('list');
+    console.log('🔙 Setting openDocument to NULL in handleBackToList');
     setOpenDocument(null);
     setIsEditing(false);
     setEditForm({ title: '', document_type: 'note', content: '', url: '', home_date: new Date() });
@@ -374,8 +470,34 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   };
 
   const handleSaveEdit = async () => {
-    if (!openDocument || !editForm.title.trim()) {
-      setError('Title is required');
+    try {
+      console.log('🔥 SAVE BUTTON CLICKED - handleSaveEdit function started');
+      console.log('💾 handleSaveEdit called with title:', editForm.title);
+      
+      if (!openDocument || !editForm.title.trim()) {
+        console.log('❌ Validation failed: missing document or title');
+        setError('Title is required');
+        return;
+      }
+
+      console.log('🔍 Checking unique title for:', editForm.title, 'type:', editForm.document_type, 'excludeId:', openDocument.id);
+      
+      // Check for unique title
+      const isUnique = await checkUniqueTitle(editForm.title, editForm.document_type, openDocument.id);
+      console.log('✅ Unique check result:', isUnique);
+      
+      if (!isUnique) {
+        console.log('🚨 Duplicate found, showing unique name dialog');
+        console.log('📱 Current showUniqueNameDialog state before setting:', showUniqueNameDialog);
+        setShowUniqueNameDialog(true);
+        console.log('📱 setShowUniqueNameDialog(true) called');
+        return;
+      }
+      
+      console.log('✅ Title is unique, proceeding with save...');
+    } catch (error) {
+      console.error('💥 FATAL ERROR in handleSaveEdit:', error);
+      setError('An unexpected error occurred while saving');
       return;
     }
 
@@ -431,6 +553,13 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const handleCreateFromFullView = async () => {
     if (!editForm.title.trim()) {
       setError('Title is required');
+      return;
+    }
+
+    // Check for unique title
+    const isUnique = await checkUniqueTitle(editForm.title, editForm.document_type);
+    if (!isUnique) {
+      setShowUniqueNameDialog(true);
       return;
     }
 
@@ -501,6 +630,13 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       return;
     }
 
+    // Check for unique title
+    const isUnique = await checkUniqueTitle(createForm.title, createForm.document_type);
+    if (!isUnique) {
+      setShowUniqueNameDialog(true);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -562,7 +698,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const openCreateDialog = () => {
     console.log('➕ openCreateDialog called - showing document type selection');
     setShowDocumentTypeDialog(true);
-    setSelectedDocumentType('note');
+    setSelectedDocumentType('folder');
     setError(null);
     // Clear any open dialogs when creating new document
     setShowDeleteDialog(false);
@@ -572,7 +708,11 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const handleDocumentTypeSelection = () => {
     setShowDocumentTypeDialog(false);
 
-    if (selectedDocumentType === 'link') {
+    if (selectedDocumentType === 'folder') {
+      // Show folder creation dialog
+      setShowCreateFolderDialog(true);
+      setNewFolderName('');
+    } else if (selectedDocumentType === 'link') {
       // Show link URL input dialog
       setShowLinkUrlDialog(true);
       setLinkUrl('');
@@ -581,6 +721,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     } else {
       // Open full editor for note/prompt
       setViewMode('document');
+      console.log('📝 Setting openDocument to NULL in handleDocumentTypeSelection (creating new document)');
       setOpenDocument(null); // No existing document
       setIsEditing(true);
       setEditForm({
@@ -707,6 +848,13 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) {
       setError('Folder name is required');
+      return;
+    }
+
+    // Check for unique title
+    const isUnique = await checkUniqueTitle(newFolderName, 'folder');
+    if (!isUnique) {
+      setShowUniqueNameDialog(true);
       return;
     }
 
@@ -916,7 +1064,15 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
                     Cancel
                   </Button>
                   <Button
-                    onClick={openDocument ? handleSaveEdit : handleCreateFromFullView}
+                    onClick={() => {
+                      console.log('💾 SAVE BUTTON CLICKED - openDocument:', openDocument ? 'EXISTS' : 'NULL');
+                      console.log('💾 SAVE BUTTON - will call:', openDocument ? 'handleSaveEdit' : 'handleCreateFromFullView');
+                      if (openDocument) {
+                        handleSaveEdit();
+                      } else {
+                        handleCreateFromFullView();
+                      }
+                    }}
                     disabled={!editForm.title.trim()}
                     size="sm"
                     className="bg-primary text-primary-foreground hover:bg-primary/90"
@@ -1111,6 +1267,36 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Unique Name Validation Dialog - Available in document view */}
+        {console.log('🎭 Rendering Unique Name Dialog in DOCUMENT VIEW with state:', showUniqueNameDialog)}
+        <AlertDialog 
+          open={showUniqueNameDialog} 
+          onOpenChange={(open) => {
+            console.log('🎭 AlertDialog onOpenChange called with:', open);
+            setShowUniqueNameDialog(open);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Name Already Exists</AlertDialogTitle>
+              <AlertDialogDescription>
+                A document with this name already exists. Please choose a unique name for your folder, note, or prompt.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction
+                onClick={() => {
+                  console.log('✅ Unique name dialog OK button clicked');
+                  setShowUniqueNameDialog(false);
+                }}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                OK
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </>
     );
   }
@@ -1125,13 +1311,16 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
             <Plus className="h-4 w-4" />
             New
           </Button>
-          <Button
-            onClick={() => setShowCreateFolderDialog(true)}
+          {/* DEBUG: Test modal button */}
+          <Button 
+            onClick={() => {
+              console.log('🧪 TEST: Forcing modal to show');
+              setShowUniqueNameDialog(true);
+            }}
             variant="outline"
-            className="flex items-center gap-2"
+            className="bg-red-100"
           >
-            <FolderPlus className="h-4 w-4" />
-            New Folder
+            TEST MODAL
           </Button>
         </div>
       </div>
@@ -1307,9 +1496,19 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
           <div className="grid gap-6 py-4">
             <RadioGroup
               value={selectedDocumentType}
-              onValueChange={(value: 'note' | 'prompt' | 'link') => setSelectedDocumentType(value)}
+              onValueChange={(value: 'folder' | 'note' | 'prompt' | 'link') => setSelectedDocumentType(value)}
               className="grid gap-4"
             >
+              <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
+                <RadioGroupItem value="folder" id="folder" />
+                <Label htmlFor="folder" className="flex items-center gap-2 cursor-pointer flex-1">
+                  <Folder className="h-4 w-4 text-yellow-600" />
+                  <div>
+                    <div className="font-medium">Folder</div>
+                    <div className="text-sm text-muted-foreground">Create a new folder</div>
+                  </div>
+                </Label>
+              </div>
               <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
                 <RadioGroupItem value="note" id="note" />
                 <Label htmlFor="note" className="flex items-center gap-2 cursor-pointer flex-1">
@@ -1740,6 +1939,36 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Unique Name Validation Dialog */}
+      {console.log('🎭 Rendering Unique Name Dialog with state:', showUniqueNameDialog)}
+      <AlertDialog 
+        open={showUniqueNameDialog} 
+        onOpenChange={(open) => {
+          console.log('🎭 AlertDialog onOpenChange called with:', open);
+          setShowUniqueNameDialog(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Name Already Exists</AlertDialogTitle>
+            <AlertDialogDescription>
+              A document with this name already exists. Please choose a unique name for your folder, note, or prompt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => {
+                console.log('✅ Unique name dialog OK button clicked');
+                setShowUniqueNameDialog(false);
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

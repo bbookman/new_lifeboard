@@ -26,23 +26,35 @@ It's about seeing anew—with clarity, gratitude, proactive power and wonder.
 ### Required Settings
 
 Basic user configuration
+```
 USERS_LANGUAGE=en
 TIME_ZONE=America/New_York
 
 Limitless API (Primary data source)
 LIMITLESS__API_KEY=your_limitless_api_key_here
-
+```
 ### Optional
-RapidAPI For News
+#### RapidAPI
+**News**
 1. Sign up for free at [RapidAPI](https://rapidapi.com/)
 2. Subscribe to these APIs free:
    - [Real-Time News Data](https://rapidapi.com/letscrape-6bRBa3QguO5/api/real-time-news-data) - For news headlines
 
+```
 RAPID_API_KEY=your_rapidapi_key_here
-
 News configuration
 NEWS_COUNTRY=US
 UNIQUE_NEWS_ITEMS_PER_DAY=5
+```
+
+**TWITTER**
+[Follow these instructions for establishing an api key](https://developer.x.com/en/docs/tutorials/step-by-step-guide-to-making-your-first-request-to-the-twitter-api-v2)
+
+
+```
+TWITTER_BEARER_TOKEN=your token / api key here
+TWITTER_USER_NAME=your user name
+```
 
 *Note: Most other settings in .env.example are not currently functional and can be ignored.*
 
