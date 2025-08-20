@@ -1,18 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Badge } from './ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
 import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Calendar } from './ui/calendar';
 import { CalendarIcon } from 'lucide-react';
-import { Plus, Search, FileText, Edit3, Trash2, File, ScrollText, MoreVertical, ChevronDown, ChevronRight, Folder, FolderPlus, Link, RadioIcon } from 'lucide-react';
+import { Plus, Search, Edit3, Trash2, File, ScrollText, ChevronDown, ChevronRight, Folder, Link } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import './quill-theme.css';
@@ -45,10 +42,11 @@ interface DocumentsViewProps {
 
 export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => {
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [allDocuments, setAllDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState<'all' | 'note' | 'prompt' | 'folder' | 'link'>(initialFilter);
+  const [selectedType, setSelectedType] = useState<'all' | 'note' | 'prompt' | 'link' | 'home_date' | 'none'>(initialFilter);
   const [currentFolderPath, setCurrentFolderPath] = useState<string>('/');
   const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -67,7 +65,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const [viewMode, setViewMode] = useState<'list' | 'document'>('list');
   const [openDocument, setOpenDocument] = useState<Document | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
-  const [sortBy, setSortBy] = useState<'name' | 'type' | 'modified' | 'home_date'>('modified');
+  const [sortBy, setSortBy] = useState<'name' | 'type' | 'modified' | 'home_date' | 'created'>('modified');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isEditing, setIsEditing] = useState(false);
   const [allSelected, setAllSelected] = useState(false);
@@ -111,7 +109,38 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
   useEffect(() => {
     fetchDocuments();
-  }, [selectedType, currentFolderPath]);
+  }, [currentFolderPath]);
+
+  useEffect(() => {
+    let filtered = allDocuments;
+
+    // Filter by type
+    if (selectedType === 'home_date') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(doc => {
+        if (!doc.home_date) return false;
+        const docDate = new Date(doc.home_date);
+        docDate.setHours(0, 0, 0, 0);
+        return docDate.getTime() === today.getTime();
+      });
+    } else if (selectedType === 'notes') {
+        filtered = filtered.filter(doc => doc.document_type === 'note');
+    } else if (selectedType === 'prompts') {
+        filtered = filtered.filter(doc => doc.document_type === 'prompt');
+    } else if (selectedType === 'links') {
+        filtered = filtered.filter(doc => doc.document_type === 'link');
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(doc =>
+        doc.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    setDocuments(filtered);
+  }, [selectedType, allDocuments, searchQuery]);
 
   useEffect(() => {
     setHasSelectedDocuments(documents.some(doc => doc.selected));
@@ -238,9 +267,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setError(null);
 
       const params = new URLSearchParams();
-      if (selectedType !== 'all') {
-        params.append('document_type', selectedType);
-      }
       params.append('folder_path', currentFolderPath);
       params.append('limit', '50');
 
@@ -250,7 +276,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       }
 
       const data: DocumentListResponse = await response.json();
-      setDocuments(data.documents.map(doc => ({ ...doc, selected: false })));
+      setAllDocuments(data.documents.map(doc => ({ ...doc, selected: false })));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load documents');
     } finally {
@@ -258,42 +284,8 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      fetchDocuments();
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch all documents first
-      const params = new URLSearchParams();
-      if (selectedType !== 'all') {
-        params.append('document_type', selectedType);
-      }
-      params.append('folder_path', currentFolderPath);
-      params.append('limit', '50');
-
-      const response = await fetch(`http://localhost:8000/api/documents?${params}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch documents');
-      }
-
-      const data: DocumentListResponse = await response.json();
-
-      // Filter documents by title using simple "like" logic
-      const filteredDocuments = data.documents.filter(doc =>
-        doc.title.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-
-      setDocuments(filteredDocuments.map(doc => ({ ...doc, selected: false })));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed');
-    } finally {
-      setLoading(false);
-    }
+  const handleSearch = () => {
+    // The actual filtering is now done in the useEffect hook
   };
 
   const formatDate = (dateString: string) => {
@@ -367,7 +359,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
-  const handleSort = (column: 'name' | 'type' | 'modified' | 'created' | 'home_date') => {
+  const handleSort = (column: 'name' | 'type' | 'modified' | 'home_date' | 'created') => {
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
@@ -461,7 +453,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
       setEditForm({
         title: openDocument.title,
-        document_type: openDocument.document_type,
+        document_type: openDocument.document_type === 'folder' ? 'note' : openDocument.document_type,
         content: plainTextContent,
         url: openDocument.url || '',
         home_date: new Date(openDocument.home_date)
@@ -1320,12 +1312,37 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <Button onClick={openCreateDialog} className="flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            New
-          </Button>
+        <div className="flex items-center">
+          {/* Left Side Controls */}
+          <div className="flex items-center">
+            <Button onClick={openCreateDialog} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              New
+            </Button>
+          </div>
 
+          {/* Spacer */}
+          <div className="mx-4 h-6 w-px bg-border/50"></div>
+
+          {/* Filter Dropdown */}
+          <div className="flex items-center">
+            <Select
+              defaultValue="none"
+              onValueChange={(value) => setSelectedType(value as 'all' | 'note' | 'prompt' | 'link' | 'home_date' | 'none')}
+            >
+              <SelectTrigger className="w-[180px] focus-visible:ring-0 focus-visible:ring-offset-0">
+                <SelectValue placeholder="Filter by..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="home_date">Home Date</SelectItem>
+                <SelectItem value="notes">Notes</SelectItem>
+                
+                <SelectItem value="links">Links</SelectItem>
+                <SelectItem value="prompts">Prompts</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -1345,8 +1362,8 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         ))}
       </div>
 
-      {/* Search and Filters */}
-      <div className="flex gap-4 items-center">
+      {/* Search Bar */}
+      <div className="flex items-center gap-4">
         <div className="flex-1 flex gap-2">
           <Input
             placeholder="Search documents..."
@@ -1359,8 +1376,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
             <Search className="h-4 w-4" />
           </Button>
         </div>
-
-
       </div>
 
       {/* Loading State */}
@@ -1945,7 +1960,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       </Dialog>
 
       {/* Unique Name Validation Dialog */}
-      {console.log('🎭 Rendering Unique Name Dialog with state:', showUniqueNameDialog)}
       <AlertDialog 
         open={showUniqueNameDialog} 
         onOpenChange={(open) => {
@@ -1976,3 +1990,5 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     </div>
   );
 };
+
+export default DocumentsView;
