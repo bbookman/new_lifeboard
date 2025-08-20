@@ -161,72 +161,23 @@ async def create_document(
         raise HTTPException(status_code=500, detail="Failed to create document")
 
 
-@router.get("/{document_id}", response_model=DocumentResponse)
-@handle_api_exceptions("Failed to get document", 500, include_details=True)
-async def get_document(
-    document_id: str,
+
+@router.get("/validate-title", response_model=Dict[str, bool])
+@handle_api_exceptions("Failed to validate title", 500, include_details=True)
+async def validate_document_title(
+    title: str = Query(..., min_length=1, description="Title to validate"),
+    document_type: str = Query(..., pattern="^(note|prompt|folder|link)$", description="Document type"),
+    exclude_id: Optional[str] = Query(None, description="Document ID to exclude from validation"),
     document_service: DocumentService = Depends(get_document_service_for_route)
-) -> DocumentResponse:
-    """Get a specific document by ID"""
+) -> Dict[str, bool]:
+    """Fast title uniqueness validation"""
     try:
-        document = document_service.get_document(document_id)
-        if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
+        exists = document_service.title_exists(title, document_type, exclude_id)
+        return {"is_unique": not exists}
         
-        return DocumentResponse.from_document(document)
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error getting document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get document")
-
-
-@router.put("/{document_id}", response_model=DocumentResponse)
-@handle_api_exceptions("Failed to update document", 500, include_details=True)
-async def update_document(
-    document_id: str,
-    request: UpdateDocumentRequest,
-    document_service: DocumentService = Depends(get_document_service_for_route)
-) -> DocumentResponse:
-    """Update an existing document"""
-    try:
-        document = await document_service.update_document(
-            doc_id=document_id,
-            title=request.title,
-            document_type=request.document_type,
-            content_delta=request.content_delta,
-            url=request.url
-        )
-        
-        return DocumentResponse.from_document(document)
-        
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error updating document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update document")
-
-
-@router.delete("/{document_id}")
-@handle_api_exceptions("Failed to delete document", 500, include_details=True)
-async def delete_document(
-    document_id: str,
-    document_service: DocumentService = Depends(get_document_service_for_route)
-) -> Dict[str, str]:
-    """Delete a document"""
-    try:
-        success = await document_service.delete_document(document_id)
-        if not success:
-            raise HTTPException(status_code=404, detail="Document not found")
-        
-        return {"message": "Document deleted successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete document")
+        logger.error(f"Error validating title '{title}': {e}")
+        raise HTTPException(status_code=500, detail="Failed to validate title")
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -421,6 +372,27 @@ async def delete_folder(
         raise HTTPException(status_code=500, detail="Failed to delete folder")
 
 
+# Fast count endpoint for performance optimization
+@router.get("/count", response_model=Dict[str, int])
+@handle_api_exceptions("Failed to count documents", 500, include_details=True) 
+async def count_documents(
+    document_type: Optional[str] = Query(None, pattern="^(note|prompt|folder|link)$"),
+    folder_path: Optional[str] = Query(None, description="Count documents in specific folder"),
+    document_service: DocumentService = Depends(get_document_service_for_route)
+) -> Dict[str, int]:
+    """Fast document count for performance optimization - returns count without loading full documents"""
+    try:
+        count = document_service.count_documents(
+            document_type=document_type,
+            folder_path=folder_path
+        )
+        return {"count": count}
+        
+    except Exception as e:
+        logger.error(f"Error counting documents: {e}")
+        raise HTTPException(status_code=500, detail="Failed to count documents")
+
+
 # Health endpoint
 @router.get("/health", response_model=Dict[str, Any])
 @handle_api_exceptions("Failed to get document service health", 500, include_details=True)
@@ -435,3 +407,72 @@ async def get_document_service_health(
     except Exception as e:
         logger.error(f"Error getting document service health: {e}")
         raise HTTPException(status_code=500, detail="Failed to get service health")
+
+
+# Document ID routes - MUST BE LAST to avoid conflicts with named routes
+@router.get("/{document_id}", response_model=DocumentResponse)
+@handle_api_exceptions("Failed to get document", 500, include_details=True)
+async def get_document(
+    document_id: str,
+    document_service: DocumentService = Depends(get_document_service_for_route)
+) -> DocumentResponse:
+    """Get a specific document by ID"""
+    try:
+        document = document_service.get_document(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return DocumentResponse.from_document(document)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get document")
+
+
+@router.put("/{document_id}", response_model=DocumentResponse)
+@handle_api_exceptions("Failed to update document", 500, include_details=True)
+async def update_document(
+    document_id: str,
+    request: UpdateDocumentRequest,
+    document_service: DocumentService = Depends(get_document_service_for_route)
+) -> DocumentResponse:
+    """Update an existing document"""
+    try:
+        document = await document_service.update_document(
+            doc_id=document_id,
+            title=request.title,
+            document_type=request.document_type,
+            content_delta=request.content_delta,
+            url=request.url
+        )
+        
+        return DocumentResponse.from_document(document)
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update document")
+
+
+@router.delete("/{document_id}")
+@handle_api_exceptions("Failed to delete document", 500, include_details=True)
+async def delete_document(
+    document_id: str,
+    document_service: DocumentService = Depends(get_document_service_for_route)
+) -> Dict[str, str]:
+    """Delete a document"""
+    try:
+        success = await document_service.delete_document(document_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return {"message": "Document deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete document")

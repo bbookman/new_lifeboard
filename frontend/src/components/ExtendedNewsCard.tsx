@@ -33,9 +33,6 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
           <Badge variant="outline" className="text-xs">
             Limitless
           </Badge>
-          <span className="text-newspaper-byline text-xs">
-            Today's Activity
-          </span>
         </div>
 
       </div>

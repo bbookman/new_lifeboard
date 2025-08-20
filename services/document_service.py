@@ -209,6 +209,12 @@ class DocumentService(BaseService):
                       offset: int = 0) -> List[Document]:
         """List documents with optional filtering"""
         try:
+            # Performance optimization: Early exit for empty results
+            if offset == 0:  # Only check count for first page
+                count = self.count_documents(document_type=document_type)
+                if count == 0:
+                    return []  # Early exit - no documents to load
+            
             # Build query
             query = """
                 SELECT id, title, document_type, content_delta, content_md,
@@ -350,6 +356,10 @@ class DocumentService(BaseService):
             folder_path += '/'
         
         try:
+            # Performance optimization: Early exit for empty folders
+            count = self.count_documents(folder_path=folder_path)
+            if count == 0:
+                return []  # Early exit - no documents in this folder
             with self.database.get_connection() as conn:
                 # Simplified approach: find items whose parent directory matches folder_path
                 # Extract parent directory from path and compare
@@ -516,6 +526,31 @@ class DocumentService(BaseService):
                 return cursor.fetchone()['count'] > 0
         except Exception as e:
             logger.error(f"Error checking path existence {path}: {e}")
+            return False
+    
+    def title_exists(self, title: str, document_type: str, exclude_id: Optional[str] = None) -> bool:
+        """Check if a title already exists for the given document type (excluding links)"""
+        # Skip uniqueness check for links
+        if document_type == 'link':
+            return False
+            
+        try:
+            with self.database.get_connection() as conn:
+                query = """
+                    SELECT COUNT(*) as count FROM user_documents 
+                    WHERE LOWER(title) = LOWER(?) AND document_type != 'link'
+                """
+                params = [title]
+                
+                if exclude_id:
+                    query += " AND id != ?"
+                    params.append(exclude_id)
+                
+                cursor = conn.execute(query, params)
+                return cursor.fetchone()['count'] > 0
+                
+        except Exception as e:
+            logger.error(f"Error checking title existence '{title}': {e}")
             return False
     
     def _store_document(self, document: Document):
@@ -811,6 +846,79 @@ class DocumentService(BaseService):
         except Exception as e:
             self.logger.error(f"Error during DocumentService shutdown: {e}")
             return False
+    
+    def count_documents(self,
+                       document_type: Optional[str] = None,
+                       folder_path: Optional[str] = None) -> int:
+        """Fast count of documents for performance optimization"""
+        try:
+            if folder_path is not None:
+                # Count documents in specific folder using same logic as list_folder_contents
+                # Ensure path formatting
+                if not folder_path.startswith('/'):
+                    folder_path = '/' + folder_path
+                if not folder_path.endswith('/'):
+                    folder_path += '/'
+                
+                with self.database.get_connection() as conn:
+                    if folder_path == '/':
+                        # Root folder: count items with no subdirectories
+                        query = """
+                            SELECT COUNT(*) as count FROM user_documents 
+                            WHERE (
+                                -- Documents in root: path like '/name' (count slashes = 1, ends without slash)
+                                (LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 1 AND NOT path LIKE '%/' AND is_folder = FALSE)
+                                OR
+                                -- Folders in root: path like '/name/' (count slashes = 2, ends with slash)  
+                                (LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 2 AND path LIKE '%/' AND is_folder = TRUE)
+                            )
+                        """
+                        params = []
+                    else:
+                        # Subfolder: count immediate children
+                        query = """
+                            SELECT COUNT(*) as count FROM user_documents
+                            WHERE path LIKE ? AND path != ? AND (
+                                -- Direct children only - count remaining path segments after removing parent
+                                LENGTH(SUBSTR(path, LENGTH(?) + 1)) - LENGTH(REPLACE(SUBSTR(path, LENGTH(?) + 1), '/', '')) <= 1
+                            )
+                        """
+                        params = [folder_path + "%", folder_path, folder_path, folder_path]
+                    
+                    # Apply document_type filter if specified
+                    if document_type and document_type != "folder":
+                        query = query.replace("FROM user_documents", "FROM user_documents")
+                        if "WHERE" in query:
+                            query += " AND document_type = ?"
+                        else:
+                            query += " WHERE document_type = ?"
+                        params.append(document_type)
+                    elif document_type == "folder":
+                        if "WHERE" in query:
+                            query += " AND is_folder = TRUE"
+                        else:
+                            query += " WHERE is_folder = TRUE"
+                    
+                    cursor = conn.execute(query, params)
+                    result = cursor.fetchone()
+                    return result['count'] if result else 0
+            else:
+                # Count all documents with optional type filter
+                query = "SELECT COUNT(*) as count FROM user_documents WHERE 1=1"
+                params = []
+                
+                if document_type:
+                    query += " AND document_type = ?"
+                    params.append(document_type)
+                
+                with self.database.get_connection() as conn:
+                    cursor = conn.execute(query, params)
+                    result = cursor.fetchone()
+                    return result['count'] if result else 0
+                    
+        except Exception as e:
+            logger.error(f"Error counting documents: {e}")
+            return 0
     
     async def _check_service_health(self) -> Dict[str, Any]:
         """Check service health"""

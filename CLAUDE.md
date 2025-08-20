@@ -319,5 +319,7 @@ The project will never be run on a mobile device.  only design for desktop and l
 
 NEVER VIOLATE: do not restore code unless requested.  Do not add code for items not requested by the user. Error on the side of caution.  Add code only required to meet the objective.
 
+Project uses PYTHON3. Never execute anything with "python" in the command.  Always "python3"
+
 ```
 ```

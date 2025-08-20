@@ -8,6 +8,7 @@ from enum import Enum
 import uuid
 
 from fastapi import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 logger = logging.getLogger(__name__)
 
@@ -306,6 +307,13 @@ class WebSocketManager:
         
         connection = self.connections[client_id]
         
+        # Check if WebSocket connection is still valid
+        if connection.websocket.client_state == WebSocketState.DISCONNECTED:
+            logger.debug(f"Cannot send to client {client_id}: WebSocket is disconnected")
+            # Remove the closed connection
+            await self.disconnect_client(client_id, "websocket_disconnected")
+            raise ConnectionError(f"WebSocket for client {client_id} is disconnected")
+        
         try:
             message_json = json.dumps({
                 "type": message.type.value,
@@ -318,18 +326,26 @@ class WebSocketManager:
             
         except Exception as e:
             logger.error(f"Error sending message to client {client_id}: {e}")
+            # If send fails, likely the connection is dead - disconnect client
+            await self.disconnect_client(client_id, f"send_error: {e}")
             raise
     
     async def _send_error_to_client(self, client_id: str, error_message: str):
         """Send error message to client"""
         try:
+            # Check if client still exists before attempting to send
+            if client_id not in self.connections:
+                logger.debug(f"Cannot send error to client {client_id}: client not connected")
+                return
+                
             error_msg = WebSocketMessage(
                 type=MessageType.ERROR,
                 data={"message": error_message}
             )
             await self._send_to_client(client_id, error_msg)
         except Exception as e:
-            logger.error(f"Failed to send error message to client {client_id}: {e}")
+            # Log but don't re-raise to avoid cascading errors
+            logger.debug(f"Failed to send error message to client {client_id}: {e}")
     
     async def _unsubscribe_client_from_topic(self, client_id: str, topic: str):
         """Remove client from a specific topic"""

@@ -209,6 +209,36 @@ def create_complete_schema(conn: sqlite3.Connection) -> None:
         )
     """)
     
+    # ========================================
+    # LLM PROMPT MANAGEMENT SYSTEM
+    # ========================================
+    
+    # Prompt settings table for LLM prompt management
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS prompt_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            setting_key TEXT NOT NULL UNIQUE,  -- e.g., 'daily_summary_prompt'
+            prompt_document_id TEXT,           -- References user_documents.id
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (prompt_document_id) REFERENCES user_documents(id) ON DELETE SET NULL
+        )
+    """)
+    
+    # Generated summaries table for LLM content caching
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS generated_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            days_date TEXT NOT NULL,
+            content TEXT NOT NULL,
+            prompt_used TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
     logger.info("Database tables created successfully")
 
 
@@ -280,16 +310,32 @@ def create_all_indexes(conn: sqlite3.Connection) -> None:
     # USER DOCUMENTS INDEXES
     # ========================================
     
-    # User documents indexes
+    # User documents indexes (consolidated performance indexes from 0013)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_type ON user_documents(document_type)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_updated_at ON user_documents(updated_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_updated_at ON user_documents(updated_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_type_updated ON user_documents(document_type, updated_at DESC)")
     
     # Virtual directory indexes
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_path ON user_documents(path)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_folder_contents ON user_documents(path, is_folder)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_is_folder ON user_documents(is_folder)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_folder_type ON user_documents(path, is_folder, document_type)")
     
     # URL index for link documents
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_url ON user_documents(url) WHERE url IS NOT NULL")
+    
+    # ========================================
+    # LLM PROMPT MANAGEMENT INDEXES
+    # ========================================
+    
+    # Prompt settings indexes
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_prompt_settings_key ON prompt_settings(setting_key)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_prompt_settings_active ON prompt_settings(is_active)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_prompt_settings_document ON prompt_settings(prompt_document_id)")
+    
+    # Generated summaries indexes
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_summaries_date ON generated_summaries(days_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_summaries_active ON generated_summaries(is_active)")
     
     logger.info("Database indexes created successfully")
 
@@ -319,6 +365,17 @@ def create_triggers(conn: sqlite3.Connection) -> None:
             VALUES('delete', OLD.rowid, OLD.title, OLD.content_md);
             INSERT INTO user_documents_fts(rowid, title, content_md) 
             VALUES (NEW.rowid, NEW.title, NEW.content_md);
+        END
+    """)
+    
+    # Prompt settings updated_at trigger
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS prompt_settings_update_timestamp 
+        AFTER UPDATE ON prompt_settings
+        BEGIN
+            UPDATE prompt_settings 
+            SET updated_at = CURRENT_TIMESTAMP 
+            WHERE id = NEW.id;
         END
     """)
     
