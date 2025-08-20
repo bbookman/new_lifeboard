@@ -8,6 +8,7 @@ from services.ingestion import IngestionService
 from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
 from services.document_service import DocumentService
+from services.llm_service import LLMService
 from services.sync_status_service import SyncStatusService, set_sync_status_service
 from sources.limitless import LimitlessSource
 from sources.news import NewsSource
@@ -35,6 +36,7 @@ class StartupService:
         self.sync_manager: Optional[SyncManagerService] = None
         self.chat_service: Optional[ChatService] = None
         self.document_service: Optional[DocumentService] = None
+        self.llm_service: Optional[LLMService] = None
         self.sync_status_service: Optional[SyncStatusService] = None
         self.startup_complete = False
         self.logging_setup_result: Optional[Dict[str, Any]] = None
@@ -68,6 +70,9 @@ class StartupService:
             
             # 2.6. Initialize document service
             await self._initialize_document_service(startup_result)
+            
+            # 2.7. Initialize LLM service
+            await self._initialize_llm_service(startup_result)
             
             # 3. Register data sources
             await self._register_data_sources(startup_result)
@@ -228,6 +233,29 @@ class StartupService:
             error_msg = f"Failed to initialize document service: {str(e)}"
             logger.error(error_msg)
             raise Exception(error_msg)
+    
+    async def _initialize_llm_service(self, startup_result: Dict[str, Any]):
+        """Initialize the LLM service"""
+        try:
+            logger.info("Initializing LLM service...")
+            
+            self.llm_service = LLMService(
+                database=self.database,
+                document_service=self.document_service,
+                config=self.config
+            )
+            
+            # Initialize the LLM service
+            await self.llm_service._initialize_service()
+            
+            startup_result["services_initialized"].append("llm")
+            logger.info("LLM service initialized successfully")
+            
+        except Exception as e:
+            error_msg = f"Failed to initialize LLM service: {str(e)}"
+            logger.error(error_msg)
+            # Don't raise - LLM service failure shouldn't block startup
+            startup_result["errors"].append(error_msg)
     
     async def _register_data_sources(self, startup_result: Dict[str, Any]):
         """Register available data sources"""

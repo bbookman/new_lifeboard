@@ -190,70 +190,23 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const checkUniqueTitle = async (title: string, documentType: string, excludeId?: string) => {
     console.log('🔍 checkUniqueTitle called with:', { title, documentType, excludeId });
     
-    // Skip uniqueness check for links
-    if (documentType === 'link') {
-      console.log('📎 Skipping check for link document type');
-      return true;
-    }
-
     try {
-      // Fetch all documents in batches to check for duplicates
-      let allDocuments: Document[] = [];
-      let offset = 0;
-      const limit = 100; // Maximum allowed by API
-      
-      console.log('📚 Starting to fetch documents for uniqueness check');
-      
-      while (true) {
-        const params = new URLSearchParams();
-        params.append('limit', limit.toString());
-        params.append('offset', offset.toString());
-        
-        console.log(`🔎 Fetching batch: offset=${offset}, limit=${limit}`);
-        
-        const response = await fetch(`http://localhost:8000/api/documents?${params}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch documents for name validation');
-        }
-
-        const data: DocumentListResponse = await response.json();
-        allDocuments = allDocuments.concat(data.documents);
-        
-        console.log(`📄 Fetched ${data.documents.length} documents, total so far: ${allDocuments.length}`);
-        
-        // If we got fewer documents than the limit, we've reached the end
-        if (data.documents.length < limit) {
-          break;
-        }
-        
-        offset += limit;
+      const params = new URLSearchParams();
+      params.append('title', title);
+      params.append('document_type', documentType);
+      if (excludeId) {
+        params.append('exclude_id', excludeId);
       }
       
-      console.log(`📊 Total documents fetched: ${allDocuments.length}`);
-      console.log('🔍 Checking for duplicates...');
+      const response = await fetch(`http://localhost:8000/api/documents/validate-title?${params}`);
+      if (!response.ok) {
+        throw new Error('Failed to validate title');
+      }
+
+      const data = await response.json();
+      console.log('📝 Title validation result:', data.is_unique ? 'UNIQUE' : 'DUPLICATE FOUND');
       
-      // Check if any document (excluding the current one being edited) has the same title
-      const duplicateExists = allDocuments.some(doc => {
-        const isSameTitle = doc.title.toLowerCase() === title.toLowerCase();
-        const isNotLink = doc.document_type !== 'link';
-        const isNotExcluded = doc.id !== excludeId;
-        
-        if (isSameTitle && isNotLink && isNotExcluded) {
-          console.log('⚠️ Found duplicate:', { 
-            docTitle: doc.title, 
-            docType: doc.document_type, 
-            docId: doc.id,
-            searchTitle: title,
-            excludeId 
-          });
-        }
-        
-        return isSameTitle && isNotLink && isNotExcluded;
-      });
-      
-      console.log('📝 Duplicate check result:', duplicateExists ? 'DUPLICATE FOUND' : 'UNIQUE');
-      
-      return !duplicateExists;
+      return data.is_unique;
     } catch (err) {
       console.error('❌ Error checking unique title:', err);
       // If we can't check, allow the operation and let the server handle it
@@ -266,17 +219,46 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setLoading(true);
       setError(null);
 
-      const params = new URLSearchParams();
-      params.append('folder_path', currentFolderPath);
-      params.append('limit', '50');
+      const startTime = performance.now();
 
-      const response = await fetch(`http://localhost:8000/api/documents?${params}`);
-      if (!response.ok) {
+      // Performance optimization: Check count first for fast empty state detection
+      const countParams = new URLSearchParams();
+      countParams.append('folder_path', currentFolderPath);
+
+      const countStart = performance.now();
+      const countResponse = await fetch(`http://localhost:8000/api/documents/count?${countParams}`);
+      if (!countResponse.ok) {
+        throw new Error('Failed to check document count');
+      }
+
+      const countData = await countResponse.json();
+      const countTime = performance.now() - countStart;
+      
+      // Early exit if no documents - much faster than loading full list
+      if (countData.count === 0) {
+        const totalTime = performance.now() - startTime;
+        console.log(`📈 Fast empty detection: ${countTime.toFixed(1)}ms count, ${totalTime.toFixed(1)}ms total`);
+        setAllDocuments([]);
+        return;
+      }
+
+      // If documents exist, fetch the full list
+      const listParams = new URLSearchParams();
+      listParams.append('folder_path', currentFolderPath);
+      listParams.append('limit', '50');
+
+      const listStart = performance.now();
+      const listResponse = await fetch(`http://localhost:8000/api/documents?${listParams}`);
+      if (!listResponse.ok) {
         throw new Error('Failed to fetch documents');
       }
 
-      const data: DocumentListResponse = await response.json();
-      setAllDocuments(data.documents.map(doc => ({ ...doc, selected: false })));
+      const listData: DocumentListResponse = await listResponse.json();
+      const listTime = performance.now() - listStart;
+      const totalTime = performance.now() - startTime;
+      
+      console.log(`📊 Document loading: ${countTime.toFixed(1)}ms count, ${listTime.toFixed(1)}ms list, ${totalTime.toFixed(1)}ms total (${listData.documents.length} docs)`);
+      setAllDocuments(listData.documents.map(doc => ({ ...doc, selected: false })));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load documents');
     } finally {
@@ -1379,7 +1361,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       </div>
 
       {/* Loading State */}
-      {loading && (
+      {loading && documents.length === 0 && (
         <div className="text-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
           <p className="mt-2 text-muted-foreground">Loading documents...</p>
@@ -1397,6 +1379,21 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       )}
 
 
+
+      {/* No Documents State */}
+      {!loading && !error && documents.length === 0 && (
+        <div className="text-center py-12">
+          <div className="text-muted-foreground mb-4">
+            <ScrollText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p className="text-lg">No documents found</p>
+            <p className="text-sm">Create your first document to get started</p>
+          </div>
+          <Button onClick={openCreateDialog} className="mt-4">
+            <Plus className="h-4 w-4 mr-2" />
+            Create Document
+          </Button>
+        </div>
+      )}
 
       {/* File System Style List View */}
       {!loading && !error && documents.length > 0 && (

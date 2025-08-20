@@ -88,10 +88,16 @@ async def websocket_processing_updates(
                 
             except Exception as e:
                 logger.error(f"Error handling message from client {actual_client_id}: {e}")
-                await manager._send_error_to_client(
-                    actual_client_id,
-                    f"Message processing error: {e}"
-                )
+                # Try to send error, but don't fail if client disconnected
+                try:
+                    await manager._send_error_to_client(
+                        actual_client_id,
+                        f"Message processing error: {e}"
+                    )
+                except Exception as send_error:
+                    logger.debug(f"Could not send error to disconnected client {actual_client_id}: {send_error}")
+                    # Client likely disconnected, break out of loop
+                    break
     
     except Exception as e:
         logger.error(f"WebSocket connection error: {e}")

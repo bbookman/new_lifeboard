@@ -16,13 +16,13 @@ from core.dependencies import get_dependency_registry
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="", tags=["settings"])
+router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # Settings API - JSON endpoints only
 # HTML settings page removed - frontend now uses React
 
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class SettingsResponse(BaseModel):
     settings: Dict[str, Any]
@@ -30,17 +30,96 @@ class SettingsResponse(BaseModel):
 class SettingsUpdateRequest(BaseModel):
     settings: Dict[str, Any]
 
-@router.get("/settings")
+class PromptSelectionRequest(BaseModel):
+    prompt_document_id: Optional[str] = None
+
+class PromptSelectionResponse(BaseModel):
+    prompt_document_id: Optional[str] = None
+    is_active: bool = True
+
+@router.get("/")
 async def get_settings() -> SettingsResponse:
     """Get application settings"""
     # For now, return empty settings - this can be expanded later
     return SettingsResponse(settings={})
 
-@router.put("/settings") 
+@router.put("/") 
 async def update_settings(request: SettingsUpdateRequest) -> Dict[str, bool]:
     """Update application settings"""
     # For now, just return success - this can be expanded later
     return {"success": True}
+
+@router.get("/prompt-selection")
+async def get_prompt_selection() -> PromptSelectionResponse:
+    """Get current prompt selection for daily summary"""
+    from core.dependencies import get_dependency_registry
+    
+    registry = get_dependency_registry()
+    startup_service = registry.get_startup_service()
+    
+    if not startup_service or not startup_service.database:
+        raise HTTPException(status_code=503, detail="Database service not available")
+    
+    try:
+        with startup_service.database.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT prompt_document_id, is_active
+                FROM prompt_settings 
+                WHERE setting_key = 'daily_summary_prompt' AND is_active = TRUE
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """)
+            row = cursor.fetchone()
+            
+            if row:
+                return PromptSelectionResponse(
+                    prompt_document_id=row['prompt_document_id'],
+                    is_active=bool(row['is_active'])
+                )
+            else:
+                return PromptSelectionResponse(
+                    prompt_document_id=None,
+                    is_active=True
+                )
+                
+    except Exception as e:
+        logger.error(f"Error getting prompt selection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get prompt selection")
+
+@router.post("/prompt-selection")
+async def save_prompt_selection(request: PromptSelectionRequest) -> Dict[str, bool]:
+    """Save prompt selection for daily summary"""
+    from core.dependencies import get_dependency_registry
+    
+    registry = get_dependency_registry()
+    startup_service = registry.get_startup_service()
+    
+    if not startup_service or not startup_service.database:
+        raise HTTPException(status_code=503, detail="Database service not available")
+    
+    try:
+        with startup_service.database.get_connection() as conn:
+            # First, deactivate any existing settings
+            conn.execute("""
+                UPDATE prompt_settings 
+                SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+                WHERE setting_key = 'daily_summary_prompt'
+            """)
+            
+            # Insert new setting if prompt_document_id provided
+            if request.prompt_document_id:
+                conn.execute("""
+                    INSERT INTO prompt_settings (setting_key, prompt_document_id, is_active)
+                    VALUES ('daily_summary_prompt', ?, TRUE)
+                """, (request.prompt_document_id,))
+            
+            conn.commit()
+            logger.info(f"Saved prompt selection: {request.prompt_document_id}")
+            return {"success": True}
+            
+    except Exception as e:
+        logger.error(f"Error saving prompt selection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save prompt selection")
 
 
 def get_twitter_source() -> TwitterSource:
