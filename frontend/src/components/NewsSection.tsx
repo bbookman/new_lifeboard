@@ -21,12 +21,12 @@ interface NewsSectionProps {
 const sampleNews: NewsArticle[] = [
   {
     id: "1",
-    headline: "Global Markets React to Economic Policy Changes",
-    summary: "Stock markets worldwide show mixed reactions following the announcement of new economic policies. Analysts predict continued volatility as markets adjust to the changing landscape.",
-    author: "Sarah Johnson",
-    timestamp: "1 hour ago",
-    category: "Business",
-    readTime: "3 min read",
+    headline: "",
+    summary: "",
+    author: "",
+    timestamp: "",
+    category: "",
+    readTime: "",
     breaking: true
   },
   {
@@ -91,32 +91,6 @@ export const NewsSection = ({ selectedDate }: NewsSectionProps) => {
               )}
               
               <div className="p-6">
-                <div className="flex items-center space-x-2 mb-3">
-                  <Badge variant="outline" className="text-xs">
-                    {article.category}
-                  </Badge>
-                  {article.breaking && index !== 0 && (
-                    <Badge className="bg-news-accent text-white text-xs">
-                      BREAKING
-                    </Badge>
-                  )}
-                  <span className="text-newspaper-byline text-xs">
-                    {article.readTime}
-                  </span>
-                </div>
-                
-                <h3 className={`font-headline font-bold text-newspaper-headline mb-3 leading-tight ${index === 0 ? 'text-2xl' : 'text-xl'}`}>
-                  {article.headline}
-                </h3>
-                
-                <p className="font-body text-newspaper-byline leading-relaxed mb-4">
-                  {article.summary}
-                </p>
-                
-                <div className="flex items-center justify-between text-sm text-newspaper-byline">
-                  <span className="font-medium">By {article.author}</span>
-                  <span>{article.timestamp}</span>
-                </div>
               </div>
             </Card>
           );
