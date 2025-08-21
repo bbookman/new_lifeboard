@@ -33,3 +33,9 @@ aiohttp>=3.8.0
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
 faker
+
+# Code Quality & Development Tools
+black>=23.0.0
+ruff>=0.1.0
+mypy>=1.5.0
+pre-commit>=3.0.0

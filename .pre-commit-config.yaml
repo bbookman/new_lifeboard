@@ -1,0 +1,88 @@
+repos:
+  # Python code quality
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        name: Format Python code (black)
+        language: python
+        pass_filenames: true
+        args: [--check, --diff]
+        
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.8
+    hooks:
+      - id: ruff
+        name: Lint Python code (ruff)
+        args: [--no-fix, --exit-non-zero-on-fix]
+        
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.7.1
+    hooks:
+      - id: mypy
+        name: Type check Python code (mypy)
+        args: [--no-error-summary, --ignore-missing-imports]
+        additional_dependencies: [types-requests]
+
+  # Frontend code quality
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: Lint frontend code (ESLint)
+        entry: bash -c 'cd frontend && npm run lint'
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+        
+      - id: typescript-check-frontend
+        name: Type check frontend code (TypeScript)
+        entry: bash -c 'cd frontend && npm run type-check'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+        
+      - id: prettier-frontend
+        name: Format check frontend code (Prettier)
+        entry: bash -c 'cd frontend && npm run format:check'
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx|json|css|md)$
+        pass_filenames: false
+
+  # General file quality
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        name: Remove trailing whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+        name: Fix end of file newlines
+      - id: check-yaml
+        name: Check YAML syntax
+      - id: check-json
+        name: Check JSON syntax
+        exclude: ^frontend/.*\.json$  # Frontend may have comments in JSON
+      - id: check-merge-conflict
+        name: Check for merge conflict markers
+      - id: mixed-line-ending
+        name: Fix mixed line endings
+
+# Configuration
+default_stages: [commit]
+fail_fast: false
+minimum_pre_commit_version: '3.0.0'
+
+# Performance: exclude heavy directories
+exclude: |
+  (?x)^(
+    node_modules/|
+    \.git/|
+    \.mypy_cache/|
+    \.pytest_cache/|
+    __pycache__/|
+    \.venv/|
+    venv/|
+    dist/|
+    build/|
+    \.tox/
+  ).*
