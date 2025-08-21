@@ -7,6 +7,7 @@ import { ChatView } from './components/ChatView'
 import { SettingsView } from './components/SettingsView'
 import { DocumentsView } from './components/DocumentsView'
 import { DateNavigation } from './components/DateNavigation'
+import { LimitlessExpandedView } from './components/LimitlessExpandedView'
 
 const navigationItems = [
   { id: 'day', label: 'Day', icon: '📅', path: '/day' },
@@ -18,6 +19,8 @@ const navigationItems = [
 function App() {
   const [activeView, setActiveView] = useState('day');
   const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
+  const [showLimitlessExpanded, setShowLimitlessExpanded] = useState(false);
+  const [limitlessExpandedContent, setLimitlessExpandedContent] = useState<string>('');
 
   const handleNavigation = (item: NavigationItem) => {
     setActiveView(item.id);
@@ -40,10 +43,23 @@ function App() {
     setSelectedDate(date);
   };
 
+  const handleExpandLimitless = (content: string) => {
+    setLimitlessExpandedContent(content);
+    setShowLimitlessExpanded(true);
+  };
+
+  const handleCloseLimitlessExpanded = () => {
+    setShowLimitlessExpanded(false);
+  };
+
   const renderMainContent = () => {
     switch (activeView) {
       case 'day':
-        return <DayView selectedDate={selectedDate} onDateChange={handleDateChange} />;
+        return <DayView 
+          selectedDate={selectedDate} 
+          onDateChange={handleDateChange} 
+          onExpandLimitless={handleExpandLimitless}
+        />;
       case 'calendar':
         return <CalendarView onDateSelect={handleDateSelect} />;
       case 'documents':
@@ -53,7 +69,11 @@ function App() {
       case 'settings':
         return <SettingsView />;
       default:
-        return <DayView selectedDate={selectedDate} onDateChange={handleDateChange} />;
+        return <DayView 
+          selectedDate={selectedDate} 
+          onDateChange={handleDateChange} 
+          onExpandLimitless={handleExpandLimitless}
+        />;
     }
   };
 
@@ -79,6 +99,15 @@ function App() {
       <div className="container mx-auto px-4 py-8">
         {renderMainContent()}
       </div>
+
+      {/* Limitless Expanded View Overlay */}
+      {showLimitlessExpanded && (
+        <LimitlessExpandedView
+          selectedDate={selectedDate}
+          content={limitlessExpandedContent}
+          onClose={handleCloseLimitlessExpanded}
+        />
+      )}
     </div>
   )
 }

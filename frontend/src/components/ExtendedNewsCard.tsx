@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { useLimitlessData } from "../hooks/useLimitlessData";
 import { useAutoFetch } from "../hooks/useAutoFetch";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { useEffect } from "react";
 
 interface ExtendedNewsCardProps {
   headline: string;
@@ -12,6 +13,7 @@ interface ExtendedNewsCardProps {
   readTime: string;
   breaking?: boolean;
   selectedDate?: string;
+  onContentLoad?: (content: string) => void;
 }
 
 /**
@@ -19,10 +21,17 @@ interface ExtendedNewsCardProps {
  * Displays limitless markdown content using custom hooks for better separation of concerns
  * This component is used within a Card wrapper in NewsSection, so no outer Card needed
  */
-export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, 'selectedDate'>) => {
+export const ExtendedNewsCard = ({ selectedDate, onContentLoad }: Pick<ExtendedNewsCardProps, 'selectedDate' | 'onContentLoad'>) => {
   // Use custom hooks for data management and auto-fetch logic
   const limitlessData = useLimitlessData();
   useAutoFetch(selectedDate, limitlessData);
+
+  // Notify parent when content loads
+  useEffect(() => {
+    if (limitlessData.markdownContent && onContentLoad) {
+      onContentLoad(limitlessData.markdownContent);
+    }
+  }, [limitlessData.markdownContent, onContentLoad]);
 
 
   return (
