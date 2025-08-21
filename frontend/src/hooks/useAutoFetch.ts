@@ -63,7 +63,7 @@ export const useAutoFetch = (
 
     // Update the ref to track the current value
     prevSelectedDateRef.current = selectedDate;
-  }, [selectedDate]);
+  }, [selectedDate, getTargetDate, limitlessData.clearContent, limitlessData.fetchData]);
 
   return {
     getTargetDate

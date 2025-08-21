@@ -10,6 +10,7 @@ import { useWebSocket, DayUpdateData } from "../hooks/useWebSocket";
 interface DayViewProps {
   selectedDate?: string;
   onDateChange?: (date: string) => void;
+  onExpandLimitless?: (content: string) => void;
 }
 
 /**
@@ -17,7 +18,7 @@ interface DayViewProps {
  * @param selectedDate - The date to display content for (YYYY-MM-DD format)
  * @param onDateChange - Callback when date changes
  */
-export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
+export const DayView = ({ selectedDate, onDateChange, onExpandLimitless }: DayViewProps) => {
   const [displayDate, setDisplayDate] = useState<string>('');
   const [dataRefreshTrigger, setDataRefreshTrigger] = useState<number>(0);
   
@@ -85,7 +86,11 @@ export const DayView = ({ selectedDate, onDateChange }: DayViewProps) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left column - News (main content) */}
         <div className="lg:col-span-2 lg:border-r lg:border-newspaper-divider lg:pr-8">
-          <NewsSection selectedDate={displayDate} key={`news-${displayDate}-${dataRefreshTrigger}`} />
+          <NewsSection 
+            selectedDate={displayDate} 
+            onExpandLimitless={onExpandLimitless}
+            key={`news-${displayDate}-${dataRefreshTrigger}`} 
+          />
         </div>
         
         {/* Right column - News feed, Twitter, and Music */}
