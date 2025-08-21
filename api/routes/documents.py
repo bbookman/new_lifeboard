@@ -126,6 +126,28 @@ class DocumentSearchResponse(BaseModel):
     query: str
 
 
+class ProcessTemplateRequest(BaseModel):
+    content: str = Field(..., description="Content with template variables to process")
+    target_date: Optional[str] = Field(None, description="Target date for template resolution (YYYY-MM-DD)")
+
+
+class ProcessTemplateResponse(BaseModel):
+    original_content: str
+    resolved_content: str
+    variables_resolved: int
+    errors: List[str]
+    
+    
+class ValidateTemplateResponse(BaseModel):
+    is_valid: bool
+    total_variables: int
+    valid_variables: List[str]
+    invalid_variables: List[str]
+    supported_sources: List[str]
+    supported_time_ranges: List[str]
+    error: Optional[str] = None
+
+
 # API Endpoints
 @router.post("", response_model=DocumentResponse)
 @handle_api_exceptions("Failed to create document", 500, include_details=True)
@@ -407,6 +429,103 @@ async def get_document_service_health(
     except Exception as e:
         logger.error(f"Error getting document service health: {e}")
         raise HTTPException(status_code=500, detail="Failed to get service health")
+
+
+# Template Processing Routes
+@router.post("/process-template", response_model=ProcessTemplateResponse)
+@handle_api_exceptions("Failed to process template", 500, include_details=True)
+async def process_template(
+    request: ProcessTemplateRequest,
+    document_service: DocumentService = Depends(get_document_service_for_route)
+) -> ProcessTemplateResponse:
+    """Process template variables in content"""
+    try:
+        resolved_content = document_service.process_template(
+            content=request.content,
+            target_date=request.target_date
+        )
+        
+        # Count resolved variables (simple heuristic)
+        import re
+        original_vars = len(re.findall(r'\{\{[A-Z_]+\}\}', request.content))
+        remaining_vars = len(re.findall(r'\{\{[A-Z_]+\}\}', resolved_content))
+        variables_resolved = original_vars - remaining_vars
+        
+        return ProcessTemplateResponse(
+            original_content=request.content,
+            resolved_content=resolved_content,
+            variables_resolved=variables_resolved,
+            errors=[]  # Errors are logged, not exposed in API for security
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing template: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process template")
+
+
+@router.post("/validate-template", response_model=ValidateTemplateResponse)  
+@handle_api_exceptions("Failed to validate template", 500, include_details=True)
+async def validate_template(
+    request: ProcessTemplateRequest,
+    document_service: DocumentService = Depends(get_document_service_for_route)
+) -> ValidateTemplateResponse:
+    """Validate template variables in content"""
+    try:
+        validation_result = document_service.validate_template(request.content)
+        
+        return ValidateTemplateResponse(
+            is_valid=validation_result["is_valid"],
+            total_variables=validation_result["total_variables"],
+            valid_variables=validation_result["valid_variables"],
+            invalid_variables=validation_result["invalid_variables"],
+            supported_sources=validation_result.get("supported_sources", []),
+            supported_time_ranges=validation_result.get("supported_time_ranges", []),
+            error=validation_result.get("error")
+        )
+        
+    except Exception as e:
+        logger.error(f"Error validating template: {e}")
+        raise HTTPException(status_code=500, detail="Failed to validate template")
+
+
+@router.post("/{document_id}/process-template", response_model=ProcessTemplateResponse)
+@handle_api_exceptions("Failed to process document template", 500, include_details=True)
+async def process_document_template(
+    document_id: str,
+    target_date: Optional[str] = None,
+    document_service: DocumentService = Depends(get_document_service_for_route)
+) -> ProcessTemplateResponse:
+    """Process template variables in a specific document"""
+    try:
+        # Get the document
+        document = document_service.get_document(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Process template in markdown content
+        resolved_content = document_service.process_template(
+            content=document.content_md,
+            target_date=target_date
+        )
+        
+        # Count resolved variables
+        import re
+        original_vars = len(re.findall(r'\{\{[A-Z_]+\}\}', document.content_md))
+        remaining_vars = len(re.findall(r'\{\{[A-Z_]+\}\}', resolved_content))
+        variables_resolved = original_vars - remaining_vars
+        
+        return ProcessTemplateResponse(
+            original_content=document.content_md,
+            resolved_content=resolved_content,
+            variables_resolved=variables_resolved,
+            errors=[]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing document template {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process document template")
 
 
 # Document ID routes - MUST BE LAST to avoid conflicts with named routes

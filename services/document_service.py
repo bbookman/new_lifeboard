@@ -920,6 +920,71 @@ class DocumentService(BaseService):
             logger.error(f"Error counting documents: {e}")
             return 0
     
+    def process_template(self, content: str, target_date: Optional[str] = None) -> str:
+        """
+        Process template variables in content and return resolved version
+        
+        Args:
+            content: The content containing template variables (e.g., {{LIMITLESS_DAY}})
+            target_date: The target date for template resolution (defaults to today)
+            
+        Returns:
+            Content with template variables resolved to actual data
+        """
+        try:
+            from services.template_processor import TemplateProcessor
+            
+            # Initialize template processor
+            template_processor = TemplateProcessor(
+                database=self.database,
+                config=self.config
+            )
+            
+            # Resolve template
+            result = template_processor.resolve_template(content, target_date)
+            
+            if result.errors:
+                logger.warning(f"Template processing errors: {result.errors}")
+            
+            logger.info(f"Processed template: {result.variables_resolved} variables resolved")
+            return result.resolved_content
+            
+        except Exception as e:
+            logger.error(f"Error processing template: {e}")
+            # Return original content on error
+            return content
+    
+    def validate_template(self, content: str) -> Dict[str, Any]:
+        """
+        Validate template variables in content without resolving them
+        
+        Args:
+            content: The content to validate
+            
+        Returns:
+            Dictionary with validation results
+        """
+        try:
+            from services.template_processor import TemplateProcessor
+            
+            # Initialize template processor
+            template_processor = TemplateProcessor(
+                database=self.database,
+                config=self.config
+            )
+            
+            return template_processor.validate_template(content)
+            
+        except Exception as e:
+            logger.error(f"Error validating template: {e}")
+            return {
+                "is_valid": False,
+                "error": str(e),
+                "total_variables": 0,
+                "valid_variables": [],
+                "invalid_variables": []
+            }
+    
     async def _check_service_health(self) -> Dict[str, Any]:
         """Check service health"""
         health_info = {

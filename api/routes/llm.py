@@ -71,32 +71,38 @@ async def generate_daily_summary(
     llm_service: LLMService = Depends(get_llm_service_for_route)
 ) -> GenerateSummaryResponse:
     """Generate daily summary using selected prompt and daily data"""
+    logger.info(f"Received request to generate summary for date: {request.days_date}, force_regenerate: {request.force_regenerate}")
     try:
         # Check for cached content first (unless force regenerate)
         if not request.force_regenerate:
+            logger.debug(f"Checking for cached summary for date: {request.days_date}")
             cached_content = await llm_service.get_cached_summary(request.days_date)
             if cached_content:
+                logger.info(f"Found cached summary for {request.days_date}. Returning cached content.")
                 return GenerateSummaryResponse(
                     success=True,
                     content=cached_content,
                     days_date=request.days_date,
-                    prompt_used="",  # We don't store prompt info for cached content
-                    model_info={},
+                    prompt_used="Cached",
+                    model_info={"provider": "cache"},
                     generation_time=0.0,
                     cached=True
                 )
-        
+            logger.info(f"No cached summary found for {request.days_date}.")
+
+        logger.info(f"Proceeding with new summary generation for {request.days_date}.")
         # Generate new summary
         result = await llm_service.generate_daily_summary(
             days_date=request.days_date,
             force_regenerate=request.force_regenerate
         )
         
+        logger.info(f"Successfully generated summary for {request.days_date}. Generation time: {result.generation_time:.2f}s")
         return GenerateSummaryResponse.from_generation_result(result, request.days_date)
         
     except Exception as e:
-        logger.error(f"Error generating daily summary: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate daily summary")
+        logger.error(f"Fatal error in generate_daily_summary endpoint for date {request.days_date}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate daily summary: {e}")
 
 
 @router.get("/summary/{days_date}", response_model=GetSummaryResponse)
