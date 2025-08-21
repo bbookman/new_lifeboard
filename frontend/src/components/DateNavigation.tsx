@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { format, subDays, addDays, isToday } from 'date-fns';
 import { Button } from "./ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { getTodayYYYYMMDD } from "../lib/utils";
+import { getTodayYYYYMMDD } from "@/lib/utils";
 
 interface DateNavigationProps {
   selectedDate?: string;

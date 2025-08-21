@@ -49,6 +49,14 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
   const [autoFetching, setAutoFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  const handleError = (message: string, status?: number) => {
+    let errorMessage = `Failed to fetch data: ${message}`;
+    if (status === 503) {
+      errorMessage += "\nAPI key may not have been set in .env";
+    }
+    setFetchError(errorMessage);
+  };
+
   /**
    * Extract markdown content from data items in priority order
    */
@@ -139,12 +147,11 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
         if (fetchResult.success) {
           console.log(`[useLimitlessData] Automatic fetch successful: ${fetchResult.message}`);
           
-          // Wait a moment for data to be processed, then refetch
-          setTimeout(async () => {
-            console.log(`[useLimitlessData] Refetching data after successful automatic fetch`);
-            
-            // Fetch data manually without auto-fetch to avoid loops
+          const refetchData = async () => {
             try {
+              console.log(`[useLimitlessData] Refetching data after successful automatic fetch`);
+              
+              // Fetch data manually without auto-fetch to avoid loops
               const timestamp = Date.now();
               const apiUrl = `http://localhost:8000/calendar/api/data_items/${targetDate}?namespaces=limitless&_t=${timestamp}`;
               const response = await fetch(apiUrl, {
@@ -166,21 +173,24 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
                     console.log(`[useLimitlessData] Refetch set markdown content length: ${combinedMarkdown.length}`);
                   }
                 }
+              } catch (error) {
+                console.error('[useLimitlessData] Error during refetch:', error);
               }
-            } catch (error) {
-              console.error('[useLimitlessData] Error during refetch:', error);
             }
-          }, 1000);
+          };
+
+          // Wait a moment for data to be processed, then refetch
+          setTimeout(refetchData, 1000);
           
         } else {
           console.error(`[useLimitlessData] Automatic fetch failed:`, fetchResult.message);
-          setFetchError(`Failed to fetch data: ${fetchResult.message}`);
+          handleError(fetchResult.message, fetchResponse.status);
           setMarkdownContent('');
         }
       } else {
         const errorText = await fetchResponse.text();
         console.error(`[useLimitlessData] Automatic fetch API error:`, fetchResponse.status, errorText);
-        setFetchError(`Failed to fetch data: ${fetchResponse.status} ${fetchResponse.statusText}`);
+        handleError(`${fetchResponse.status} ${fetchResponse.statusText}`, fetchResponse.status);
         setMarkdownContent('');
       }
       
@@ -224,7 +234,7 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
         const dateMismatchItems = dataItems.filter(item => item.days_date !== targetDate);
         if (dateMismatchItems.length > 0) {
           console.error(`[useLimitlessData] DATE MISMATCH! Found ${dateMismatchItems.length} items with wrong days_date:`, 
-            dateMismatchItems.map(item => ({id: item.id, days_date: item.days_date})));
+            dateMismatchItems.map(item => ({id: item.id, days_date: item.days_date})))
         }
         
         if (dataItems.length > 0) {
