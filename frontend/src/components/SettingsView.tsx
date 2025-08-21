@@ -51,7 +51,7 @@ export const SettingsView = () => {
   const handleSavePromptSelection = async () => {
     setLoading(true);
     setSaveStatus('saving');
-    
+
     try {
       const response = await fetch('/api/settings/prompt-selection', {
         method: 'POST',
@@ -59,7 +59,7 @@ export const SettingsView = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt_document_id: selectedPromptId || null
+          prompt_document_id: selectedPromptId || null,
         }),
       });
 
@@ -81,25 +81,32 @@ export const SettingsView = () => {
 
   const getSaveButtonText = () => {
     switch (saveStatus) {
-      case 'saving': return 'Saving...';
-      case 'success': return 'Saved!';
-      case 'error': return 'Error';
-      default: return 'Save';
+      case 'saving':
+        return 'Saving...';
+      case 'success':
+        return 'Saved!';
+      case 'error':
+        return 'Error';
+      default:
+        return 'Save';
     }
   };
 
   const getSaveButtonClass = () => {
-    const baseClass = "px-4 py-2 rounded font-medium transition-colors ";
+    const baseClass = 'px-4 py-2 rounded font-medium transition-colors ';
     const isDisabled = loading || saveStatus === 'saving' || prompts.length === 0 || selectedPromptId === '';
-    
+
     if (isDisabled) {
-      return baseClass + "bg-gray-400 text-white cursor-not-allowed";
+      return baseClass + 'bg-gray-400 text-white cursor-not-allowed';
     }
-    
+
     switch (saveStatus) {
-      case 'success': return baseClass + "bg-green-500 text-white";
-      case 'error': return baseClass + "bg-red-500 text-white";
-      default: return baseClass + "bg-blue-500 text-white hover:bg-blue-600";
+      case 'success':
+        return baseClass + 'bg-green-500 text-white';
+      case 'error':
+        return baseClass + 'bg-red-500 text-white';
+      default:
+        return baseClass + 'bg-blue-500 text-white hover:bg-blue-600';
     }
   };
 
@@ -121,12 +128,12 @@ export const SettingsView = () => {
         </div>
         <div className="card-content space-y-4">
           <p className="text-muted">Select a prompt to generate daily summaries with AI</p>
-          
+
           <div className="flex flex-col space-y-3">
             <label htmlFor="prompt-select" className="text-sm font-medium">
               Select daily summary prompt:
             </label>
-            
+
             <select
               id="prompt-select"
               value={selectedPromptId}
@@ -141,7 +148,7 @@ export const SettingsView = () => {
                 </option>
               ))}
             </select>
-            
+
             <button
               onClick={handleSavePromptSelection}
               disabled={loading || saveStatus === 'saving' || prompts.length === 0 || selectedPromptId === ''}
@@ -150,7 +157,7 @@ export const SettingsView = () => {
               {getSaveButtonText()}
             </button>
           </div>
-          
+
           {prompts.length === 0 && (
             <p className="text-sm text-gray-500">
               No prompts available. Create prompts in the Documents section first.

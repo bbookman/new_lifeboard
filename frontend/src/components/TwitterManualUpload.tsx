@@ -1,4 +1,3 @@
-
 import { useRef, useState } from 'react';
 
 export const TwitterManualUpload = () => {
@@ -66,18 +65,8 @@ export const TwitterManualUpload = () => {
 
   return (
     <div>
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileChange}
-        style={{ display: 'none' }}
-        accept=".zip"
-      />
-      <button
-        className="button button-primary"
-        onClick={handleButtonClick}
-        disabled={uploading}
-      >
+      <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} accept=".zip" />
+      <button className="button button-primary" onClick={handleButtonClick} disabled={uploading}>
         {uploading ? 'Uploading...' : 'Upload'}
       </button>
       {uploadMessage && <p className="text-muted mt-2">{uploadMessage}</p>}

@@ -1,6 +1,6 @@
-import { ContentCard, ContentItemData, DailySummaryData } from "./ContentCard";
-import { useEffect, useState } from "react";
-import { fetchNewsForDate, NewsArticle as ApiNewsArticle } from "@/lib/api";
+import { ContentCard, ContentItemData, DailySummaryData } from './ContentCard';
+import { useEffect, useState } from 'react';
+import { fetchNewsForDate, NewsArticle as ApiNewsArticle } from '@/lib/api';
 
 interface NewsFeedProps {
   selectedDate?: string;
@@ -8,18 +8,18 @@ interface NewsFeedProps {
 
 // Sample data with the new structure - keeping the daily summary for now
 const sampleDailySummary: DailySummaryData = {
-  type: "daily-summary",
+  type: 'daily-summary',
   date: new Date().toISOString().split('T')[0],
   totalItems: 47,
   highlights: [
-    "Had a productive morning meeting with the team",
-    "Discovered an interesting article about AI developments",
-    "Enjoyed a great lunch conversation about sustainability",
-    "Made significant progress on the quarterly project"
+    'Had a productive morning meeting with the team',
+    'Discovered an interesting article about AI developments',
+    'Enjoyed a great lunch conversation about sustainability',
+    'Made significant progress on the quarterly project',
   ],
-  keyThemes: ["Productivity", "Technology", "Sustainability", "Teamwork", "Innovation"],
+  keyThemes: ['Productivity', 'Technology', 'Sustainability', 'Teamwork', 'Innovation'],
   moodScore: 8,
-  weatherSummary: "Pleasant day with partly cloudy skies, perfect for outdoor activities"
+  weatherSummary: 'Pleasant day with partly cloudy skies, perfect for outdoor activities',
 };
 
 /**
@@ -28,14 +28,14 @@ const sampleDailySummary: DailySummaryData = {
 const convertNewsToContentItem = (apiArticle: ApiNewsArticle, index: number): ContentItemData => {
   // Extract news source from link domain or use fallback
   const getNewsSource = (link?: string): string => {
-    if (!link) return "News Source";
+    if (!link) return 'News Source';
     try {
       const url = new URL(link);
       const domain = url.hostname.replace('www.', '');
       // Capitalize first letter
       return domain.charAt(0).toUpperCase() + domain.slice(1);
     } catch {
-      return "News Source";
+      return 'News Source';
     }
   };
 
@@ -45,9 +45,9 @@ const convertNewsToContentItem = (apiArticle: ApiNewsArticle, index: number): Co
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    
+
     if (diffHours < 1) {
-      return "Just now";
+      return 'Just now';
     } else if (diffHours < 24) {
       return `${diffHours}h`;
     } else {
@@ -57,17 +57,17 @@ const convertNewsToContentItem = (apiArticle: ApiNewsArticle, index: number): Co
   };
 
   const newsSource = getNewsSource(apiArticle.link);
-  
+
   return {
-    type: "content-item",
+    type: 'content-item',
     id: `news-${index}`,
     username: newsSource,
     handle: `@${newsSource.toLowerCase().replace(/\s+/g, '')}`,
     content: `${apiArticle.title}\n\n${apiArticle.snippet || apiArticle.content.substring(0, 200)}...`,
     timestamp: formatTimestamp(apiArticle.created_at || apiArticle.published_datetime_utc || new Date().toISOString()),
     verified: true,
-    source: "news",
-    url: apiArticle.link
+    source: 'news',
+    url: apiArticle.link,
   };
 };
 
@@ -85,7 +85,7 @@ export const NewsFeed = ({ selectedDate }: NewsFeedProps) => {
   useEffect(() => {
     const fetchNews = async () => {
       console.log(`[NewsFeed] useEffect triggered with selectedDate: ${selectedDate}`);
-      
+
       if (!selectedDate) {
         console.log(`[NewsFeed] No selectedDate provided, setting loading to false`);
         setLoading(false);
@@ -95,18 +95,18 @@ export const NewsFeed = ({ selectedDate }: NewsFeedProps) => {
       try {
         setLoading(true);
         setError(null);
-        
+
         console.log(`[NewsFeed] Fetching news for date: ${selectedDate}`);
         const apiArticles = await fetchNewsForDate(selectedDate);
         console.log(`[NewsFeed] Fetched ${apiArticles.length} articles:`, apiArticles);
-        
+
         // Convert API articles to ContentItemData format
         const contentItems = apiArticles.map((article, index) => {
           const converted = convertNewsToContentItem(article, index);
           console.log(`[NewsFeed] Converted article ${index}:`, converted);
           return converted;
         });
-        
+
         console.log(`[NewsFeed] Setting ${contentItems.length} content items`);
         setNewsItems(contentItems);
       } catch (err) {
@@ -124,40 +124,38 @@ export const NewsFeed = ({ selectedDate }: NewsFeedProps) => {
   // Update the daily summary date to match the selected date
   const dailySummary: DailySummaryData = {
     ...sampleDailySummary,
-    date: selectedDate || new Date().toISOString().split('T')[0]
+    date: selectedDate || new Date().toISOString().split('T')[0],
   };
-  
+
   return (
     <div className="space-y-6">
       <div className="space-y-4">
         {/* Daily Summary Card (top-most) */}
         <ContentCard data={dailySummary} />
-        
+
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center p-8">
             <div className="text-newspaper-byline">Loading news articles...</div>
           </div>
         )}
-        
+
         {/* Error state */}
         {error && (
           <div className="flex items-center justify-center p-8">
             <div className="text-red-600">Error: {error}</div>
           </div>
         )}
-        
+
         {/* No data state */}
         {!loading && !error && newsItems.length === 0 && (
           <div className="flex items-center justify-center p-8">
             <div className="text-newspaper-byline">No news articles available for {selectedDate}</div>
           </div>
         )}
-        
+
         {/* News Content Cards */}
-        {!loading && !error && newsItems.map((newsItem) => (
-          <ContentCard key={newsItem.id} data={newsItem} />
-        ))}
+        {!loading && !error && newsItems.map((newsItem) => <ContentCard key={newsItem.id} data={newsItem} />)}
       </div>
     </div>
   );

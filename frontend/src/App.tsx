@@ -1,13 +1,13 @@
-import { useState } from 'react'
-import { NewspaperMasthead } from './components/NewspaperMasthead'
-import { NavigationSidebar, type NavigationItem } from './components/NavigationSidebar'
-import { CalendarView } from './components/CalendarView'
-import { DayView } from './components/DayView'
-import { ChatView } from './components/ChatView'
-import { SettingsView } from './components/SettingsView'
-import { DocumentsView } from './components/DocumentsView'
-import { DateNavigation } from './components/DateNavigation'
-import { LimitlessExpandedView } from './components/LimitlessExpandedView'
+import { useState } from 'react';
+import { NewspaperMasthead } from './components/NewspaperMasthead';
+import { NavigationSidebar, type NavigationItem } from './components/NavigationSidebar';
+import { CalendarView } from './components/CalendarView';
+import { DayView } from './components/DayView';
+import { ChatView } from './components/ChatView';
+import { SettingsView } from './components/SettingsView';
+import { DocumentsView } from './components/DocumentsView';
+import { DateNavigation } from './components/DateNavigation';
+import { LimitlessExpandedView } from './components/LimitlessExpandedView';
 
 const navigationItems = [
   { id: 'day', label: 'Day', icon: '📅', path: '/day' },
@@ -55,11 +55,13 @@ function App() {
   const renderMainContent = () => {
     switch (activeView) {
       case 'day':
-        return <DayView 
-          selectedDate={selectedDate} 
-          onDateChange={handleDateChange} 
-          onExpandLimitless={handleExpandLimitless}
-        />;
+        return (
+          <DayView
+            selectedDate={selectedDate}
+            onDateChange={handleDateChange}
+            onExpandLimitless={handleExpandLimitless}
+          />
+        );
       case 'calendar':
         return <CalendarView onDateSelect={handleDateSelect} />;
       case 'documents':
@@ -69,22 +71,24 @@ function App() {
       case 'settings':
         return <SettingsView />;
       default:
-        return <DayView 
-          selectedDate={selectedDate} 
-          onDateChange={handleDateChange} 
-          onExpandLimitless={handleExpandLimitless}
-        />;
+        return (
+          <DayView
+            selectedDate={selectedDate}
+            onDateChange={handleDateChange}
+            onExpandLimitless={handleExpandLimitless}
+          />
+        );
     }
   };
 
   return (
     <div className="min-h-screen bg-background font-body">
-                <NewspaperMasthead selectedDate={selectedDate} />
-      
+      <NewspaperMasthead selectedDate={selectedDate} />
+
       {/* Horizontal Navigation Bar */}
       <div className="flex justify-between items-center w-full px-4 py-2 bg-white shadow-md">
         <NavigationSidebar
-          items={navigationItems.filter(item => item.id !== 'chat')}
+          items={navigationItems.filter((item) => item.id !== 'chat')}
           activeItem={activeView}
           onItemClick={handleNavigation}
         />
@@ -94,11 +98,9 @@ function App() {
           isDayViewActive={activeView === 'day'}
         />
       </div>
-      
+
       {/* Main Content Area */}
-      <div className="container mx-auto px-4 py-8">
-        {renderMainContent()}
-      </div>
+      <div className="container mx-auto px-4 py-8">{renderMainContent()}</div>
 
       {/* Limitless Expanded View Overlay */}
       {showLimitlessExpanded && (
@@ -109,7 +111,7 @@ function App() {
         />
       )}
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

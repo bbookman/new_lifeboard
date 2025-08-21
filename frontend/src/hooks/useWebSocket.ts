@@ -49,7 +49,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     onError,
     onDayUpdate,
     reconnectAttempts = 5,
-    reconnectInterval = 3000
+    reconnectInterval = 3000,
   } = options;
 
   const [isConnected, setIsConnected] = useState(false);
@@ -71,105 +71,120 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     }
   }, []);
 
-  const subscribe = useCallback((topics: string[]) => {
-    sendMessage({
-      type: 'subscription',
-      data: { topics }
-    });
-  }, [sendMessage]);
+  const subscribe = useCallback(
+    (topics: string[]) => {
+      sendMessage({
+        type: 'subscription',
+        data: { topics },
+      });
+    },
+    [sendMessage],
+  );
 
-  const unsubscribe = useCallback((topics: string[]) => {
-    sendMessage({
-      type: 'unsubscription',
-      data: { topics }
-    });
-  }, [sendMessage]);
+  const unsubscribe = useCallback(
+    (topics: string[]) => {
+      sendMessage({
+        type: 'unsubscription',
+        data: { topics },
+      });
+    },
+    [sendMessage],
+  );
 
-  const handleMessage = useCallback((event: MessageEvent) => {
-    try {
-      const message: WebSocketMessage = JSON.parse(event.data);
-      setLastMessage(message);
+  const handleMessage = useCallback(
+    (event: MessageEvent) => {
+      try {
+        const message: WebSocketMessage = JSON.parse(event.data);
+        setLastMessage(message);
 
-      console.log('[useWebSocket] Received message:', message);
+        console.log('[useWebSocket] Received message:', message);
 
-      // Handle different message types
-      switch (message.type) {
-        case 'day_update':
-          if (onDayUpdate) {
-            onDayUpdate(message.data as DayUpdateData);
-          }
-          break;
-        
-        case 'heartbeat':
-          // Respond to heartbeat if it's a ping
-          if (message.data?.status === 'ping') {
-            sendMessage({
-              type: 'heartbeat',
-              data: { status: 'pong' }
-            });
-          }
-          break;
-        
-        case 'subscription':
-          console.log('[useWebSocket] Subscription confirmed:', message.data);
-          break;
-        
-        case 'error':
-          console.error('[useWebSocket] Server error:', message.data);
-          break;
-        
-        default:
-          console.log('[useWebSocket] Unhandled message type:', message.type);
+        // Handle different message types
+        switch (message.type) {
+          case 'day_update':
+            if (onDayUpdate) {
+              onDayUpdate(message.data as DayUpdateData);
+            }
+            break;
+
+          case 'heartbeat':
+            // Respond to heartbeat if it's a ping
+            if (message.data?.status === 'ping') {
+              sendMessage({
+                type: 'heartbeat',
+                data: { status: 'pong' },
+              });
+            }
+            break;
+
+          case 'subscription':
+            console.log('[useWebSocket] Subscription confirmed:', message.data);
+            break;
+
+          case 'error':
+            console.error('[useWebSocket] Server error:', message.data);
+            break;
+
+          default:
+            console.log('[useWebSocket] Unhandled message type:', message.type);
+        }
+      } catch (error) {
+        console.error('[useWebSocket] Error parsing message:', error);
       }
-    } catch (error) {
-      console.error('[useWebSocket] Error parsing message:', error);
-    }
-  }, [onDayUpdate, sendMessage]);
+    },
+    [onDayUpdate, sendMessage],
+  );
 
   const handleOpen = useCallback(() => {
     console.log('[useWebSocket] Connected to WebSocket');
     setIsConnected(true);
     reconnectCountRef.current = 0;
-    
+
     // Auto-subscribe to day updates
     setTimeout(() => {
       subscribe(['day_updates', 'processing_updates']);
     }, 100);
-    
+
     if (onConnect) {
       onConnect();
     }
   }, [onConnect, subscribe]);
 
-  const handleClose = useCallback((event: CloseEvent) => {
-    console.log('[useWebSocket] WebSocket closed:', event.code, event.reason);
-    setIsConnected(false);
-    wsRef.current = null;
-    
-    if (onDisconnect) {
-      onDisconnect();
-    }
-    
-    // Attempt reconnection if we should be connected and haven't exceeded attempts
-    if (shouldConnectRef.current && reconnectCountRef.current < reconnectAttempts) {
-      reconnectCountRef.current += 1;
-      console.log(`[useWebSocket] Attempting reconnection ${reconnectCountRef.current}/${reconnectAttempts}`);
-      
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
-      }, reconnectInterval);
-    } else if (reconnectCountRef.current >= reconnectAttempts) {
-      console.error('[useWebSocket] Maximum reconnection attempts reached');
-    }
-  }, [onDisconnect, reconnectAttempts, reconnectInterval]);
+  const handleClose = useCallback(
+    (event: CloseEvent) => {
+      console.log('[useWebSocket] WebSocket closed:', event.code, event.reason);
+      setIsConnected(false);
+      wsRef.current = null;
 
-  const handleError = useCallback((error: Event) => {
-    console.error('[useWebSocket] WebSocket error:', error);
-    
-    if (onError) {
-      onError(error);
-    }
-  }, [onError]);
+      if (onDisconnect) {
+        onDisconnect();
+      }
+
+      // Attempt reconnection if we should be connected and haven't exceeded attempts
+      if (shouldConnectRef.current && reconnectCountRef.current < reconnectAttempts) {
+        reconnectCountRef.current += 1;
+        console.log(`[useWebSocket] Attempting reconnection ${reconnectCountRef.current}/${reconnectAttempts}`);
+
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connect();
+        }, reconnectInterval);
+      } else if (reconnectCountRef.current >= reconnectAttempts) {
+        console.error('[useWebSocket] Maximum reconnection attempts reached');
+      }
+    },
+    [onDisconnect, reconnectAttempts, reconnectInterval],
+  );
+
+  const handleError = useCallback(
+    (error: Event) => {
+      console.error('[useWebSocket] WebSocket error:', error);
+
+      if (onError) {
+        onError(error);
+      }
+    },
+    [onError],
+  );
 
   const connect = useCallback(() => {
     // Close existing connection if any
@@ -180,12 +195,12 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     try {
       console.log('[useWebSocket] Connecting to:', url);
       const ws = new WebSocket(url);
-      
+
       ws.onopen = handleOpen;
       ws.onmessage = handleMessage;
       ws.onclose = handleClose;
       ws.onerror = handleError;
-      
+
       wsRef.current = ws;
       shouldConnectRef.current = true;
     } catch (error) {
@@ -195,19 +210,19 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
 
   const disconnect = useCallback(() => {
     shouldConnectRef.current = false;
-    
+
     // Clear reconnection timeout
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    
+
     // Close WebSocket connection
     if (wsRef.current) {
       wsRef.current.close(1000, 'Client disconnect');
       wsRef.current = null;
     }
-    
+
     setIsConnected(false);
   }, []);
 
@@ -230,6 +245,6 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     connect,
     disconnect,
     subscribe,
-    unsubscribe
+    unsubscribe,
   };
 };

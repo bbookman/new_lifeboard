@@ -1,15 +1,15 @@
-import { Card } from "@/components/ui/card";
-import { Avatar } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ChevronDown, Clock } from "lucide-react";
-import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Card } from '@/components/ui/card';
+import { Avatar } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ChevronDown, Clock } from 'lucide-react';
+import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // Data type definitions
 export interface DailySummaryData {
-  type: "daily-summary";
+  type: 'daily-summary';
   date: string;
   totalItems: number;
   highlights: string[];
@@ -19,7 +19,7 @@ export interface DailySummaryData {
 }
 
 export interface ContentItemData {
-  type: "content-item";
+  type: 'content-item';
   id: string;
   username?: string;
   handle?: string;
@@ -28,14 +28,14 @@ export interface ContentItemData {
   likes?: number;
   retweets?: number;
   verified?: boolean;
-  source: "twitter" | "news" | "limitless" | "music" | "photo";
+  source: 'twitter' | 'news' | 'limitless' | 'music' | 'photo';
   url?: string;
   hasMedia?: boolean;
   mediaUrl?: string;
 }
 
 export interface LimitlessContentData {
-  type: "limitless";
+  type: 'limitless';
   id: string;
   title?: string;
   timestamp: string;
@@ -86,10 +86,6 @@ interface ContentCardProps {
 const DailySummaryContent = ({ data }: { data: DailySummaryData }) => {
   return (
     <div className="space-y-4">
-      
-
-      
-
       {/* Weather Summary */}
       <div>
         <h3 className="font-body font-semibold text-newspaper-headline mb-2">Weather</h3>
@@ -127,11 +123,16 @@ const DailySummaryContent = ({ data }: { data: DailySummaryData }) => {
 const ContentItemContent = ({ data }: { data: ContentItemData }) => {
   const getSourceAccentColor = (source: string) => {
     switch (source) {
-      case 'twitter': return 'social-accent';
-      case 'news': return 'news-accent';
-      case 'music': return 'music-accent';
-      case 'photo': return 'photo-accent';
-      default: return 'primary';
+      case 'twitter':
+        return 'social-accent';
+      case 'news':
+        return 'news-accent';
+      case 'music':
+        return 'music-accent';
+      case 'photo':
+        return 'photo-accent';
+      default:
+        return 'primary';
     }
   };
 
@@ -156,9 +157,9 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
           <>
             <div className="flex items-center space-x-2 mb-1">
               {data.url ? (
-                <a 
-                  href={data.url} 
-                  target="_blank" 
+                <a
+                  href={data.url}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="font-body font-semibold text-blue-600 underline text-base"
                 >
@@ -170,8 +171,10 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
                 </span>
               )}
             </div>
-          
-            <div className={`font-body text-newspaper-headline leading-relaxed mb-3 ${!data.hasMedia ? 'flex-1 flex items-center' : ''}`}>
+
+            <div
+              className={`font-body text-newspaper-headline leading-relaxed mb-3 ${!data.hasMedia ? 'flex-1 flex items-center' : ''}`}
+            >
               <p className={`${!data.hasMedia ? 'text-lg' : 'text-base'}`}>
                 {extractContentWithoutTitle(data.content)}
               </p>
@@ -181,14 +184,14 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
             {data.hasMedia && data.mediaUrl && (
               <div className="flex-1 flex flex-col mb-3">
                 <div className="flex-1 bg-gray-100 p-4 rounded-lg border-2 border-blue-200 flex items-center justify-center">
-                  <img 
+                  <img
                     src={data.mediaUrl}
                     alt="Tweet media"
                     className="max-w-full max-h-full rounded-lg border-2 border-red-500 hover:opacity-90 transition-opacity cursor-pointer"
-                    style={{ 
+                    style={{
                       backgroundColor: '#e5e7eb',
                       objectFit: 'contain',
-                      display: 'block'
+                      display: 'block',
                     }}
                     onClick={() => {
                       // Open image in new tab when clicked
@@ -196,7 +199,9 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
                     }}
                     onLoad={(e) => {
                       console.log(`✅ [ContentCard] Successfully loaded media: ${data.mediaUrl}`);
-                      console.log(`✅ [ContentCard] Image dimensions: ${e.currentTarget.naturalWidth}x${e.currentTarget.naturalHeight}`);
+                      console.log(
+                        `✅ [ContentCard] Image dimensions: ${e.currentTarget.naturalWidth}x${e.currentTarget.naturalHeight}`,
+                      );
                       const target = e.currentTarget as HTMLImageElement;
                       target.style.backgroundColor = 'white';
                       target.style.borderColor = '#10b981'; // Green border when loaded
@@ -204,20 +209,21 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
                     onError={(e) => {
                       console.error(`❌ [ContentCard] Failed to load media: ${data.mediaUrl}`);
                       console.error(`❌ [ContentCard] Error event:`, e);
-                      
+
                       // Test the URL directly
                       fetch(data.mediaUrl!, { method: 'HEAD', mode: 'no-cors' })
                         .then(() => console.log(`🌐 [ContentCard] URL is accessible via fetch: ${data.mediaUrl}`))
-                        .catch(err => console.error(`🌐 [ContentCard] URL failed via fetch: ${data.mediaUrl}`, err));
-                      
+                        .catch((err) => console.error(`🌐 [ContentCard] URL failed via fetch: ${data.mediaUrl}`, err));
+
                       const target = e.currentTarget as HTMLImageElement;
                       target.style.borderColor = '#ef4444'; // Red border on error
                       target.style.backgroundColor = '#fef2f2'; // Light red background
-                      
+
                       // Show error message instead of broken image
                       const errorDiv = document.createElement('div');
                       errorDiv.textContent = `Failed to load image: ${data.mediaUrl}`;
-                      errorDiv.style.cssText = 'padding: 10px; text-align: center; color: #ef4444; font-size: 12px; word-break: break-all;';
+                      errorDiv.style.cssText =
+                        'padding: 10px; text-align: center; color: #ef4444; font-size: 12px; word-break: break-all;';
                       target.style.display = 'none';
                       target.parentNode?.appendChild(errorDiv);
                     }}
@@ -232,7 +238,7 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
                 ⚠️ Has media but no URL available
               </div>
             )}
-          
+
             {(data.likes !== undefined || data.retweets !== undefined) && (
               <div className="flex space-x-6 text-newspaper-byline text-sm">
                 {data.likes !== undefined && (
@@ -245,9 +251,7 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
                     ↻ {data.retweets.toLocaleString()}
                   </span>
                 )}
-                <span className={`hover:text-${accentColor} cursor-pointer transition-colors`}>
-                  ⤴ Share
-                </span>
+                <span className={`hover:text-${accentColor} cursor-pointer transition-colors`}>⤴ Share</span>
               </div>
             )}
           </>
@@ -260,7 +264,7 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
 const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
   const [viewMode, setViewMode] = useState<'condensed' | 'full'>('condensed');
   const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set());
-  
+
   const toggleClusterExpansion = (clusterId: string) => {
     const newExpanded = new Set(expandedClusters);
     if (newExpanded.has(clusterId)) {
@@ -277,7 +281,7 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-headline text-lg font-semibold text-newspaper-headline">
-            {data.title || "Conversation"}
+            {data.title || 'Conversation'}
           </h3>
           <div className="flex items-center space-x-2 mt-1">
             <Clock className="w-3 h-3 text-newspaper-byline" />
@@ -297,11 +301,11 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
           </Button>
         </div>
       </div>
-      
+
       {/* Semantic density indicator */}
       <div className="space-y-1">
         <div className="w-full bg-muted rounded-full h-2">
-          <div 
+          <div
             className="bg-primary h-2 rounded-full transition-all"
             style={{ width: `${data.semanticMetadata.semanticDensity * 100}%` }}
           />
@@ -311,7 +315,7 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
           <span>{data.semanticMetadata.clustersFound} patterns found</span>
         </div>
       </div>
-      
+
       {/* Conversation content */}
       <div className="space-y-3">
         {data.displayConversation.map((node, index) => (
@@ -324,12 +328,12 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
           />
         ))}
       </div>
-      
+
       {/* Theme summary */}
       {data.semanticMetadata.uniqueThemes.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-3 border-t border-muted">
           <span className="text-xs text-muted-foreground font-medium">Themes:</span>
-          {data.semanticMetadata.uniqueThemes.map(theme => (
+          {data.semanticMetadata.uniqueThemes.map((theme) => (
             <Badge key={theme} variant="outline" className="text-xs">
               {theme.replace('_', ' ')}
             </Badge>
@@ -340,11 +344,11 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
   );
 };
 
-const ConversationNode = ({ 
-  node, 
-  clusters, 
-  expanded, 
-  onToggleExpand 
+const ConversationNode = ({
+  node,
+  clusters,
+  expanded,
+  onToggleExpand,
 }: {
   node: ConversationNode;
   clusters: Record<string, SemanticClusterData>;
@@ -352,59 +356,53 @@ const ConversationNode = ({
   onToggleExpand: (clusterId: string) => void;
 }) => {
   const cluster = node.representsCluster ? clusters[node.representsCluster] : null;
-  
+
   return (
     <div className="conversation-node">
       <div className="flex items-start space-x-3">
         <Avatar className="w-8 h-8 flex-shrink-0">
           <div className="w-full h-full bg-social-accent rounded-full flex items-center justify-center">
-            <span className="text-white font-bold text-sm">
-              {node.speaker?.charAt(0) || '?'}
-            </span>
+            <span className="text-white font-bold text-sm">{node.speaker?.charAt(0) || '?'}</span>
           </div>
         </Avatar>
-        
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-2 mb-1">
             <span className="font-semibold text-sm text-newspaper-headline">{node.speaker}</span>
-            <span className="text-xs text-newspaper-byline">
-              {new Date(node.timestamp).toLocaleTimeString()}
-            </span>
-            
+            <span className="text-xs text-newspaper-byline">{new Date(node.timestamp).toLocaleTimeString()}</span>
+
             {node.isDeduplicated && node.hiddenVariations && node.hiddenVariations > 0 && (
               <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
                 +{node.hiddenVariations} similar
               </Badge>
             )}
-            
+
             {node.canonicalConfidence && (
               <Badge variant="outline" className="text-xs">
                 {Math.round(node.canonicalConfidence * 100)}% confidence
               </Badge>
             )}
           </div>
-          
-          <div className="prose prose-sm max-w-none mb-2 text-newspaper-headline
+
+          <div
+            className="prose prose-sm max-w-none mb-2 text-newspaper-headline
             prose-headings:text-newspaper-headline
             prose-p:text-newspaper-headline
             prose-p:leading-relaxed
             prose-ul:list-none
             prose-ul:pl-0
             prose-li:pl-0
-            prose-li:mb-1">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {node.content}
-            </ReactMarkdown>
+            prose-li:mb-1"
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{node.content}</ReactMarkdown>
           </div>
-          
+
           {node.replacedOriginal && (
             <div className="prose prose-xs max-w-none text-muted-foreground italic mb-2">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {`(Replaced: "${node.replacedOriginal}")`}
-              </ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{`(Replaced: "${node.replacedOriginal}")`}</ReactMarkdown>
             </div>
           )}
-          
+
           {/* Cluster expansion */}
           {cluster && node.hiddenVariations && node.hiddenVariations > 0 && (
             <Button
@@ -417,7 +415,7 @@ const ConversationNode = ({
               <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${expanded ? 'rotate-180' : ''}`} />
             </Button>
           )}
-          
+
           {expanded && cluster && cluster.variations.length > 0 && (
             <div className="mt-2 pl-4 border-l-2 border-primary/20 space-y-2">
               {cluster.variations.map((variation, index) => (
@@ -441,12 +439,12 @@ const ConversationNode = ({
   );
 };
 
-export const ContentCard = ({ data, className = "" }: ContentCardProps) => {
+export const ContentCard = ({ data, className = '' }: ContentCardProps) => {
   return (
     <Card className={`p-4 hover:shadow-lg transition-shadow h-full flex flex-col ${className}`}>
-      {data.type === "daily-summary" ? (
+      {data.type === 'daily-summary' ? (
         <DailySummaryContent data={data} />
-      ) : data.type === "limitless" ? (
+      ) : data.type === 'limitless' ? (
         <LimitlessContent data={data} />
       ) : (
         <ContentItemContent data={data} />

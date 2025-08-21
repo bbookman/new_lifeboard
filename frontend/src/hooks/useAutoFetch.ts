@@ -7,7 +7,7 @@ import { LimitlessDataActions, LimitlessDataState } from './useLimitlessData';
  */
 export const useAutoFetch = (
   selectedDate: string | undefined,
-  limitlessData: LimitlessDataState & LimitlessDataActions
+  limitlessData: LimitlessDataState & LimitlessDataActions,
 ) => {
   const prevSelectedDateRef = useRef<string | undefined>();
 
@@ -20,7 +20,7 @@ export const useAutoFetch = (
       console.log(`[useAutoFetch] Using selectedDate: ${dateInput}`);
       return dateInput;
     }
-    
+
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -46,17 +46,17 @@ export const useAutoFetch = (
       loading: limitlessData.loading,
       fetchAttempted: Array.from(limitlessData.fetchAttempted),
       autoFetching: limitlessData.autoFetching,
-      fetchError: limitlessData.fetchError
+      fetchError: limitlessData.fetchError,
     });
-    
+
     const targetDate = getTargetDate(selectedDate);
-    
+
     // Reset state when date changes
     if (selectedDate) {
       console.log(`[useAutoFetch] Date changed to: ${selectedDate}, clearing content`);
       limitlessData.clearContent();
     }
-    
+
     // Fetch data for the target date
     console.log(`[useAutoFetch] Fetching data for target date: ${targetDate}`);
     limitlessData.fetchData(targetDate, true);
@@ -66,6 +66,6 @@ export const useAutoFetch = (
   }, [selectedDate, getTargetDate, limitlessData.clearContent, limitlessData.fetchData]);
 
   return {
-    getTargetDate
+    getTargetDate,
   };
 };

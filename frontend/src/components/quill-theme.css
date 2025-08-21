@@ -81,20 +81,20 @@
 }
 
 /* Header sizes */
-.ql-editor h1 { 
-  font-size: 2em; 
+.ql-editor h1 {
+  font-size: 2em;
   font-weight: 700;
   margin-bottom: 0.5em;
 }
 
-.ql-editor h2 { 
-  font-size: 1.5em; 
+.ql-editor h2 {
+  font-size: 1.5em;
   font-weight: 600;
   margin-bottom: 0.4em;
 }
 
-.ql-editor h3 { 
-  font-size: 1.25em; 
+.ql-editor h3 {
+  font-size: 1.25em;
   font-weight: 600;
   margin-bottom: 0.3em;
 }

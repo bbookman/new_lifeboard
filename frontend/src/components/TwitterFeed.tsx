@@ -1,12 +1,7 @@
-import { useEffect, useState, useRef, memo } from "react";
-import { 
-  Carousel, 
-  CarouselContent, 
-  CarouselItem, 
-  CarouselApi
-} from "@/components/ui/carousel";
-import { ContentCard, ContentItemData } from "./ContentCard";
-import { fetchTwitterDataItems, DataItem } from "@/lib/api";
+import { useEffect, useState, useRef, memo } from 'react';
+import { Carousel, CarouselContent, CarouselItem, CarouselApi } from '@/components/ui/carousel';
+import { ContentCard, ContentItemData } from './ContentCard';
+import { fetchTwitterDataItems, DataItem } from '@/lib/api';
 
 interface TwitterFeedProps {
   selectedDate?: string;
@@ -20,9 +15,9 @@ const convertDataItemToContentItem = (dataItem: DataItem): ContentItemData => {
   console.log(`📅 Days date: ${dataItem.days_date}`);
   console.log(`📄 Metadata type:`, typeof dataItem.metadata);
   console.log(`📄 Raw metadata:`, dataItem.metadata);
-  
+
   let parsedMetadata: any = {};
-  
+
   // Handle both string and object metadata
   if (typeof dataItem.metadata === 'string') {
     try {
@@ -35,7 +30,10 @@ const convertDataItemToContentItem = (dataItem: DataItem): ContentItemData => {
     parsedMetadata = dataItem.metadata;
     console.log(`✅ [convertDataItemToContentItem] Metadata already parsed for ${dataItem.id}`);
   } else {
-    console.warn(`⚠️ [convertDataItemToContentItem] Unexpected metadata type for ${dataItem.id}:`, typeof dataItem.metadata);
+    console.warn(
+      `⚠️ [convertDataItemToContentItem] Unexpected metadata type for ${dataItem.id}:`,
+      typeof dataItem.metadata,
+    );
   }
 
   // Media detection with comprehensive logging
@@ -43,28 +41,28 @@ const convertDataItemToContentItem = (dataItem: DataItem): ContentItemData => {
   console.log(`   - parsedMetadata.media:`, parsedMetadata.media);
   console.log(`   - parsedMetadata.media?.has_media:`, parsedMetadata.media?.has_media);
   console.log(`   - parsedMetadata.media?.media_urls:`, parsedMetadata.media?.media_urls);
-  
+
   // Try alternative media field locations
   const alternativeMediaFields = {
-    'media_urls': parsedMetadata.media_urls, // Top-level media_urls field
+    media_urls: parsedMetadata.media_urls, // Top-level media_urls field
     'entities.media': parsedMetadata.entities?.media,
     'extended_entities.media': parsedMetadata.extended_entities?.media,
-    'attachments': parsedMetadata.attachments,
-    'photo': parsedMetadata.photo,
-    'photos': parsedMetadata.photos,
-    'images': parsedMetadata.images
+    attachments: parsedMetadata.attachments,
+    photo: parsedMetadata.photo,
+    photos: parsedMetadata.photos,
+    images: parsedMetadata.images,
   };
-  
+
   console.log(`🔍 [convertDataItemToContentItem] Alternative media fields:`, alternativeMediaFields);
-  
+
   // Media URL determination with fallbacks
   let hasMedia = false;
   let mediaUrl = undefined;
-  
+
   // Primary path: parsedMetadata.media (handle both array and JSON string)
   if (parsedMetadata.media?.has_media) {
     let mediaUrls = parsedMetadata.media?.media_urls;
-    
+
     // If media_urls is a string (JSON encoded), parse it
     if (typeof mediaUrls === 'string') {
       try {
@@ -74,7 +72,7 @@ const convertDataItemToContentItem = (dataItem: DataItem): ContentItemData => {
         console.warn(`⚠️ [convertDataItemToContentItem] Failed to parse media_urls string:`, mediaUrls);
       }
     }
-    
+
     if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
       hasMedia = true;
       mediaUrl = mediaUrls[0];
@@ -108,47 +106,49 @@ const convertDataItemToContentItem = (dataItem: DataItem): ContentItemData => {
   // Fallback 5: top-level media_urls (handle string or array)
   else if (parsedMetadata.media_urls) {
     let topLevelMediaUrls = parsedMetadata.media_urls;
-    
+
     // If it's a JSON string, parse it
     if (typeof topLevelMediaUrls === 'string') {
       try {
         topLevelMediaUrls = JSON.parse(topLevelMediaUrls);
         console.log(`🔧 [convertDataItemToContentItem] Parsed top-level media_urls string:`, topLevelMediaUrls);
       } catch (error) {
-        console.warn(`⚠️ [convertDataItemToContentItem] Failed to parse top-level media_urls string:`, topLevelMediaUrls);
+        console.warn(
+          `⚠️ [convertDataItemToContentItem] Failed to parse top-level media_urls string:`,
+          topLevelMediaUrls,
+        );
       }
     }
-    
+
     if (Array.isArray(topLevelMediaUrls) && topLevelMediaUrls.length > 0) {
       hasMedia = true;
       mediaUrl = topLevelMediaUrls[0];
       console.log(`✅ [convertDataItemToContentItem] Found media via top-level media_urls: ${mediaUrl}`);
     }
-  }
-  else {
+  } else {
     console.log(`❌ [convertDataItemToContentItem] No media found for ${dataItem.id}`);
   }
 
   const result = {
-    type: "content-item" as const,
+    type: 'content-item' as const,
     id: dataItem.id,
-    username: parsedMetadata.username || parsedMetadata.author || "Twitter User",
-    handle: parsedMetadata.handle || parsedMetadata.screen_name || "@user",
+    username: parsedMetadata.username || parsedMetadata.author || 'Twitter User',
+    handle: parsedMetadata.handle || parsedMetadata.screen_name || '@user',
     content: dataItem.content,
     timestamp: parsedMetadata.timestamp || dataItem.created_at,
     verified: parsedMetadata.verified || false,
-    source: "twitter" as const,
+    source: 'twitter' as const,
     likes: parsedMetadata.likes || parsedMetadata.favorite_count,
     retweets: parsedMetadata.retweets || parsedMetadata.retweet_count,
     url: parsedMetadata.url || parsedMetadata.permalink_url,
     hasMedia,
-    mediaUrl
+    mediaUrl,
   };
 
   console.log(`📤 [convertDataItemToContentItem] Final result for ${dataItem.id}:`, {
     hasMedia: result.hasMedia,
     mediaUrl: result.mediaUrl,
-    username: result.username
+    username: result.username,
   });
 
   return result;
@@ -165,7 +165,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   const [error, setError] = useState<string | null>(null);
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
-  
+
   // Auto-advance state
   const [isAutoAdvanceEnabled, setIsAutoAdvanceEnabled] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
@@ -187,33 +187,33 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
-    
+
     if (!api || !isAutoAdvanceEnabled || isPaused || twitterData.length <= 1) {
       return;
     }
 
     const intervalId = Date.now();
     console.log(`[TwitterFeed] Starting stable auto-advance timer ${intervalId}`);
-    
+
     timerRef.current = setInterval(() => {
       timeRemainingRef.current -= 100;
       setTimeRemaining(timeRemainingRef.current);
-      
+
       // Only log every second to reduce console noise
       if (timeRemainingRef.current % 1000 === 0) {
         console.log(`[TwitterFeed] Stable timer: ${timeRemainingRef.current}ms remaining`);
       }
-      
+
       if (timeRemainingRef.current <= 0) {
         // Time to advance
         const currentIndex = currentIndexRef.current;
         const nextIndex = (currentIndex + 1) % twitterData.length;
         console.log(`[TwitterFeed] Stable timer: Auto-advancing from ${currentIndex} to ${nextIndex}`);
-        
+
         isAutoAdvancingRef.current = true;
         currentIndexRef.current = nextIndex;
         api.scrollTo(nextIndex);
-        
+
         // Reset timer
         timeRemainingRef.current = 5000;
         setTimeRemaining(5000);
@@ -232,7 +232,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   useEffect(() => {
     const fetchTweets = async () => {
       console.log(`[TwitterFeed] useEffect triggered with selectedDate: ${selectedDate}`);
-      
+
       if (!selectedDate) {
         console.log(`[TwitterFeed] No selectedDate provided, setting loading to false`);
         setLoading(false);
@@ -242,13 +242,13 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
       try {
         setLoading(true);
         setError(null);
-        
+
         console.log(`[TwitterFeed] Fetching Twitter data items for date: ${selectedDate}`);
         const dataItems = await fetchTwitterDataItems(selectedDate);
         console.log(`[TwitterFeed] Fetched ${dataItems.length} Twitter data items for ${selectedDate}:`, dataItems);
-        
+
         // Check if we're looking at the right date with media
-        const mediaCount = dataItems.filter(item => {
+        const mediaCount = dataItems.filter((item) => {
           try {
             const meta = JSON.parse(item.metadata);
             return meta.media?.has_media === true;
@@ -257,16 +257,18 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
           }
         }).length;
         console.log(`[TwitterFeed] Items with media on ${selectedDate}: ${mediaCount}/${dataItems.length}`);
-        
+
         // Convert database items to ContentItemData format
         const contentItems = dataItems.map(convertDataItemToContentItem);
         console.log(`[TwitterFeed] Converted to ${contentItems.length} content items:`, contentItems);
-        
+
         // Log media information for debugging
-        const mediaItems = contentItems.filter(item => item.hasMedia);
-        console.log(`[TwitterFeed] Items with media: ${mediaItems.length}/${contentItems.length}`, 
-          mediaItems.map(item => ({ id: item.id, mediaUrl: item.mediaUrl })));
-        
+        const mediaItems = contentItems.filter((item) => item.hasMedia);
+        console.log(
+          `[TwitterFeed] Items with media: ${mediaItems.length}/${contentItems.length}`,
+          mediaItems.map((item) => ({ id: item.id, mediaUrl: item.mediaUrl })),
+        );
+
         setTwitterData(contentItems);
       } catch (err) {
         console.error('[TwitterFeed] Error fetching Twitter data items:', err);
@@ -288,7 +290,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
     const updateCurrent = () => {
       const newCurrent = api.selectedScrollSnap();
       setCurrent(newCurrent);
-      
+
       // Only update ref and reset timer if this isn't from auto-advance
       if (!isAutoAdvancingRef.current) {
         currentIndexRef.current = newCurrent;
@@ -304,10 +306,10 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
     };
 
     updateCurrent(); // Set initial value
-    api.on("select", updateCurrent);
+    api.on('select', updateCurrent);
 
     return () => {
-      api.off("select", updateCurrent);
+      api.off('select', updateCurrent);
     };
   }, [api]);
 
@@ -318,7 +320,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
     } else {
       stopAutoAdvance();
     }
-    
+
     return stopAutoAdvance;
   }, [api, isAutoAdvanceEnabled, isPaused, twitterData.length]);
 
@@ -334,7 +336,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
     );
   }
 
-  // Error state  
+  // Error state
   if (error) {
     return (
       <div className="space-y-4">
@@ -362,7 +364,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
-      
+
       {twitterData.length === 1 ? (
         // Single tweet - use same fixed size
         <div className="w-full h-[450px] border border-gray-200 rounded-lg overflow-hidden">
@@ -372,16 +374,12 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
         </div>
       ) : (
         // Multiple tweets - use carousel with fixed size (3x larger)
-        <div 
+        <div
           className="w-full h-[450px] border border-gray-200 rounded-lg overflow-hidden relative"
           onMouseEnter={() => setIsPaused(true)}
           onMouseLeave={() => setIsPaused(false)}
         >
-          <Carousel 
-            className="w-full h-full" 
-            opts={{ align: "start", loop: true }}
-            setApi={setApi}
-          >
+          <Carousel className="w-full h-full" opts={{ align: 'start', loop: true }} setApi={setApi}>
             <CarouselContent className="h-full">
               {twitterData.map((tweet) => (
                 <CarouselItem key={tweet.id} className="basis-full h-full">
@@ -392,14 +390,14 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
               ))}
             </CarouselContent>
           </Carousel>
-          
+
           {/* Auto-advance controls at bottom - replaces dots */}
           <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-3">
             <button
               onClick={() => setIsAutoAdvanceEnabled(!isAutoAdvanceEnabled)}
               className={`px-3 py-2 text-sm rounded-lg transition-colors flex items-center space-x-2 ${
-                isAutoAdvanceEnabled 
-                  ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                isAutoAdvanceEnabled
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
               aria-label={isAutoAdvanceEnabled ? 'Disable auto-advance' : 'Enable auto-advance'}
@@ -407,16 +405,16 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
               <span>{isAutoAdvanceEnabled ? '⏸️' : '▶️'}</span>
               <span>Auto</span>
             </button>
-            
+
             {isAutoAdvanceEnabled && !isPaused && twitterData.length > 1 && (
               <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-blue-500 transition-all duration-100 ease-linear rounded-full"
                   style={{ width: `${((5000 - timeRemaining) / 5000) * 100}%` }}
                 />
               </div>
             )}
-            
+
             {/* Current slide indicator */}
             <div className="text-xs text-gray-500 bg-white px-3 py-1 rounded whitespace-nowrap">
               {current + 1} of {twitterData.length}

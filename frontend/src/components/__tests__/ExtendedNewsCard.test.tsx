@@ -13,19 +13,17 @@ vi.mock('../hooks/useLimitlessData', () => ({
     fetchData: vi.fn(),
     triggerAutoFetch: vi.fn(),
     resetState: vi.fn(),
-    clearContent: vi.fn()
-  }))
+    clearContent: vi.fn(),
+  })),
 }));
 
 vi.mock('../hooks/useAutoFetch', () => ({
-  useAutoFetch: vi.fn()
+  useAutoFetch: vi.fn(),
 }));
 
 // Mock the MarkdownRenderer component
 vi.mock('../MarkdownRenderer', () => ({
-  MarkdownRenderer: ({ content }: { content: string }) => (
-    <div data-testid="markdown-renderer">{content}</div>
-  )
+  MarkdownRenderer: ({ content }: { content: string }) => <div data-testid="markdown-renderer">{content}</div>,
 }));
 
 describe('ExtendedNewsCard - Optimized Version', () => {
@@ -35,14 +33,14 @@ describe('ExtendedNewsCard - Optimized Version', () => {
 
   it('renders the component header correctly', () => {
     render(<ExtendedNewsCard selectedDate="2024-01-15" />);
-    
+
     expect(screen.getByText('Limitless')).toBeInTheDocument();
-    expect(screen.getByText('Today\'s Activity')).toBeInTheDocument();
+    expect(screen.getByText("Today's Activity")).toBeInTheDocument();
   });
 
   it('displays markdown content when available', () => {
     render(<ExtendedNewsCard selectedDate="2024-01-15" />);
-    
+
     expect(screen.getByTestId('markdown-renderer')).toBeInTheDocument();
     expect(screen.getByText('Test markdown content')).toBeInTheDocument();
   });
@@ -54,11 +52,11 @@ describe('ExtendedNewsCard - Optimized Version', () => {
       loading: true,
       autoFetching: false,
       fetchError: null,
-      fetchAttempted: new Set()
+      fetchAttempted: new Set(),
     });
 
     render(<ExtendedNewsCard selectedDate="2024-01-15" />);
-    
+
     expect(screen.getByText('Loading Limitless content...')).toBeInTheDocument();
   });
 
@@ -69,11 +67,11 @@ describe('ExtendedNewsCard - Optimized Version', () => {
       loading: false,
       autoFetching: true,
       fetchError: null,
-      fetchAttempted: new Set()
+      fetchAttempted: new Set(),
     });
 
     render(<ExtendedNewsCard selectedDate="2024-01-15" />);
-    
+
     expect(screen.getByText('Automatically fetching Limitless data...')).toBeInTheDocument();
   });
 
@@ -84,11 +82,11 @@ describe('ExtendedNewsCard - Optimized Version', () => {
       loading: false,
       autoFetching: false,
       fetchError: 'Failed to fetch data',
-      fetchAttempted: new Set()
+      fetchAttempted: new Set(),
     });
 
     render(<ExtendedNewsCard selectedDate="2024-01-15" />);
-    
+
     expect(screen.getByText('Failed to fetch data')).toBeInTheDocument();
   });
 
@@ -99,20 +97,20 @@ describe('ExtendedNewsCard - Optimized Version', () => {
       loading: false,
       autoFetching: false,
       fetchError: null,
-      fetchAttempted: new Set()
+      fetchAttempted: new Set(),
     });
 
     render(<ExtendedNewsCard selectedDate="2024-01-15" />);
-    
+
     expect(screen.getByText('No Limitless content available')).toBeInTheDocument();
   });
 
   it('calls useAutoFetch hook with correct parameters', () => {
     const { useAutoFetch } = require('../hooks/useAutoFetch');
     const selectedDate = '2024-01-15';
-    
+
     render(<ExtendedNewsCard selectedDate={selectedDate} />);
-    
+
     expect(useAutoFetch).toHaveBeenCalledWith(selectedDate, expect.any(Object));
   });
 });

@@ -12,12 +12,7 @@ interface NavigationSidebarProps {
   className?: string;
 }
 
-export const NavigationSidebar = ({
-  items,
-  activeItem,
-  onItemClick,
-  className
-}: NavigationSidebarProps) => {
+export const NavigationSidebar = ({ items, activeItem, onItemClick, className }: NavigationSidebarProps) => {
   return (
     <nav className={`border-b border-newspaper-divider bg-background ${className || ''}`}>
       <div className="container mx-auto px-4">
@@ -26,19 +21,15 @@ export const NavigationSidebar = ({
             <button
               key={item.id}
               className={`nav-horizontal-button font-body text-sm transition-colors ${
-                activeItem === item.id 
-                  ? 'text-newspaper-masthead font-semibold border-b-2 border-news-accent' 
+                activeItem === item.id
+                  ? 'text-newspaper-masthead font-semibold border-b-2 border-news-accent'
                   : 'text-newspaper-byline hover:text-newspaper-headline'
               }`}
               onClick={() => onItemClick(item)}
               title={item.label}
             >
               {item.icon && (
-                <span
-                  role="img"
-                  aria-label={item.label}
-                  className="mr-2"
-                >
+                <span role="img" aria-label={item.label} className="mr-2">
                   {item.icon}
                 </span>
               )}

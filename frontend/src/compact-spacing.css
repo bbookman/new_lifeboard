@@ -60,18 +60,35 @@
 }
 
 /* Heading compression */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   margin-top: 0.5rem !important;
   margin-bottom: 0.25rem !important;
   line-height: 1.1 !important;
 }
 
-h1 { font-size: 1.5rem !important; }
-h2 { font-size: 1.25rem !important; }
-h3 { font-size: 1.125rem !important; }
-h4 { font-size: 1rem !important; }
-h5 { font-size: 0.875rem !important; }
-h6 { font-size: 0.75rem !important; }
+h1 {
+  font-size: 1.5rem !important;
+}
+h2 {
+  font-size: 1.25rem !important;
+}
+h3 {
+  font-size: 1.125rem !important;
+}
+h4 {
+  font-size: 1rem !important;
+}
+h5 {
+  font-size: 0.875rem !important;
+}
+h6 {
+  font-size: 0.75rem !important;
+}
 
 /* Paragraph and text spacing */
 p {
@@ -81,7 +98,8 @@ p {
 }
 
 /* List compression */
-ul, ol {
+ul,
+ol {
   margin-top: 0.25rem !important;
   margin-bottom: 0.25rem !important;
   padding-left: 1rem !important;
@@ -100,28 +118,70 @@ li {
 }
 
 /* Grid and flex gap reduction */
-.gap-8 { gap: 0.5rem !important; }
-.gap-6 { gap: 0.375rem !important; }
-.gap-4 { gap: 0.25rem !important; }
-.gap-2 { gap: 0.125rem !important; }
+.gap-8 {
+  gap: 0.5rem !important;
+}
+.gap-6 {
+  gap: 0.375rem !important;
+}
+.gap-4 {
+  gap: 0.25rem !important;
+}
+.gap-2 {
+  gap: 0.125rem !important;
+}
 
 /* Spacing utilities compression */
-.mt-8 { margin-top: 1rem !important; }
-.mt-4 { margin-top: 0.5rem !important; }
-.mt-2 { margin-top: 0.25rem !important; }
-.mb-8 { margin-bottom: 1rem !important; }
-.mb-4 { margin-bottom: 0.5rem !important; }
-.mb-2 { margin-bottom: 0.25rem !important; }
-.p-6 { padding: 0.75rem !important; }
-.p-4 { padding: 0.5rem !important; }
-.p-2 { padding: 0.25rem !important; }
-.py-4 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
-.px-4 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
-.space-y-8 > * + * { margin-top: 1rem !important; }
-.space-y-6 > * + * { margin-top: 0.75rem !important; }
-.space-y-4 > * + * { margin-top: 0.5rem !important; }
-.space-y-3 > * + * { margin-top: 0.375rem !important; }
-.space-y-2 > * + * { margin-top: 0.25rem !important; }
+.mt-8 {
+  margin-top: 1rem !important;
+}
+.mt-4 {
+  margin-top: 0.5rem !important;
+}
+.mt-2 {
+  margin-top: 0.25rem !important;
+}
+.mb-8 {
+  margin-bottom: 1rem !important;
+}
+.mb-4 {
+  margin-bottom: 0.5rem !important;
+}
+.mb-2 {
+  margin-bottom: 0.25rem !important;
+}
+.p-6 {
+  padding: 0.75rem !important;
+}
+.p-4 {
+  padding: 0.5rem !important;
+}
+.p-2 {
+  padding: 0.25rem !important;
+}
+.py-4 {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+.px-4 {
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+}
+.space-y-8 > * + * {
+  margin-top: 1rem !important;
+}
+.space-y-6 > * + * {
+  margin-top: 0.75rem !important;
+}
+.space-y-4 > * + * {
+  margin-top: 0.5rem !important;
+}
+.space-y-3 > * + * {
+  margin-top: 0.375rem !important;
+}
+.space-y-2 > * + * {
+  margin-top: 0.25rem !important;
+}
 
 /* Conversation Patterns View specific compression */
 .conversation-patterns-view .card {
@@ -218,7 +278,7 @@ li {
 /* Calendar view compression */
 .calendar-day {
   min-height: 100px !important;
-  padding: .40rem !important;
+  padding: 0.4rem !important;
 }
 
 .calendar-day-header {
@@ -363,9 +423,9 @@ li {
 }
 
 /* Form elements compression */
-input[type="text"],
-input[type="email"],
-input[type="number"],
+input[type='text'],
+input[type='email'],
+input[type='number'],
 textarea,
 select {
   padding: 0.25rem 0.375rem !important;
@@ -429,36 +489,42 @@ body {
   .container {
     padding: 0 0.25rem !important;
   }
-  
+
   .card-header,
   .card-content {
     padding: 0.375rem !important;
   }
-  
-  h1 { font-size: 1.25rem !important; }
-  h2 { font-size: 1rem !important; }
-  h3 { font-size: 0.875rem !important; }
-  
+
+  h1 {
+    font-size: 1.25rem !important;
+  }
+  h2 {
+    font-size: 1rem !important;
+  }
+  h3 {
+    font-size: 0.875rem !important;
+  }
+
   .nav-sidebar {
     padding: 0.25rem !important;
   }
-  
+
   .nav-button {
     padding: 0.375rem !important;
     font-size: 0.625rem !important;
   }
-  
+
   /* Calendar mobile - doubled sizes */
   .calendar-day {
     min-height: 120px !important;
     padding: 0.5rem !important;
   }
-  
+
   .calendar-day-header {
     padding: 1rem !important;
     font-size: 0.875rem !important;
   }
-  
+
   .calendar-day-number {
     font-size: 1rem !important;
   }

@@ -1,17 +1,10 @@
-import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  BarChart3, 
-  TrendingUp, 
-  MessageCircle, 
-  Clock, 
-  ChevronDown,
-  Filter
-} from "lucide-react";
+import { useState, useEffect } from 'react';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { BarChart3, TrendingUp, MessageCircle, Clock, ChevronDown, Filter } from 'lucide-react';
 
 interface SemanticPattern {
   clusterId: string;
@@ -45,10 +38,7 @@ interface ConversationPatternsViewProps {
   onPatternClick?: (pattern: SemanticPattern) => void;
 }
 
-export const ConversationPatternsView = ({ 
-  timeframe = 'month',
-  onPatternClick 
-}: ConversationPatternsViewProps) => {
+export const ConversationPatternsView = ({ timeframe = 'month', onPatternClick }: ConversationPatternsViewProps) => {
   const [patterns, setPatterns] = useState<SemanticPattern[]>([]);
   const [stats, setStats] = useState<PatternStats | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState(timeframe);
@@ -61,63 +51,63 @@ export const ConversationPatternsView = ({
   useEffect(() => {
     const fetchPatterns = async () => {
       setLoading(true);
-      
+
       // Simulated API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       // Mock pattern data
       const mockPatterns: SemanticPattern[] = [
         {
-          clusterId: "weather_complaints_001",
-          theme: "weather_complaints",
-          canonical: "I hate this weather",
+          clusterId: 'weather_complaints_001',
+          theme: 'weather_complaints',
+          canonical: 'I hate this weather',
           frequency: 12,
           confidence: 0.89,
-          lastSeen: "2024-01-14",
-          trend: "increasing",
+          lastSeen: '2024-01-14',
+          trend: 'increasing',
           conversations: [
-            { id: "conv1", title: "Morning Chat", date: "2024-01-14", variations: 3 },
-            { id: "conv2", title: "Therapy Session", date: "2024-01-12", variations: 2 },
-            { id: "conv3", title: "Work Meeting", date: "2024-01-10", variations: 4 }
-          ]
+            { id: 'conv1', title: 'Morning Chat', date: '2024-01-14', variations: 3 },
+            { id: 'conv2', title: 'Therapy Session', date: '2024-01-12', variations: 2 },
+            { id: 'conv3', title: 'Work Meeting', date: '2024-01-10', variations: 4 },
+          ],
         },
         {
-          clusterId: "meeting_prep_002",
-          theme: "meeting_preparation",
-          canonical: "I need to prepare for the meeting",
+          clusterId: 'meeting_prep_002',
+          theme: 'meeting_preparation',
+          canonical: 'I need to prepare for the meeting',
           frequency: 8,
           confidence: 0.92,
-          lastSeen: "2024-01-13",
-          trend: "stable",
+          lastSeen: '2024-01-13',
+          trend: 'stable',
           conversations: [
-            { id: "conv4", title: "Team Sync", date: "2024-01-13", variations: 2 },
-            { id: "conv5", title: "Project Review", date: "2024-01-11", variations: 3 }
-          ]
+            { id: 'conv4', title: 'Team Sync', date: '2024-01-13', variations: 2 },
+            { id: 'conv5', title: 'Project Review', date: '2024-01-11', variations: 3 },
+          ],
         },
         {
-          clusterId: "energy_state_003",
-          theme: "energy_levels",
+          clusterId: 'energy_state_003',
+          theme: 'energy_levels',
           canonical: "I'm so tired today",
           frequency: 15,
           confidence: 0.85,
-          lastSeen: "2024-01-15",
-          trend: "decreasing",
+          lastSeen: '2024-01-15',
+          trend: 'decreasing',
           conversations: [
-            { id: "conv6", title: "Daily Check-in", date: "2024-01-15", variations: 4 },
-            { id: "conv7", title: "Evening Reflection", date: "2024-01-14", variations: 3 }
-          ]
-        }
+            { id: 'conv6', title: 'Daily Check-in', date: '2024-01-15', variations: 4 },
+            { id: 'conv7', title: 'Evening Reflection', date: '2024-01-14', variations: 3 },
+          ],
+        },
       ];
 
       const mockStats: PatternStats = {
         totalPatterns: 3,
         averageFrequency: 11.7,
         topThemes: [
-          { theme: "energy_levels", count: 15, percentage: 42.9 },
-          { theme: "weather_complaints", count: 12, percentage: 34.3 },
-          { theme: "meeting_preparation", count: 8, percentage: 22.9 }
+          { theme: 'energy_levels', count: 15, percentage: 42.9 },
+          { theme: 'weather_complaints', count: 12, percentage: 34.3 },
+          { theme: 'meeting_preparation', count: 8, percentage: 22.9 },
         ],
-        recentActivity: 35
+        recentActivity: 35,
       };
 
       setPatterns(mockPatterns);
@@ -129,7 +119,7 @@ export const ConversationPatternsView = ({
   }, [selectedTimeframe]);
 
   const sortedPatterns = patterns
-    .filter(pattern => filterTheme === 'all' || pattern.theme === filterTheme)
+    .filter((pattern) => filterTheme === 'all' || pattern.theme === filterTheme)
     .sort((a, b) => {
       switch (sortBy) {
         case 'frequency':
@@ -143,7 +133,7 @@ export const ConversationPatternsView = ({
       }
     });
 
-  const uniqueThemes = Array.from(new Set(patterns.map(p => p.theme)));
+  const uniqueThemes = Array.from(new Set(patterns.map((p) => p.theme)));
 
   const getTrendIcon = (trend: SemanticPattern['trend']) => {
     switch (trend) {
@@ -157,7 +147,7 @@ export const ConversationPatternsView = ({
   };
 
   const formatTheme = (theme: string) => {
-    return theme.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    return theme.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
   if (loading) {
@@ -166,7 +156,7 @@ export const ConversationPatternsView = ({
         <div className="animate-pulse">
           <div className="h-6 bg-muted rounded w-1/3 mb-4"></div>
           <div className="space-y-3">
-            {[1, 2, 3].map(i => (
+            {[1, 2, 3].map((i) => (
               <div key={i} className="h-20 bg-muted rounded"></div>
             ))}
           </div>
@@ -181,14 +171,10 @@ export const ConversationPatternsView = ({
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="font-headline text-2xl font-bold text-newspaper-headline">
-              Conversation Patterns
-            </h2>
-            <p className="text-newspaper-byline text-sm">
-              Discover recurring themes and topics in your conversations
-            </p>
+            <h2 className="font-headline text-2xl font-bold text-newspaper-headline">Conversation Patterns</h2>
+            <p className="text-newspaper-byline text-sm">Discover recurring themes and topics in your conversations</p>
           </div>
-          
+
           <div className="flex items-center space-x-3">
             <Select value={selectedTimeframe} onValueChange={(value: any) => setSelectedTimeframe(value)}>
               <SelectTrigger className="w-32">
@@ -209,7 +195,7 @@ export const ConversationPatternsView = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Themes</SelectItem>
-                {uniqueThemes.map(theme => (
+                {uniqueThemes.map((theme) => (
                   <SelectItem key={theme} value={theme}>
                     {formatTheme(theme)}
                   </SelectItem>
@@ -223,9 +209,7 @@ export const ConversationPatternsView = ({
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="text-center p-3 bg-muted/30 rounded-lg">
-              <div className="font-headline text-2xl font-bold text-newspaper-headline">
-                {stats.totalPatterns}
-              </div>
+              <div className="font-headline text-2xl font-bold text-newspaper-headline">{stats.totalPatterns}</div>
               <div className="text-newspaper-byline text-sm">Total Patterns</div>
             </div>
             <div className="text-center p-3 bg-muted/30 rounded-lg">
@@ -235,15 +219,11 @@ export const ConversationPatternsView = ({
               <div className="text-newspaper-byline text-sm">Avg Frequency</div>
             </div>
             <div className="text-center p-3 bg-muted/30 rounded-lg">
-              <div className="font-headline text-2xl font-bold text-newspaper-headline">
-                {stats.recentActivity}
-              </div>
+              <div className="font-headline text-2xl font-bold text-newspaper-headline">{stats.recentActivity}</div>
               <div className="text-newspaper-byline text-sm">Recent Activity</div>
             </div>
             <div className="text-center p-3 bg-muted/30 rounded-lg">
-              <div className="font-headline text-2xl font-bold text-newspaper-headline">
-                {stats.topThemes.length}
-              </div>
+              <div className="font-headline text-2xl font-bold text-newspaper-headline">{stats.topThemes.length}</div>
               <div className="text-newspaper-byline text-sm">Active Themes</div>
             </div>
           </div>
@@ -266,11 +246,7 @@ export const ConversationPatternsView = ({
           >
             Confidence
           </Button>
-          <Button
-            variant={sortBy === 'recent' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setSortBy('recent')}
-          >
+          <Button variant={sortBy === 'recent' ? 'default' : 'ghost'} size="sm" onClick={() => setSortBy('recent')}>
             Recent
           </Button>
         </div>
@@ -288,14 +264,12 @@ export const ConversationPatternsView = ({
                     {formatTheme(pattern.theme)}
                   </Badge>
                   {getTrendIcon(pattern.trend)}
-                  <span className="text-sm text-newspaper-byline">
-                    {pattern.frequency} occurrences
-                  </span>
+                  <span className="text-sm text-newspaper-byline">{pattern.frequency} occurrences</span>
                   <Badge variant="outline" className="text-xs">
                     {Math.round(pattern.confidence * 100)}% confidence
                   </Badge>
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   <Clock className="w-3 h-3 text-newspaper-byline" />
                   <span className="text-xs text-newspaper-byline">
@@ -305,13 +279,8 @@ export const ConversationPatternsView = ({
               </div>
 
               {/* Canonical Line */}
-              <div 
-                className="cursor-pointer"
-                onClick={() => onPatternClick && onPatternClick(pattern)}
-              >
-                <p className="font-body text-newspaper-headline text-base leading-relaxed">
-                  "{pattern.canonical}"
-                </p>
+              <div className="cursor-pointer" onClick={() => onPatternClick && onPatternClick(pattern)}>
+                <p className="font-body text-newspaper-headline text-base leading-relaxed">"{pattern.canonical}"</p>
               </div>
 
               {/* Conversations Toggle */}
@@ -319,15 +288,15 @@ export const ConversationPatternsView = ({
                 variant="ghost"
                 size="sm"
                 className="text-xs text-newspaper-byline hover:text-newspaper-headline"
-                onClick={() => setExpandedPattern(
-                  expandedPattern === pattern.clusterId ? null : pattern.clusterId
-                )}
+                onClick={() => setExpandedPattern(expandedPattern === pattern.clusterId ? null : pattern.clusterId)}
               >
                 <MessageCircle className="w-3 h-3 mr-1" />
                 {pattern.conversations.length} conversations
-                <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${
-                  expandedPattern === pattern.clusterId ? 'rotate-180' : ''
-                }`} />
+                <ChevronDown
+                  className={`w-3 h-3 ml-1 transition-transform ${
+                    expandedPattern === pattern.clusterId ? 'rotate-180' : ''
+                  }`}
+                />
               </Button>
 
               {/* Expanded Conversations */}
@@ -336,12 +305,8 @@ export const ConversationPatternsView = ({
                   {pattern.conversations.map((conv) => (
                     <div key={conv.id} className="flex items-center justify-between py-2">
                       <div>
-                        <div className="font-medium text-sm text-newspaper-headline">
-                          {conv.title}
-                        </div>
-                        <div className="text-xs text-newspaper-byline">
-                          {new Date(conv.date).toLocaleDateString()}
-                        </div>
+                        <div className="font-medium text-sm text-newspaper-headline">{conv.title}</div>
+                        <div className="text-xs text-newspaper-byline">{new Date(conv.date).toLocaleDateString()}</div>
                       </div>
                       <Badge variant="outline" className="text-xs">
                         {conv.variations} variations
@@ -359,22 +324,14 @@ export const ConversationPatternsView = ({
       {sortedPatterns.length === 0 && (
         <Card className="p-8 text-center">
           <MessageCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="font-headline text-lg font-semibold text-newspaper-headline mb-2">
-            No Patterns Found
-          </h3>
+          <h3 className="font-headline text-lg font-semibold text-newspaper-headline mb-2">No Patterns Found</h3>
           <p className="text-newspaper-byline">
-            {filterTheme === 'all' 
-              ? "No conversation patterns detected for this timeframe."
-              : `No patterns found for theme "${formatTheme(filterTheme)}".`
-            }
+            {filterTheme === 'all'
+              ? 'No conversation patterns detected for this timeframe.'
+              : `No patterns found for theme "${formatTheme(filterTheme)}".`}
           </p>
           {filterTheme !== 'all' && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="mt-3"
-              onClick={() => setFilterTheme('all')}
-            >
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => setFilterTheme('all')}>
               Show All Themes
             </Button>
           )}
@@ -384,23 +341,19 @@ export const ConversationPatternsView = ({
       {/* Theme Distribution */}
       {stats && stats.topThemes.length > 0 && (
         <Card className="p-6">
-          <h3 className="font-headline text-lg font-semibold text-newspaper-headline mb-4">
-            Theme Distribution
-          </h3>
+          <h3 className="font-headline text-lg font-semibold text-newspaper-headline mb-4">Theme Distribution</h3>
           <div className="space-y-3">
             {stats.topThemes.map((theme, index) => (
               <div key={theme.theme} className="flex items-center space-x-3">
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-newspaper-headline">
-                      {formatTheme(theme.theme)}
-                    </span>
+                    <span className="text-sm font-medium text-newspaper-headline">{formatTheme(theme.theme)}</span>
                     <span className="text-sm text-newspaper-byline">
                       {theme.count} ({theme.percentage.toFixed(1)}%)
                     </span>
                   </div>
                   <div className="w-full bg-muted rounded-full h-2">
-                    <div 
+                    <div
                       className="bg-primary h-2 rounded-full transition-all"
                       style={{ width: `${theme.percentage}%` }}
                     />

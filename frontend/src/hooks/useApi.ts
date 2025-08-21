@@ -33,7 +33,7 @@ export const useChatHistory = () => {
 
 export const useSendMessage = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (message: string) => {
       const response = await apiClient.sendChatMessage(message);
@@ -69,7 +69,7 @@ export const useSearch = (query: string, enabled = true) => {
     queryKey: queryKeys.search(query),
     queryFn: async () => {
       if (!query.trim()) return [];
-      
+
       const response = await apiClient.searchData(query);
       if (!response.success) {
         throw new Error(response.error || 'Failed to search data');
@@ -97,7 +97,7 @@ export const useSyncStatus = () => {
 
 export const useTriggerSync = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (source?: string) => {
       const response = await apiClient.triggerSync(source);
@@ -129,7 +129,7 @@ export const useSettings = () => {
 
 export const useUpdateSettings = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (settings: Record<string, any>) => {
       const response = await apiClient.updateSettings(settings);

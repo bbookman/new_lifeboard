@@ -1,8 +1,8 @@
-import { Badge } from "@/components/ui/badge";
-import { useLimitlessData } from "../hooks/useLimitlessData";
-import { useAutoFetch } from "../hooks/useAutoFetch";
-import { MarkdownRenderer } from "./MarkdownRenderer";
-import { useEffect } from "react";
+import { Badge } from '@/components/ui/badge';
+import { useLimitlessData } from '../hooks/useLimitlessData';
+import { useAutoFetch } from '../hooks/useAutoFetch';
+import { MarkdownRenderer } from './MarkdownRenderer';
+import { useEffect } from 'react';
 
 interface ExtendedNewsCardProps {
   headline: string;
@@ -21,7 +21,10 @@ interface ExtendedNewsCardProps {
  * Displays limitless markdown content using custom hooks for better separation of concerns
  * This component is used within a Card wrapper in NewsSection, so no outer Card needed
  */
-export const ExtendedNewsCard = ({ selectedDate, onContentLoad }: Pick<ExtendedNewsCardProps, 'selectedDate' | 'onContentLoad'>) => {
+export const ExtendedNewsCard = ({
+  selectedDate,
+  onContentLoad,
+}: Pick<ExtendedNewsCardProps, 'selectedDate' | 'onContentLoad'>) => {
   // Use custom hooks for data management and auto-fetch logic
   const limitlessData = useLimitlessData();
   useAutoFetch(selectedDate, limitlessData);
@@ -33,7 +36,6 @@ export const ExtendedNewsCard = ({ selectedDate, onContentLoad }: Pick<ExtendedN
     }
   }, [limitlessData.markdownContent, onContentLoad]);
 
-
   return (
     <>
       {/* Header - Fixed (no outer Card, as parent NewsSection already provides Card) */}
@@ -43,7 +45,6 @@ export const ExtendedNewsCard = ({ selectedDate, onContentLoad }: Pick<ExtendedN
             Limitless
           </Badge>
         </div>
-
       </div>
 
       {/* Scrollable Markdown Content Area */}
@@ -53,15 +54,11 @@ export const ExtendedNewsCard = ({ selectedDate, onContentLoad }: Pick<ExtendedN
             {limitlessData.autoFetching ? 'Automatically fetching Limitless data...' : 'Loading Limitless content...'}
           </div>
         ) : limitlessData.fetchError ? (
-          <div className="text-center py-4 text-red-500 text-sm">
-            {limitlessData.fetchError}
-          </div>
+          <div className="text-center py-4 text-red-500 text-sm">{limitlessData.fetchError}</div>
         ) : limitlessData.markdownContent ? (
           <MarkdownRenderer content={limitlessData.markdownContent} />
         ) : (
-          <div className="text-center py-4 text-gray-500 text-sm">
-            No Limitless content available
-          </div>
+          <div className="text-center py-4 text-gray-500 text-sm">No Limitless content available</div>
         )}
       </div>
     </>

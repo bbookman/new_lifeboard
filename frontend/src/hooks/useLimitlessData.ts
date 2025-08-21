@@ -173,9 +173,9 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
                     console.log(`[useLimitlessData] Refetch set markdown content length: ${combinedMarkdown.length}`);
                   }
                 }
-              } catch (error) {
-                console.error('[useLimitlessData] Error during refetch:', error);
               }
+            } catch (error) {
+              console.error('[useLimitlessData] Error during refetch:', error);
             }
           };
 
@@ -202,7 +202,7 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
       setAutoFetching(false);
       setLoading(false);
     }
-  }, []);
+  }, [extractMarkdownContent]);
 
   /**
    * Fetch cleaned markdown from limitless data_items
@@ -278,7 +278,7 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
       setMarkdownContent('');
       setLoading(false);
     }
-  }, [extractMarkdownContent, fetchAttempted, autoFetching]);
+  }, [extractMarkdownContent, fetchAttempted, autoFetching, triggerAutoFetch]);
 
   /**
    * Reset all state to initial values
@@ -294,10 +294,10 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
   /**
    * Clear content without resetting other state
    */
-  const clearContent = useCallback(() => {
+  const clearContent = useCallback((_ => {
     setMarkdownContent('');
     setFetchError(null);
-  }, []);
+  }), []);
 
   return {
     // State

@@ -15,12 +15,7 @@ export interface DailyReflectionPanelProps {
   dateLabel: string;
 }
 
-export const DailyReflectionPanel = ({
-  markdownContent,
-  loading,
-  error,
-  dateLabel,
-}: DailyReflectionPanelProps) => {
+export const DailyReflectionPanel = ({ markdownContent, loading, error, dateLabel }: DailyReflectionPanelProps) => {
   return (
     <div className="space-y-6">
       <div className="border-b-2 border-blue-500 pb-2">
