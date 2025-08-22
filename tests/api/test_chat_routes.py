@@ -4,10 +4,9 @@ Tests FastAPI endpoints for chat interactions and conversation management
 """
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.routes.chat import (
@@ -19,17 +18,20 @@ from api.routes.chat import (
 )
 from services.chat_service import ChatService
 from services.startup import StartupService
+from tests.fixtures.api_dependency_fixtures import (
+    APITestBase,
+    create_test_app_with_dependencies,
+    TestDependencyRegistry
+)
 
 
-class TestChatRoutes:
-    """Test chat API endpoints"""
+class TestChatRoutes(APITestBase):
+    """Test chat API endpoints with proper dependency injection"""
 
     @pytest.fixture
     def app(self):
-        """Create FastAPI test application"""
-        app = FastAPI()
-        app.include_router(router)
-        return app
+        """Create FastAPI test application with dependency injection"""
+        return self.create_test_app([router])
 
     @pytest.fixture
     def client(self, app):
@@ -39,14 +41,16 @@ class TestChatRoutes:
     @pytest.fixture
     def mock_startup_service(self):
         """Mock startup service for testing"""
-        service = MagicMock(spec=StartupService)
-        return service
+        return self.get_startup_service()
 
     @pytest.fixture
     def mock_chat_service(self):
         """Mock chat service for testing"""
-        service = AsyncMock(spec=ChatService)
-        return service
+        # Get base mock chat service
+        chat_service = self.get_chat_service()
+        # Configure process_chat_message as AsyncMock with proper return type
+        chat_service.process_chat_message = AsyncMock(return_value="Mock response")
+        return chat_service
 
     @pytest.fixture
     def sample_chat_message(self):
@@ -84,11 +88,12 @@ class TestChatRoutes:
 
     def test_send_chat_message_success(self, client, mock_startup_service, mock_chat_service, sample_chat_message, sample_chat_response):
         """Test successful chat message sending"""
+        # Configure the mock services (dependency injection handled by framework)
         mock_startup_service.chat_service = mock_chat_service
         mock_chat_service.process_chat_message.return_value = sample_chat_response
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.post("/api/chat/send", json={"message": sample_chat_message})
+        # No manual patching needed - dependency injection handled by test framework
+        response = client.post("/api/chat/send", json={"message": sample_chat_message})
 
         assert response.status_code == 200
         data = response.json()
@@ -111,8 +116,8 @@ class TestChatRoutes:
         """Test sending empty chat message"""
         mock_startup_service.chat_service = mock_chat_service
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.post("/api/chat/send", json={"message": ""})
+        # Dependency injection handled by test framework
+        response = client.post("/api/chat/send", json={"message": ""})
 
         # Should still process empty message (let service handle validation)
         assert response.status_code == 200 or response.status_code == 422
@@ -123,8 +128,8 @@ class TestChatRoutes:
         long_message = "Can you help me analyze " + "data " * 1000  # Very long message
         mock_chat_service.process_chat_message.return_value = "I'll help you with that analysis."
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.post("/api/chat/send", json={"message": long_message})
+        # Dependency injection handled by test framework
+        response = client.post("/api/chat/send", json={"message": long_message})
 
         assert response.status_code == 200
         data = response.json()
@@ -138,8 +143,8 @@ class TestChatRoutes:
         mock_response = "I can definitely help with that! 😊"
         mock_chat_service.process_chat_message.return_value = mock_response
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.post("/api/chat/send", json={"message": special_message})
+        # Dependency injection handled by test framework
+        response = client.post("/api/chat/send", json={"message": special_message})
 
         assert response.status_code == 200
         data = response.json()
@@ -150,8 +155,8 @@ class TestChatRoutes:
         """Test sending invalid JSON data"""
         mock_startup_service.chat_service = mock_chat_service
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.post("/api/chat/send", json={"invalid_field": "test"})
+        # Dependency injection handled by test framework
+        response = client.post("/api/chat/send", json={"invalid_field": "test"})
 
         assert response.status_code == 422  # Validation error
 
@@ -159,8 +164,8 @@ class TestChatRoutes:
         """Test sending message when chat service is unavailable"""
         mock_startup_service.chat_service = None
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.post("/api/chat/send", json={"message": "test"})
+        # Dependency injection handled by test framework
+        response = client.post("/api/chat/send", json={"message": "test"})
 
         assert response.status_code == 503
         data = response.json()
@@ -171,8 +176,8 @@ class TestChatRoutes:
         mock_startup_service.chat_service = mock_chat_service
         mock_chat_service.process_chat_message.side_effect = Exception("LLM service timeout")
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.post("/api/chat/send", json={"message": "test message"})
+        # Dependency injection handled by test framework
+        response = client.post("/api/chat/send", json={"message": "test message"})
 
         assert response.status_code == 500
         data = response.json()
@@ -183,8 +188,8 @@ class TestChatRoutes:
         mock_startup_service.chat_service = mock_chat_service
         mock_chat_service.get_chat_history.return_value = sample_chat_history
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.get("/api/chat/history")
+        # Dependency injection handled by test framework
+        response = client.get("/api/chat/history")
 
         assert response.status_code == 200
         data = response.json()
@@ -211,8 +216,8 @@ class TestChatRoutes:
         limited_history = sample_chat_history[:2]
         mock_chat_service.get_chat_history.return_value = limited_history
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.get("/api/chat/history?limit=2")
+        # Dependency injection handled by test framework
+        response = client.get("/api/chat/history?limit=2")
 
         assert response.status_code == 200
         data = response.json()
@@ -228,8 +233,8 @@ class TestChatRoutes:
         mock_startup_service.chat_service = mock_chat_service
         mock_chat_service.get_chat_history.return_value = []
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.get("/api/chat/history")
+        # Dependency injection handled by test framework
+        response = client.get("/api/chat/history")
 
         assert response.status_code == 200
         data = response.json()
@@ -242,8 +247,8 @@ class TestChatRoutes:
         mock_startup_service.chat_service = mock_chat_service
         mock_chat_service.get_chat_history.return_value = sample_chat_history
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.get("/api/chat/history?limit=1000")
+        # Dependency injection handled by test framework
+        response = client.get("/api/chat/history?limit=1000")
 
         assert response.status_code == 200
         mock_chat_service.get_chat_history.assert_called_once_with(limit=1000)
@@ -252,8 +257,8 @@ class TestChatRoutes:
         """Test chat history with invalid limit parameter"""
         mock_startup_service.chat_service = mock_chat_service
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.get("/api/chat/history?limit=invalid")
+        # Dependency injection handled by test framework
+        response = client.get("/api/chat/history?limit=invalid")
 
         assert response.status_code == 422  # Validation error
 
@@ -261,8 +266,8 @@ class TestChatRoutes:
         """Test chat history when service is unavailable"""
         mock_startup_service.chat_service = None
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.get("/api/chat/history")
+        # Dependency injection handled by test framework
+        response = client.get("/api/chat/history")
 
         assert response.status_code == 503
         data = response.json()
@@ -273,8 +278,8 @@ class TestChatRoutes:
         mock_startup_service.chat_service = mock_chat_service
         mock_chat_service.get_chat_history.side_effect = Exception("Database connection failed")
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.get("/api/chat/history")
+        # Dependency injection handled by test framework
+        response = client.get("/api/chat/history")
 
         assert response.status_code == 500
         data = response.json()
@@ -337,8 +342,8 @@ class TestChatRoutes:
         mock_startup_service.chat_service = mock_chat_service
         mock_chat_service.process_chat_message.return_value = "Test response"
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.post("/api/chat/send", json={"message": "test"})
+        # Dependency injection handled by test framework
+        response = client.post("/api/chat/send", json={"message": "test"})
 
         assert response.status_code == 200
         # Note: CORS headers are typically added by middleware, not individual routes
@@ -352,8 +357,8 @@ class TestChatRoutes:
         import time
         start_time = time.time()
 
-        with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-            response = client.post("/api/chat/send", json={"message": "test"})
+        # Dependency injection handled by test framework
+        response = client.post("/api/chat/send", json={"message": "test"})
 
         end_time = time.time()
         response_time = end_time - start_time
@@ -374,9 +379,9 @@ class TestChatRoutes:
 
         def make_request(message):
             try:
-                with patch("api.routes.chat.get_startup_service_dependency", return_value=mock_startup_service):
-                    response = client.post("/api/chat/send", json={"message": message})
-                    responses.append(response.status_code)
+                # Dependency injection handled by test framework - no manual patching needed
+                response = client.post("/api/chat/send", json={"message": message})
+                responses.append(response.status_code)
             except Exception as e:
                 errors.append(e)
 

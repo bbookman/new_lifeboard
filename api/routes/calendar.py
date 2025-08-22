@@ -82,10 +82,10 @@ def get_user_timezone_aware_now(startup_service: StartupService) -> datetime:
 
 
 # Calendar HTML endpoints removed - frontend now uses React
-# Use /calendar/api/days-with-data for calendar data
+# Use /calendar/days-with-data for calendar data
 
 
-@router.get("/api/today")
+@router.get("/today")
 async def get_today_date(
     startup_service: StartupService = Depends(get_startup_service_dependency),
 ) -> Dict[str, str]:
@@ -106,7 +106,7 @@ async def get_today_date(
         raise HTTPException(status_code=500, detail="Failed to get today's date")
 
 
-@router.get("/api/days-with-data")
+@router.get("/days-with-data")
 async def get_days_with_data(
     year: Optional[int] = None,
     month: Optional[int] = None,
@@ -174,7 +174,7 @@ async def get_days_with_data(
         raise HTTPException(status_code=500, detail="Failed to get calendar data")
 
 
-@router.get("/api/day/{date}")
+@router.get("/day/{date}")
 async def get_day_details(date: str, database: DatabaseService = Depends(get_database_service)) -> Dict[str, Any]:
     """Get details and markdown content for a specific date"""
     try:
@@ -205,7 +205,7 @@ async def get_day_details(date: str, database: DatabaseService = Depends(get_dat
         raise HTTPException(status_code=500, detail="Failed to get day details")
 
 
-@router.get("/api/day/{date}/enhanced")
+@router.get("/day/{date}/enhanced")
 async def get_enhanced_day_data(
     date: str,
     database: DatabaseService = Depends(get_database_service),
@@ -262,11 +262,11 @@ async def get_enhanced_day_data(
 
 
 # Day view HTML endpoint removed - frontend now uses React
-# Use /calendar/api/day/{date} for day data
+# Use /calendar/day/{date} for day data
 
 
 
-@router.get("/api/month/{year}/{month}")
+@router.get("/month/{year}/{month}")
 async def get_month_data(
     year: int,
     month: int,
@@ -431,7 +431,7 @@ async def debug_markdown_raw(
         raise HTTPException(status_code=500, detail=f"Debug endpoint error: {e!s}")
 
 
-@router.post("/api/limitless/fetch/{date}")
+@router.post("/limitless/fetch/{date}")
 async def fetch_limitless_for_date(
     date: str,
     database: DatabaseService = Depends(get_database_service),
@@ -613,7 +613,7 @@ async def fetch_limitless_for_date(
         raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
 
 
-@router.get("/api/data_items/{date}")
+@router.get("/data_items/{date}")
 async def get_data_items_for_date(
     date: str,
     namespaces: Optional[str] = None,
