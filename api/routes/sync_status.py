@@ -6,13 +6,12 @@ and overall system sync status.
 """
 
 import logging
-from typing import Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from services.sync_status_service import get_sync_status_service, SyncStatusService
-from services.startup import StartupService
-from core.dependencies import get_startup_service_dependency
+from services.sync_status_service import SyncStatusService, get_sync_status_service
 
 logger = logging.getLogger(__name__)
 
@@ -54,15 +53,15 @@ def get_sync_status_service_dependency() -> SyncStatusService:
     service = get_sync_status_service()
     if not service:
         raise HTTPException(
-            status_code=503, 
-            detail="Sync status service not available"
+            status_code=503,
+            detail="Sync status service not available",
         )
     return service
 
 
 @router.get("/", response_model=SyncStatusResponse)
 async def get_overall_sync_status(
-    sync_status_service: SyncStatusService = Depends(get_sync_status_service_dependency)
+    sync_status_service: SyncStatusService = Depends(get_sync_status_service_dependency),
 ) -> Dict[str, Any]:
     """
     Get overall synchronization status for all data sources.
@@ -85,7 +84,7 @@ async def get_overall_sync_status(
 @router.get("/source/{namespace}", response_model=SourceStatusResponse)
 async def get_source_sync_status(
     namespace: str,
-    sync_status_service: SyncStatusService = Depends(get_sync_status_service_dependency)
+    sync_status_service: SyncStatusService = Depends(get_sync_status_service_dependency),
 ) -> Dict[str, Any]:
     """
     Get synchronization status for a specific data source.
@@ -101,9 +100,9 @@ async def get_source_sync_status(
         if not status:
             raise HTTPException(
                 status_code=404,
-                detail=f"Source '{namespace}' not found"
+                detail=f"Source '{namespace}' not found",
             )
-        
+
         logger.debug(f"Returning sync status for {namespace}: {status['status']}")
         return status
     except HTTPException:
@@ -115,7 +114,7 @@ async def get_source_sync_status(
 
 @router.get("/health")
 async def get_sync_status_service_health(
-    sync_status_service: SyncStatusService = Depends(get_sync_status_service_dependency)
+    sync_status_service: SyncStatusService = Depends(get_sync_status_service_dependency),
 ) -> Dict[str, Any]:
     """
     Get health status of the sync status service itself.
@@ -133,7 +132,7 @@ async def get_sync_status_service_health(
 
 @router.post("/reset")
 async def reset_sync_status(
-    sync_status_service: SyncStatusService = Depends(get_sync_status_service_dependency)
+    sync_status_service: SyncStatusService = Depends(get_sync_status_service_dependency),
 ) -> Dict[str, str]:
     """
     Reset all source sync statuses to pending (useful for testing and debugging).
@@ -145,7 +144,7 @@ async def reset_sync_status(
         logger.info("Reset all sync statuses via API request")
         return {
             "message": "All sync statuses reset to pending",
-            "status": "success"
+            "status": "success",
         }
     except Exception as e:
         logger.error(f"Error resetting sync status: {e}")

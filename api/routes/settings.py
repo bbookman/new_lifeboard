@@ -7,12 +7,12 @@ This module contains endpoints for application settings and configuration manage
 import logging
 import os
 import shutil
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
-from services.sync_manager_service import SyncManagerService
-from sources.twitter import TwitterSource
 from core.dependencies import get_dependency_registry
+from sources.twitter import TwitterSource
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,10 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 # Settings API - JSON endpoints only
 # HTML settings page removed - frontend now uses React
 
+from typing import Any, Dict, Optional
+
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+
 
 class SettingsResponse(BaseModel):
     settings: Dict[str, Any]
@@ -43,7 +45,7 @@ async def get_settings() -> SettingsResponse:
     # For now, return empty settings - this can be expanded later
     return SettingsResponse(settings={})
 
-@router.put("/") 
+@router.put("/")
 async def update_settings(request: SettingsUpdateRequest) -> Dict[str, bool]:
     """Update application settings"""
     # For now, just return success - this can be expanded later
@@ -53,13 +55,13 @@ async def update_settings(request: SettingsUpdateRequest) -> Dict[str, bool]:
 async def get_prompt_selection() -> PromptSelectionResponse:
     """Get current prompt selection for daily summary"""
     from core.dependencies import get_dependency_registry
-    
+
     registry = get_dependency_registry()
     startup_service = registry.get_startup_service()
-    
+
     if not startup_service or not startup_service.database:
         raise HTTPException(status_code=503, detail="Database service not available")
-    
+
     try:
         with startup_service.database.get_connection() as conn:
             cursor = conn.execute("""
@@ -70,18 +72,17 @@ async def get_prompt_selection() -> PromptSelectionResponse:
                 LIMIT 1
             """)
             row = cursor.fetchone()
-            
+
             if row:
                 return PromptSelectionResponse(
-                    prompt_document_id=row['prompt_document_id'],
-                    is_active=bool(row['is_active'])
+                    prompt_document_id=row["prompt_document_id"],
+                    is_active=bool(row["is_active"]),
                 )
-            else:
-                return PromptSelectionResponse(
-                    prompt_document_id=None,
-                    is_active=True
-                )
-                
+            return PromptSelectionResponse(
+                prompt_document_id=None,
+                is_active=True,
+            )
+
     except Exception as e:
         logger.error(f"Error getting prompt selection: {e}")
         raise HTTPException(status_code=500, detail="Failed to get prompt selection")
@@ -90,13 +91,13 @@ async def get_prompt_selection() -> PromptSelectionResponse:
 async def save_prompt_selection(request: PromptSelectionRequest) -> Dict[str, bool]:
     """Save prompt selection for daily summary"""
     from core.dependencies import get_dependency_registry
-    
+
     registry = get_dependency_registry()
     startup_service = registry.get_startup_service()
-    
+
     if not startup_service or not startup_service.database:
         raise HTTPException(status_code=503, detail="Database service not available")
-    
+
     try:
         with startup_service.database.get_connection() as conn:
             # First, deactivate any existing settings
@@ -105,18 +106,18 @@ async def save_prompt_selection(request: PromptSelectionRequest) -> Dict[str, bo
                 SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
                 WHERE setting_key = 'daily_summary_prompt'
             """)
-            
+
             # Insert new setting if prompt_document_id provided
             if request.prompt_document_id:
                 conn.execute("""
                     INSERT INTO prompt_settings (setting_key, prompt_document_id, is_active)
                     VALUES ('daily_summary_prompt', ?, TRUE)
                 """, (request.prompt_document_id,))
-            
+
             conn.commit()
             logger.info(f"Saved prompt selection: {request.prompt_document_id}")
             return {"success": True}
-            
+
     except Exception as e:
         logger.error(f"Error saving prompt selection: {e}")
         raise HTTPException(status_code=500, detail="Failed to save prompt selection")
@@ -128,39 +129,39 @@ def get_twitter_source() -> TwitterSource:
     if not startup_service:
         logger.error("Startup service not available in dependency registry")
         raise HTTPException(status_code=503, detail="Application not properly initialized")
-    
+
     if not startup_service.ingestion_service:
         logger.error("Ingestion service not available in startup service")
         raise HTTPException(status_code=503, detail="Ingestion service not available")
-    
+
     twitter_source = startup_service.ingestion_service.sources.get("twitter")
     if not twitter_source:
         available_sources = list(startup_service.ingestion_service.sources.keys())
         logger.error(f"Twitter source not found. Available sources: {available_sources}")
         raise HTTPException(status_code=404, detail="Twitter source not found or not configured")
-    
+
     if not isinstance(twitter_source, TwitterSource):
         logger.error(f"Twitter source is wrong type: {type(twitter_source)}")
         raise HTTPException(status_code=404, detail="Twitter source not properly configured")
-    
+
     return twitter_source
 
 
 @router.post("/upload/twitter")
 async def upload_twitter_archive(
     file: UploadFile = File(...),
-    twitter_source: TwitterSource = Depends(get_twitter_source)
+    twitter_source: TwitterSource = Depends(get_twitter_source),
 ):
     """Upload and process Twitter archive"""
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
-    
-    if not file.filename.endswith('.zip'):
+
+    if not file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="File must be a ZIP archive")
-    
+
     temp_zip_path = f"/tmp/{file.filename}"
     logger.info(f"Starting Twitter archive upload: {file.filename}")
-    
+
     try:
         # Save uploaded file
         with open(temp_zip_path, "wb") as buffer:
@@ -173,10 +174,9 @@ async def upload_twitter_archive(
         if result["success"]:
             logger.info(f"Twitter import successful: {result['message']}")
             return JSONResponse(content={"message": result["message"]})
-        else:
-            logger.error(f"Twitter import failed: {result['message']}")
-            return JSONResponse(content={"message": result["message"]}, status_code=500)
-            
+        logger.error(f"Twitter import failed: {result['message']}")
+        return JSONResponse(content={"message": result["message"]}, status_code=500)
+
     except HTTPException:
         # Re-raise HTTP exceptions (like dependency injection failures)
         raise
@@ -192,7 +192,7 @@ async def upload_twitter_archive(
             error_msg = "Invalid ZIP file format. Please ensure you're uploading a valid Twitter archive."
         else:
             error_msg = "An unexpected error occurred during the upload process."
-        
+
         return JSONResponse(content={"message": error_msg}, status_code=500)
     finally:
         # Clean up temporary file

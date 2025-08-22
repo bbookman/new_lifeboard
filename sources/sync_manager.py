@@ -1,17 +1,16 @@
-import asyncio
-from typing import Dict, Any, Optional, List, AsyncIterator
-from datetime import datetime, timezone, timedelta
 import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, AsyncIterator, Dict, List, Optional
 
-from sources.base import BaseSource, DataItem
-from core.database import DatabaseService
 from config.models import AppConfig
+from core.database import DatabaseService
+from sources.base import BaseSource, DataItem
 
 logger = logging.getLogger(__name__)
 
 class SyncResult:
     """Result of a sync operation"""
-    
+
     def __init__(self, namespace: str):
         self.namespace = namespace
         self.items_processed = 0
@@ -23,17 +22,17 @@ class SyncResult:
         self.end_time: Optional[datetime] = None
         self.last_processed_id: Optional[str] = None
         self.last_timestamp: Optional[datetime] = None
-    
+
     @property
     def duration(self) -> Optional[timedelta]:
         if self.start_time and self.end_time:
             return self.end_time - self.start_time
         return None
-    
+
     @property
     def success(self) -> bool:
         return len(self.errors) == 0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "namespace": self.namespace,
@@ -47,12 +46,12 @@ class SyncResult:
             "duration_seconds": self.duration.total_seconds() if self.duration else None,
             "success": self.success,
             "last_processed_id": self.last_processed_id,
-            "last_timestamp": self.last_timestamp.isoformat() if self.last_timestamp else None
+            "last_timestamp": self.last_timestamp.isoformat() if self.last_timestamp else None,
         }
 
 class SyncManager:
     """Manages synchronization for all data sources"""
-    
+
     def __init__(self, database: DatabaseService, app_config: AppConfig):
         self.database = database
         self.app_config = app_config
@@ -70,22 +69,22 @@ class SyncManager:
             try:
                 # Log the raw value we received for debugging
                 logger.debug(f"Retrieved timestamp for {namespace}: {type(timestamp_str)} = {timestamp_str}")
-                
+
                 # Handle case where timestamp_str might be a JSON object due to json_utils processing
                 if isinstance(timestamp_str, dict):
-                    if 'raw_value' in timestamp_str:
-                        actual_timestamp = timestamp_str['raw_value']
+                    if "raw_value" in timestamp_str:
+                        actual_timestamp = timestamp_str["raw_value"]
                         logger.info(f"Extracting timestamp from raw_value structure for {namespace}: {actual_timestamp}")
                         timestamp_str = actual_timestamp
                     else:
                         logger.warning(f"Invalid timestamp structure for {namespace}: {timestamp_str}")
                         return None
-                
+
                 # Ensure we have a string before parsing
                 if not isinstance(timestamp_str, str):
                     logger.warning(f"Timestamp is not a string for {namespace}: {type(timestamp_str)} = {timestamp_str}")
                     return None
-                
+
                 return datetime.fromisoformat(timestamp_str)
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid last sync timestamp for {namespace}: {{'raw_value': {timestamp_str}}} - Error: {e}")
@@ -126,7 +125,7 @@ class SyncManager:
                 try:
                     result.items_processed += 1
                     # A bit of a hack for weather source
-                    if namespace == 'weather':
+                    if namespace == "weather":
                         yield item
                         continue
 
@@ -138,7 +137,7 @@ class SyncManager:
                         result.items_skipped += 1
 
                 except Exception as e:
-                    error_msg = f"Error processing item in {namespace}: {str(e)}"
+                    error_msg = f"Error processing item in {namespace}: {e!s}"
                     logger.error(error_msg)
                     result.errors.append(error_msg)
 
@@ -146,7 +145,7 @@ class SyncManager:
                 await self.set_last_sync_time(namespace, result.start_time)
 
         except Exception as e:
-            error_msg = f"Sync failed for {namespace}: {str(e)}"
+            error_msg = f"Sync failed for {namespace}: {e!s}"
             logger.error(error_msg)
             result.errors.append(error_msg)
         finally:

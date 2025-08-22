@@ -1,6 +1,8 @@
 import pytest
-from config.models import TwitterConfig
 from pydantic import ValidationError
+
+from config.models import TwitterConfig
+
 
 class TestTwitterConfig:
     """Test TwitterConfig validation and API configuration"""
@@ -8,7 +10,7 @@ class TestTwitterConfig:
     def test_default_config(self):
         """Test default TwitterConfig values"""
         config = TwitterConfig()
-        
+
         assert config.enabled is True
         assert config.sync_interval_hours == 24
         assert config.delete_after_import is False
@@ -21,7 +23,7 @@ class TestTwitterConfig:
     def test_basic_configuration(self):
         """Test basic Twitter configuration without API"""
         config = TwitterConfig(enabled=True)
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is False
 
@@ -29,9 +31,9 @@ class TestTwitterConfig:
         """Test API configuration with both token and username"""
         config = TwitterConfig(
             bearer_token="valid_bearer_token_123",
-            username="testuser"
+            username="testuser",
         )
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is True
 
@@ -39,9 +41,9 @@ class TestTwitterConfig:
         """Test API configuration with missing token"""
         config = TwitterConfig(
             bearer_token=None,
-            username="testuser"
+            username="testuser",
         )
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is False
 
@@ -49,9 +51,9 @@ class TestTwitterConfig:
         """Test API configuration with missing username"""
         config = TwitterConfig(
             bearer_token="valid_bearer_token_123",
-            username=None
+            username=None,
         )
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is False
 
@@ -59,9 +61,9 @@ class TestTwitterConfig:
         """Test API configuration with empty token"""
         config = TwitterConfig(
             bearer_token="",
-            username="testuser"
+            username="testuser",
         )
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is False
 
@@ -69,9 +71,9 @@ class TestTwitterConfig:
         """Test API configuration with empty username"""
         config = TwitterConfig(
             bearer_token="valid_bearer_token_123",
-            username=""
+            username="",
         )
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is False
 
@@ -79,9 +81,9 @@ class TestTwitterConfig:
         """Test API configuration with placeholder token"""
         config = TwitterConfig(
             bearer_token="your token here",
-            username="testuser"
+            username="testuser",
         )
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is False
 
@@ -89,9 +91,9 @@ class TestTwitterConfig:
         """Test API configuration with placeholder username"""
         config = TwitterConfig(
             bearer_token="valid_bearer_token_123",
-            username="your user name"
+            username="your user name",
         )
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is False
 
@@ -99,9 +101,9 @@ class TestTwitterConfig:
         """Test API configuration with whitespace-only values"""
         config = TwitterConfig(
             bearer_token="   ",
-            username="   "
+            username="   ",
         )
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is False
 
@@ -110,9 +112,9 @@ class TestTwitterConfig:
         config = TwitterConfig(
             enabled=False,
             bearer_token="valid_bearer_token_123",
-            username="testuser"
+            username="testuser",
         )
-        
+
         assert config.is_configured() is False
         assert config.is_api_configured() is True  # API can still be configured even if disabled
 
@@ -121,7 +123,7 @@ class TestTwitterConfig:
         # Valid values
         config = TwitterConfig(
             max_retries=5,
-            sync_interval_hours=12
+            sync_interval_hours=12,
         )
         assert config.max_retries == 5
         assert config.sync_interval_hours == 12
@@ -129,10 +131,10 @@ class TestTwitterConfig:
         # Invalid values should raise ValidationError
         with pytest.raises(ValidationError):
             TwitterConfig(max_retries=-1)
-        
+
         with pytest.raises(ValidationError):
             TwitterConfig(max_retries=0)
-        
+
         with pytest.raises(ValidationError):
             TwitterConfig(sync_interval_hours=-5)
 
@@ -141,7 +143,7 @@ class TestTwitterConfig:
         # Valid values
         config = TwitterConfig(
             retry_delay=2.5,
-            request_timeout=45.0
+            request_timeout=45.0,
         )
         assert config.retry_delay == 2.5
         assert config.request_timeout == 45.0
@@ -149,10 +151,10 @@ class TestTwitterConfig:
         # Invalid values should raise ValidationError
         with pytest.raises(ValidationError):
             TwitterConfig(retry_delay=-1.0)
-        
+
         with pytest.raises(ValidationError):
             TwitterConfig(retry_delay=0.0)
-        
+
         with pytest.raises(ValidationError):
             TwitterConfig(request_timeout=-10.0)
 
@@ -173,9 +175,9 @@ class TestTwitterConfig:
             username="realuser123",
             max_retries=5,
             retry_delay=2.0,
-            request_timeout=60.0
+            request_timeout=60.0,
         )
-        
+
         assert config.is_configured() is True
         assert config.is_api_configured() is True
         assert config.enabled is True

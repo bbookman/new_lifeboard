@@ -6,45 +6,46 @@ for FastAPI routes, avoiding the flawed module attribute injection pattern.
 """
 
 import logging
-from typing import Optional, Callable, Any
+from typing import Callable, Optional
+
 from fastapi import HTTPException
 
-from services.startup import StartupService, get_startup_service
-from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
+from services.startup import StartupService
+from services.sync_manager_service import SyncManagerService
 
 logger = logging.getLogger(__name__)
 
 
 class DependencyRegistry:
     """Registry for managing FastAPI dependencies"""
-    
+
     def __init__(self):
         self._startup_service_provider: Optional[Callable[[], StartupService]] = None
         self._sync_manager_provider: Optional[Callable[[StartupService], SyncManagerService]] = None
         self._chat_service_provider: Optional[Callable[[StartupService], ChatService]] = None
-    
+
     def register_startup_service_provider(self, provider: Callable[[], StartupService]):
         """Register the startup service provider function"""
         self._startup_service_provider = provider
         logger.info("DEPENDENCIES: Startup service provider registered")
-    
+
     def register_sync_manager_provider(self, provider: Callable[[StartupService], SyncManagerService]):
         """Register the sync manager provider function"""
         self._sync_manager_provider = provider
         logger.info("DEPENDENCIES: Sync manager provider registered")
-    
+
     def register_chat_service_provider(self, provider: Callable[[StartupService], ChatService]):
         """Register the chat service provider function"""
         self._chat_service_provider = provider
         logger.info("DEPENDENCIES: Chat service provider registered")
-    
+
     def get_startup_service(self) -> StartupService:
         """Get startup service instance for FastAPI dependency injection"""
         if not self._startup_service_provider:
             logger.error("DEPENDENCIES: Startup service provider not registered")
             raise HTTPException(status_code=503, detail="Application not initialized")
-        
+
         try:
             startup_service = self._startup_service_provider()
             if not startup_service:
@@ -54,13 +55,13 @@ class DependencyRegistry:
         except Exception as e:
             logger.error(f"DEPENDENCIES: Error getting startup service: {e}")
             raise HTTPException(status_code=503, detail="Application not initialized")
-    
+
     def get_sync_manager(self, startup_service: StartupService) -> SyncManagerService:
         """Get sync manager instance for FastAPI dependency injection"""
         if not self._sync_manager_provider:
             logger.error("DEPENDENCIES: Sync manager provider not registered")
             raise HTTPException(status_code=503, detail="Sync manager not available")
-        
+
         try:
             sync_manager = self._sync_manager_provider(startup_service)
             if not sync_manager:
@@ -70,13 +71,13 @@ class DependencyRegistry:
         except Exception as e:
             logger.error(f"DEPENDENCIES: Error getting sync manager: {e}")
             raise HTTPException(status_code=503, detail="Sync manager not available")
-    
+
     def get_chat_service(self, startup_service: StartupService) -> ChatService:
         """Get chat service instance for FastAPI dependency injection"""
         if not self._chat_service_provider:
             logger.error("DEPENDENCIES: Chat service provider not registered")
             raise HTTPException(status_code=503, detail="Chat service not available")
-        
+
         try:
             chat_service = self._chat_service_provider(startup_service)
             if not chat_service:

@@ -1,18 +1,21 @@
-from pydantic import BaseModel, field_validator, ConfigDict, Field
-from typing import Optional, List
 import os
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .validation import (
-    APIKeyValidator, StringValidator, NumericValidator, PathValidator,
-    BaseConfigMixin, ConfigValidationError
+    APIKeyValidator,
+    BaseConfigMixin,
+    NumericValidator,
+    StringValidator,
 )
 
 
 class DatabaseConfig(BaseModel):
     """Database configuration"""
     path: str = "lifeboard.db"
-    
-    @field_validator('path')
+
+    @field_validator("path")
     @classmethod
     def validate_path(cls, v):
         if not v or not isinstance(v, str):
@@ -25,22 +28,21 @@ class EmbeddingConfig(BaseModel):
     model_name: str = "all-MiniLM-L6-v2"
     device: str = "cpu"
     batch_size: int = 32
-    
-    @field_validator('device')
+
+    @field_validator("device")
     @classmethod
     def validate_device(cls, v):
         if v not in ["cpu", "cuda", "mps"]:
             raise ValueError("Device must be one of: cpu, cuda, mps")
         return v
-    
+
     @classmethod
     def from_env(cls):
         """Create config from environment variables"""
-        import os
         return cls(
             model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
             device=os.getenv("EMBEDDING_DEVICE", "cpu"),
-            batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
+            batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32")),
         )
 
 
@@ -49,8 +51,8 @@ class VectorStoreConfig(BaseModel):
     index_path: str = "vector_index.faiss"
     id_map_path: str = "vector_ids.json"
     dimension: int = 384  # Matches all-MiniLM-L6-v2
-    
-    @field_validator('index_path', 'id_map_path')
+
+    @field_validator("index_path", "id_map_path")
     @classmethod
     def validate_paths(cls, v):
         if not v or not isinstance(v, str):
@@ -71,29 +73,29 @@ class LimitlessConfig(BaseModel, BaseConfigMixin):
     # Rate limiting configuration
     rate_limit_max_delay: int = 300  # Maximum delay for rate limiting (5 minutes)
     respect_retry_after: bool = True
-    
-    @field_validator('api_key')
+
+    @field_validator("api_key")
     @classmethod
     def validate_api_key(cls, v):
         return APIKeyValidator.validate_api_key_format(v, "Limitless API key")
-    
-    @field_validator('max_retries', 'sync_interval_hours', 'rate_limit_max_delay')
+
+    @field_validator("max_retries", "sync_interval_hours", "rate_limit_max_delay")
     @classmethod
     def validate_positive_ints(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return NumericValidator.validate_positive_int(v, field_name)
-    
-    @field_validator('retry_delay', 'request_timeout')
+
+    @field_validator("retry_delay", "request_timeout")
     @classmethod
     def validate_positive_floats(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return NumericValidator.validate_positive_float(v, field_name)
-    
+
     def is_api_key_configured(self) -> bool:
         """Check if API key is properly configured"""
         return super().is_api_key_configured(
-            self.api_key, 
-            additional_placeholders={"your_api_key_here", "limitless_api_key_here"}
+            self.api_key,
+            additional_placeholders={"your_api_key_here", "limitless_api_key_here"},
         )
 
 
@@ -113,51 +115,51 @@ class NewsConfig(BaseModel, BaseConfigMixin):
     # Rate limiting configuration
     rate_limit_max_delay: int = 300  # Maximum delay for rate limiting (5 minutes)
     respect_retry_after: bool = True
-    
-    @field_validator('api_key')
+
+    @field_validator("api_key")
     @classmethod
     def validate_api_key(cls, v):
         return APIKeyValidator.validate_api_key_format(v, "News API key")
-    
-    @field_validator('language', 'country')
+
+    @field_validator("language", "country")
     @classmethod
     def validate_strings(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return StringValidator.validate_non_empty_string(v, field_name)
-    
-    @field_validator('unique_items_per_day', 'items_to_retrieve', 'max_retries', 'sync_interval_hours', 'rate_limit_max_delay')
+
+    @field_validator("unique_items_per_day", "items_to_retrieve", "max_retries", "sync_interval_hours", "rate_limit_max_delay")
     @classmethod
     def validate_positive_ints(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return NumericValidator.validate_positive_int(v, field_name)
-    
-    @field_validator('retry_delay', 'request_timeout')
+
+    @field_validator("retry_delay", "request_timeout")
     @classmethod
     def validate_positive_floats(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return NumericValidator.validate_positive_float(v, field_name)
-    
+
     def is_api_key_configured(self) -> bool:
         """Check if API key is properly configured"""
         return super().is_api_key_configured(
             self.api_key,
-            additional_placeholders={"your-rapid-api-key-here", "rapid_api_key_here"}
+            additional_placeholders={"your-rapid-api-key-here", "rapid_api_key_here"},
         )
 
     def is_endpoint_configured(self) -> bool:
         """Check if endpoint is properly configured"""
         if not self.endpoint or not isinstance(self.endpoint, str):
             return False
-        
+
         # Check if endpoint is empty or whitespace only
         if not self.endpoint.strip():
             return False
-        
+
         # Check against common placeholder patterns
         endpoint_lower = self.endpoint.lower().strip()
         placeholders = {
-            "null", "none", "endpoint_here", "your_endpoint_here", 
-            "news_endpoint_here", "example.com", "api.example.com"
+            "null", "none", "endpoint_here", "your_endpoint_here",
+            "news_endpoint_here", "example.com", "api.example.com",
         }
         return endpoint_lower not in placeholders
 
@@ -171,7 +173,7 @@ class WeatherConfig(BaseModel, BaseConfigMixin):
     api_key: Optional[str] = Field(None, env="RAPID_API_KEY")
     endpoint: Optional[str] = Field(None, env="WEATHER_ENDPOINT")
     latitude: str = Field("34.0522", env="USER_HOME_LATITUDE")
-    longitude: str = Field("-118.2437", env="USER_HOME_LOGITUDE")
+    longitude: str = Field("-118.2437", env="USER_HOME_LONGITUDE")
     units: str = Field("metric", env="UNITS")
     enabled: bool = True
     max_retries: int = 3
@@ -182,49 +184,49 @@ class WeatherConfig(BaseModel, BaseConfigMixin):
     rate_limit_max_delay: int = 300  # Maximum delay for rate limiting (5 minutes)
     respect_retry_after: bool = True
 
-    @field_validator('api_key')
+    @field_validator("api_key")
     @classmethod
     def validate_api_key(cls, v):
         return APIKeyValidator.validate_api_key_format(v, "Weather API key")
 
-    @field_validator('units')
+    @field_validator("units")
     @classmethod
     def validate_units(cls, v):
         return StringValidator.validate_string_choices(v, ["metric", "standard"], "Units")
-    
-    @field_validator('max_retries', 'sync_interval_hours', 'rate_limit_max_delay')
+
+    @field_validator("max_retries", "sync_interval_hours", "rate_limit_max_delay")
     @classmethod
     def validate_positive_ints(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return NumericValidator.validate_positive_int(v, field_name)
-    
-    @field_validator('retry_delay', 'request_timeout')
+
+    @field_validator("retry_delay", "request_timeout")
     @classmethod
     def validate_positive_floats(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return NumericValidator.validate_positive_float(v, field_name)
 
     def is_api_key_configured(self) -> bool:
         """Check if API key is properly configured"""
         return super().is_api_key_configured(
             self.api_key,
-            additional_placeholders={"your-rapid-api-key-here", "rapid_api_key_here"}
+            additional_placeholders={"your-rapid-api-key-here", "rapid_api_key_here"},
         )
 
     def is_endpoint_configured(self) -> bool:
         """Check if endpoint is properly configured"""
         if not self.endpoint or not isinstance(self.endpoint, str):
             return False
-        
+
         # Check if endpoint is empty or whitespace only
         if not self.endpoint.strip():
             return False
-        
+
         # Check against common placeholder patterns
         endpoint_lower = self.endpoint.lower().strip()
         placeholders = {
             "null", "none", "endpoint_here", "your_endpoint_here",
-            "weather_endpoint_here", "example.com", "api.example.com"
+            "weather_endpoint_here", "example.com", "api.example.com",
         }
         return endpoint_lower not in placeholders
 
@@ -238,14 +240,14 @@ class SourceConfig(BaseModel):
     namespace: str
     enabled: bool = True
     sync_interval_hours: int = 24
-    
-    @field_validator('namespace')
+
+    @field_validator("namespace")
     @classmethod
     def validate_namespace(cls, v):
         v = StringValidator.validate_non_empty_string(v, "Namespace")
-        return StringValidator.validate_no_special_chars(v, "Namespace", {':'})
-    
-    @field_validator('sync_interval_hours')
+        return StringValidator.validate_no_special_chars(v, "Namespace", {":"})
+
+    @field_validator("sync_interval_hours")
     @classmethod
     def validate_sync_interval(cls, v):
         return NumericValidator.validate_positive_int(v, "Sync interval hours")
@@ -257,8 +259,8 @@ class SearchConfig(BaseModel):
     max_limit: int = 100
     similarity_threshold: float = 0.7
     max_top_k: int = 50
-    
-    @field_validator('max_top_k')
+
+    @field_validator("max_top_k")
     @classmethod
     def validate_max_top_k(cls, v):
         if v <= 0:
@@ -283,30 +285,30 @@ class LoggingConfig(BaseModel):
     console_logging: bool = True
     include_correlation_ids: bool = False
     log_format: Optional[str] = None
-    
-    @field_validator('level')
+
+    @field_validator("level")
     @classmethod
     def validate_level(cls, v):
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in valid_levels:
             raise ValueError(f"Log level must be one of: {valid_levels}")
         return v.upper()
-    
-    @field_validator('max_file_size')
+
+    @field_validator("max_file_size")
     @classmethod
     def validate_max_file_size(cls, v):
         if v <= 0:
             raise ValueError("Max file size must be positive")
         return v
-    
-    @field_validator('backup_count')
+
+    @field_validator("backup_count")
     @classmethod
     def validate_backup_count(cls, v):
         if v < 0:
             raise ValueError("Backup count must be non-negative")
         return v
-    
-    @field_validator('file_path')
+
+    @field_validator("file_path")
     @classmethod
     def validate_file_path(cls, v):
         if not v or not isinstance(v, str):
@@ -320,15 +322,15 @@ class ChatConfig(BaseModel):
     history_limit: int = 1000
     context_window: int = 4000
     response_timeout: float = 30.0
-    
-    @field_validator('history_limit')
+
+    @field_validator("history_limit")
     @classmethod
     def validate_history_limit(cls, v):
         if v <= 0:
             raise ValueError("History limit must be positive")
         return v
-    
-    @field_validator('context_window')
+
+    @field_validator("context_window")
     @classmethod
     def validate_context_window(cls, v):
         if v <= 0:
@@ -342,8 +344,8 @@ class InsightsConfig(BaseModel):
     schedule: str = "daily"  # hourly, daily, weekly, custom
     custom_cron: Optional[str] = None
     max_insights_history: int = 100
-    
-    @field_validator('schedule')
+
+    @field_validator("schedule")
     @classmethod
     def validate_schedule(cls, v):
         valid_schedules = ["hourly", "daily", "weekly", "custom"]
@@ -358,8 +360,8 @@ class EnhancementConfig(BaseModel):
     schedule: str = "nightly"
     batch_size: int = 100
     max_concurrent_jobs: int = 2
-    
-    @field_validator('batch_size')
+
+    @field_validator("batch_size")
     @classmethod
     def validate_batch_size(cls, v):
         if v <= 0:
@@ -373,7 +375,7 @@ class OllamaConfig(BaseModel):
     model: str = "llama2"
     timeout: float = 60.0
     max_retries: int = 3
-    
+
     def is_configured(self) -> bool:
         """Check if Ollama is properly configured"""
         return bool(self.base_url and self.model)
@@ -388,18 +390,18 @@ class OpenAIConfig(BaseModel):
     max_retries: int = 3
     max_tokens: int = 1000
     temperature: float = 0.7
-    
-    @field_validator('api_key')
+
+    @field_validator("api_key")
     @classmethod
     def validate_api_key(cls, v):
         if v is not None and not isinstance(v, str):
             raise ValueError("API key must be a string")
         return v
-    
+
     def is_configured(self) -> bool:
         """Check if OpenAI is properly configured"""
-        return (self.api_key is not None and 
-                self.api_key.strip() != "" and 
+        return (self.api_key is not None and
+                self.api_key.strip() != "" and
                 self.api_key != "your_openai_api_key_here")
 
 
@@ -408,24 +410,23 @@ class LLMProviderConfig(BaseModel):
     provider: str = "ollama"  # ollama or openai
     ollama: OllamaConfig = OllamaConfig()
     openai: OpenAIConfig = OpenAIConfig()
-    
-    @field_validator('provider')
+
+    @field_validator("provider")
     @classmethod
     def validate_provider(cls, v):
         valid_providers = ["ollama", "openai"]
         if v not in valid_providers:
             raise ValueError(f"Provider must be one of: {valid_providers}")
         return v
-    
+
     def get_active_provider_config(self):
         """Get the configuration for the active provider"""
         if self.provider == "ollama":
             return self.ollama
-        elif self.provider == "openai":
+        if self.provider == "openai":
             return self.openai
-        else:
-            raise ValueError(f"Unknown provider: {self.provider}")
-    
+        raise ValueError(f"Unknown provider: {self.provider}")
+
     def is_active_provider_configured(self) -> bool:
         """Check if the active provider is properly configured"""
         active_config = self.get_active_provider_config()
@@ -446,37 +447,37 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
     rate_limit_max_retries: int = 10
     other_error_max_retries: int = 3
     inter_call_delay: float = 3.0
-    
-    @field_validator('bearer_token')
+
+    @field_validator("bearer_token")
     @classmethod
     def validate_bearer_token(cls, v):
         return APIKeyValidator.validate_api_key_format(v, "Twitter Bearer Token")
-    
-    @field_validator('username')
+
+    @field_validator("username")
     @classmethod
     def validate_username(cls, v):
         # Allow None and empty string, but validate non-empty strings
         if v is not None and v.strip() != "":
             return StringValidator.validate_non_empty_string(v, "Twitter Username")
         return v
-    
-    @field_validator('max_retries', 'sync_interval_hours', 'rate_limit_max_retries', 'other_error_max_retries')
+
+    @field_validator("max_retries", "sync_interval_hours", "rate_limit_max_retries", "other_error_max_retries")
     @classmethod
     def validate_positive_ints(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return NumericValidator.validate_positive_int(v, field_name)
-    
-    @field_validator('retry_delay', 'request_timeout', 'inter_call_delay')
+
+    @field_validator("retry_delay", "request_timeout", "inter_call_delay")
     @classmethod
     def validate_positive_floats(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return NumericValidator.validate_positive_float(v, field_name)
 
     def is_api_configured(self) -> bool:
         """Check if Twitter API credentials are properly configured"""
         return (super().is_api_key_configured(
             self.bearer_token,
-            additional_placeholders={"your token here", "your-token-here", "twitter_bearer_token_here"}
+            additional_placeholders={"your token here", "your-token-here", "twitter_bearer_token_here"},
         ) and self.username is not None and
         self.username.strip() != "" and
         self.username != "your user name")
@@ -497,21 +498,21 @@ class DocumentsConfig(BaseModel):
     chunk_size: int = 1000  # Characters per chunk for vector indexing
     chunk_overlap: int = 200  # Overlap between chunks
     search_results_limit: int = 20
-    
-    @field_validator('max_title_length', 'max_content_length', 'chunk_size', 'chunk_overlap', 'search_results_limit')
+
+    @field_validator("max_title_length", "max_content_length", "chunk_size", "chunk_overlap", "search_results_limit")
     @classmethod
     def validate_positive_ints(cls, v, info):
-        field_name = info.field_name.replace('_', ' ').title()
+        field_name = info.field_name.replace("_", " ").title()
         return NumericValidator.validate_positive_int(v, field_name)
-    
-    @field_validator('auto_save_interval_seconds')
+
+    @field_validator("auto_save_interval_seconds")
     @classmethod
     def validate_auto_save_interval(cls, v):
         if v < 10:  # Minimum 10 seconds to avoid excessive saves
             raise ValueError("Auto-save interval must be at least 10 seconds")
         return v
-    
-    @field_validator('default_user_id')
+
+    @field_validator("default_user_id")
     @classmethod
     def validate_user_id(cls, v):
         return StringValidator.validate_non_empty_string(v, "Default user ID")
@@ -530,23 +531,23 @@ class AppConfig(BaseModel):
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     logging: LoggingConfig = LoggingConfig()
-    
+
     # Phase 6: LLM and Chat Capabilities
     llm_provider: LLMProviderConfig = LLMProviderConfig()
     chat: ChatConfig = ChatConfig()
     insights: InsightsConfig = InsightsConfig()
     enhancement: EnhancementConfig = EnhancementConfig()
-    
+
     # Global settings
     debug: bool = False
-    
+
     # Backward compatibility - kept for existing code that might use it
     @property
     def log_level(self) -> str:
         """Get log level from logging config for backward compatibility"""
         return self.logging.level
-    
+
     model_config = ConfigDict(
         env_file=".env",
-        env_nested_delimiter="__"
+        env_nested_delimiter="__",
     )

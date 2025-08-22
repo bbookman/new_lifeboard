@@ -1,22 +1,21 @@
 import json
-from typing import List, Dict, Any, Optional
-from datetime import datetime
 import logging
+from typing import Any, Dict, List
 
-from core.database import DatabaseService
 from config.models import NewsConfig
+from core.database import DatabaseService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-file_handler = logging.FileHandler('logs/news_service.log')
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+file_handler = logging.FileHandler("logs/news_service.log")
+file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
 logger.addHandler(file_handler)
 
 
 class NewsService:
     """Service for handling news data queries and operations"""
-    
+
     def __init__(self, db_service: DatabaseService, config: NewsConfig = None):
         self.db_service = db_service
         self.config = config
@@ -48,9 +47,9 @@ class NewsService:
         try:
             # Get latest news from unified data_items table only
             news_items = self._get_latest_from_data_items(limit)
-            
+
             return news_items
-            
+
         except Exception as e:
             logger.error(f"Error getting latest news: {e}")
             return []
@@ -85,7 +84,7 @@ class NewsService:
                     "published_datetime_utc": metadata.get("published_datetime_utc"),
                     "created_at": row["created_at"],
                     "content": row["content"],
-                    "source": "data_items"
+                    "source": "data_items",
                 })
 
             # Simple deterministic ordering: prefer published_datetime_utc if present
@@ -110,7 +109,7 @@ class NewsService:
                 ORDER BY created_at DESC
                 LIMIT ?
             """, (limit,))
-            
+
             news_items = []
             for row in cursor.fetchall():
                 # Parse metadata to extract title and other fields
@@ -120,7 +119,7 @@ class NewsService:
                         metadata = json.loads(row["metadata"])
                     except (json.JSONDecodeError, TypeError):
                         pass
-                
+
                 news_items.append({
                     "title": metadata.get("title", row["content"][:100] + "..."),
                     "link": metadata.get("link", row["source_id"]),
@@ -129,9 +128,9 @@ class NewsService:
                     "published_datetime_utc": metadata.get("published_datetime_utc"),
                     "created_at": row["created_at"],
                     "content": row["content"],
-                    "source": "data_items"
+                    "source": "data_items",
                 })
-            
+
             return news_items
 
     def get_news_count_by_date(self, date: str) -> int:
@@ -143,11 +142,11 @@ class NewsService:
                     SELECT COUNT(*) as count FROM data_items 
                     WHERE namespace = 'news' AND days_date = ?
                 """, (date,))
-                
+
                 count = cursor.fetchone()["count"]
-                
+
                 return count
-                
+
         except Exception as e:
             logger.error(f"Error getting news count for date {date}: {e}")
             return 0

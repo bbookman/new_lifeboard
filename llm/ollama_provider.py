@@ -2,99 +2,104 @@
 Ollama LLM provider implementation
 """
 
-import httpx
 import json
-import asyncio
-from typing import Dict, Any, Optional, List, AsyncIterator
+from typing import Any, AsyncIterator, Dict, List, Optional
 
-from .base import BaseLLMProvider, LLMResponse, LLMError
+import httpx
+
 from config.models import OllamaConfig
-from core.retry_utils import RetryExecutor, create_llm_retry_config, NetworkErrorRetryCondition
 from core.http_client_mixin import HTTPClientMixin
+from core.retry_utils import (
+    NetworkErrorRetryCondition,
+    RetryExecutor,
+    create_llm_retry_config,
+)
+
+from .base import BaseLLMProvider, LLMError, LLMResponse
 
 
 class OllamaProvider(BaseLLMProvider, HTTPClientMixin):
     """Ollama local LLM provider"""
-    
+
     def __init__(self, config: OllamaConfig):
         BaseLLMProvider.__init__(self, "ollama")
         HTTPClientMixin.__init__(self)
         self.config = config
-    
+
     def _create_client_config(self) -> Dict[str, Any]:
         """Create HTTP client configuration for Ollama API"""
         return {
             "base_url": self.config.base_url,
-            "timeout": self.config.timeout
+            "timeout": self.config.timeout,
         }
-    
+
     async def _make_test_request(self, client: httpx.AsyncClient) -> httpx.Response:
         """Make a test request to verify Ollama connectivity"""
         return await client.get("/api/tags")
-    
+
     async def is_available(self) -> bool:
         """Check if Ollama is available and configured"""
         if not self.config.is_configured():
             self.logger.warning("Ollama not configured - missing base_url or model")
             return False
-        
+
         return await super().test_connection()
-    
-    async def generate_response(self, 
-                              prompt: str, 
+
+    async def generate_response(self,
+                              prompt: str,
                               context: Optional[str] = None,
                               max_tokens: Optional[int] = None,
                               temperature: Optional[float] = None) -> LLMResponse:
         """Generate a response using Ollama"""
         self._validate_parameters(max_tokens, temperature)
         self._log_request(prompt, context=bool(context), max_tokens=max_tokens, temperature=temperature)
-        
+
         if not await self.is_available():
             raise LLMError("Ollama is not available", self.provider_name)
-        
+
         # Build the full prompt with context
         full_prompt = prompt
         if context:
             full_prompt = f"Context: {context}\n\nUser: {prompt}\n\nAssistant:"
-        
+
         # Prepare request payload
         payload = {
             "model": self.config.model,
             "prompt": full_prompt,
-            "stream": False
+            "stream": False,
         }
-        
+
         # Add optional parameters
         options = {}
         if temperature is not None:
             options["temperature"] = temperature
         if max_tokens is not None:
             options["num_predict"] = max_tokens
-        
+
         if options:
             payload["options"] = options
-        
+
         try:
             client = await self._ensure_client()
             response = await self._make_request_with_retry(client, "/api/generate", payload)
-            
+
             if response.status_code != 200:
                 raise LLMError(f"Ollama API error: {response.status_code}", self.provider_name)
-            
+
             data = response.json()
-            
+
             # Extract response content
             content = data.get("response", "")
             if not content:
                 raise LLMError("Empty response from Ollama", self.provider_name)
-            
+
             # Build usage information
             usage = {
                 "prompt_tokens": data.get("prompt_eval_count", 0),
                 "completion_tokens": data.get("eval_count", 0),
-                "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
+                "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
             }
-            
+
             # Build metadata
             metadata = {
                 "model": data.get("model", self.config.model),
@@ -103,66 +108,66 @@ class OllamaProvider(BaseLLMProvider, HTTPClientMixin):
                 "total_duration": data.get("total_duration", 0),
                 "load_duration": data.get("load_duration", 0),
                 "prompt_eval_duration": data.get("prompt_eval_duration", 0),
-                "eval_duration": data.get("eval_duration", 0)
+                "eval_duration": data.get("eval_duration", 0),
             }
-            
+
             llm_response = LLMResponse.create(
                 content=content,
                 model=self.config.model,
                 provider=self.provider_name,
                 usage=usage,
-                metadata=metadata
+                metadata=metadata,
             )
-            
+
             self._log_response(llm_response)
             return llm_response
-            
+
         except httpx.RequestError as e:
             raise LLMError(f"Ollama request failed: {e}", self.provider_name)
         except json.JSONDecodeError as e:
             raise LLMError(f"Invalid JSON response from Ollama: {e}", self.provider_name)
-    
-    async def generate_streaming_response(self, 
-                                        prompt: str, 
+
+    async def generate_streaming_response(self,
+                                        prompt: str,
                                         context: Optional[str] = None,
                                         max_tokens: Optional[int] = None,
                                         temperature: Optional[float] = None) -> AsyncIterator[str]:
         """Generate a streaming response using Ollama"""
         self._validate_parameters(max_tokens, temperature)
         self._log_request(prompt, context=bool(context), max_tokens=max_tokens, temperature=temperature, streaming=True)
-        
+
         if not await self.is_available():
             raise LLMError("Ollama is not available", self.provider_name)
-        
+
         # Build the full prompt with context
         full_prompt = prompt
         if context:
             full_prompt = f"Context: {context}\n\nUser: {prompt}\n\nAssistant:"
-        
+
         # Prepare request payload
         payload = {
             "model": self.config.model,
             "prompt": full_prompt,
-            "stream": True
+            "stream": True,
         }
-        
+
         # Add optional parameters
         options = {}
         if temperature is not None:
             options["temperature"] = temperature
         if max_tokens is not None:
             options["num_predict"] = max_tokens
-        
+
         if options:
             payload["options"] = options
-        
+
         try:
             client = await self._ensure_client()
-            
+
             async with client.stream("POST", "/api/generate", json=payload) as response:
                 if response.status_code != 200:
                     raise LLMError(f"Ollama streaming API error: {response.status_code}", self.provider_name)
-                
+
                 async for line in response.aiter_lines():
                     if line.strip():
                         try:
@@ -170,70 +175,69 @@ class OllamaProvider(BaseLLMProvider, HTTPClientMixin):
                             content = data.get("response", "")
                             if content:
                                 yield content
-                            
+
                             # Check if streaming is done
                             if data.get("done", False):
                                 break
-                                
+
                         except json.JSONDecodeError:
                             continue  # Skip invalid JSON lines
-                            
+
         except httpx.RequestError as e:
             raise LLMError(f"Ollama streaming request failed: {e}", self.provider_name)
-    
+
     async def get_models(self) -> List[str]:
         """Get list of available Ollama models"""
         if not await self.is_available():
             return []
-        
+
         try:
             client = await self._ensure_client()
             response = await client.get("/api/tags")
-            
+
             if response.status_code != 200:
                 self.logger.warning(f"Failed to get Ollama models: {response.status_code}")
                 return []
-            
+
             data = response.json()
             models = [model.get("name", "") for model in data.get("models", [])]
             return [model for model in models if model]  # Filter out empty names
-            
+
         except Exception as e:
             self.logger.warning(f"Error getting Ollama models: {e}")
             return []
-    
+
     async def get_model_info(self, model_name: str) -> Dict[str, Any]:
         """Get information about a specific Ollama model"""
         if not await self.is_available():
             return {}
-        
+
         try:
             client = await self._ensure_client()
             response = await client.post("/api/show", json={"name": model_name})
-            
+
             if response.status_code != 200:
                 self.logger.warning(f"Failed to get Ollama model info for {model_name}: {response.status_code}")
                 return {}
-            
+
             return response.json()
-            
+
         except Exception as e:
             self.logger.warning(f"Error getting Ollama model info for {model_name}: {e}")
             return {}
-    
+
     async def _make_request_with_retry(self, client: httpx.AsyncClient, endpoint: str, payload: Dict[str, Any]) -> httpx.Response:
         """Make HTTP request with retry logic using unified retry framework"""
         # Create retry configuration optimized for LLM calls
         retry_config = create_llm_retry_config(max_retries=self.config.max_retries)
         retry_condition = NetworkErrorRetryCondition()
         retry_executor = RetryExecutor(retry_config, retry_condition)
-        
+
         async def make_request():
             return await client.post(endpoint, json=payload)
-        
+
         result = await retry_executor.execute_async(make_request)
-        
+
         if result.success:
             return result.result
-        else:
-            raise result.exception
+        raise result.exception

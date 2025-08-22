@@ -1,11 +1,11 @@
+from unittest.mock import MagicMock
+
 import pytest
-from httpx import AsyncClient
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 
 from api.server import app
-from services.weather_service import WeatherService
 from core.database import DatabaseService
+from services.weather_service import WeatherService
 
 
 @pytest.fixture
@@ -33,10 +33,10 @@ def test_get_weather_success(client, weather_service):
                 "temperatureMax": 29.5,
                 "temperatureMin": 25.84,
                 "daytimeForecast": {
-                    "conditionCode": "HeavyRain"
-                }
-            }
-        ]
+                    "conditionCode": "HeavyRain",
+                },
+            },
+        ],
     }
     weather_service.get_latest_weather = MagicMock(return_value=mock_weather_data)
 

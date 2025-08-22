@@ -1,8 +1,11 @@
-import sys
 import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import pytest
+
 from core.ids import NamespacedIDManager
+
 
 def test_create_id():
     assert NamespacedIDManager.create_id("test", "123") == "test:123"
@@ -31,7 +34,7 @@ def test_group_by_namespace():
     ids = ["test:123", "other:456", "test:789"]
     assert NamespacedIDManager.group_by_namespace(ids) == {
         "test": ["test:123", "test:789"],
-        "other": ["other:456"]
+        "other": ["other:456"],
     }
 
 def test_validate_namespace():

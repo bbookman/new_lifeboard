@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
-from services.weather_service import WeatherService
-from core.database import DatabaseService
+from fastapi import APIRouter, Depends, HTTPException
+
 from config.factory import get_config
+from core.database import DatabaseService
+from services.weather_service import WeatherService
 
 router = APIRouter()
 
@@ -30,18 +31,18 @@ def get_weather_for_day(date: str, weather_service: WeatherService = Depends(get
         # Validate date format
         from datetime import datetime
         datetime.strptime(date, "%Y-%m-%d")
-        
+
         # Get 5 days of weather data starting from the requested date
         weather_data = weather_service.get_weather_for_date_range(date, 5)
-        
+
         return {
             "date": date,
             "has_data": len(weather_data) > 0,
             "forecast_days": weather_data,
-            "count": len(weather_data)
+            "count": len(weather_data),
         }
-        
+
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD format.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving weather data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving weather data: {e!s}")

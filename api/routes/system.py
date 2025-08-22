@@ -6,16 +6,15 @@ shutdown, and management operations.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import List
 
 from config.factory import create_production_config
+from core.dependencies import get_startup_service_dependency
 from core.exception_handling import handle_api_exceptions
 from services.startup import StartupService
-from core.dependencies import get_startup_service_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,7 @@ class SearchResult(BaseModel):
 @handle_api_exceptions("Search failed", 500)
 async def search_data(
     request: SearchRequest,
-    startup_service: StartupService = Depends(get_startup_service_dependency)
+    startup_service: StartupService = Depends(get_startup_service_dependency),
 ) -> List[SearchResult]:
     """Search through data using embeddings"""
     try:
@@ -51,27 +50,27 @@ async def search_data(
         if not chat_service:
             from fastapi import HTTPException
             raise HTTPException(status_code=503, detail="Chat service not available")
-        
+
         # Use the chat service's search functionality
         results = await chat_service.search_data(request.query, limit=request.limit)
-        
+
         # Convert results to SearchResult format
         search_results = []
         for result in results:
             search_results.append(SearchResult(
-                id=result.get('id', ''),
-                content=result.get('content', ''),
-                score=result.get('score', 0.0),
-                source=result.get('namespace', ''),
-                date=result.get('days_date', '')
+                id=result.get("id", ""),
+                content=result.get("content", ""),
+                score=result.get("score", 0.0),
+                source=result.get("namespace", ""),
+                date=result.get("days_date", ""),
             ))
-        
+
         return search_results
-        
+
     except Exception as e:
         logger.error(f"Search error: {e}")
         from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {e!s}")
 
 
 @router.post("/api/system/startup", response_model=SystemResponse)
@@ -79,14 +78,14 @@ async def search_data(
 async def initialize_system():
     """Initialize the application system"""
     from services.startup import initialize_application
-    
+
     config = create_production_config()
     result = await initialize_application(config)
-    
+
     return SystemResponse(
         success=result["success"],
         message="System initialization completed" if result["success"] else "System initialization failed",
-        result=result
+        result=result,
     )
 
 
@@ -95,10 +94,10 @@ async def initialize_system():
 async def shutdown_system():
     """Shutdown the application system gracefully"""
     from services.startup import shutdown_application
-    
+
     await shutdown_application()
-    
+
     return SystemResponse(
         success=True,
-        message="System shutdown completed"
+        message="System shutdown completed",
     )

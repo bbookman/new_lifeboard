@@ -1,9 +1,11 @@
-import pytest
 import json
-from datetime import datetime, timezone
 from unittest.mock import MagicMock
+
+import pytest
+
 from config.models import TwitterConfig
 from core.database import DatabaseService
+
 
 @pytest.fixture
 def twitter_config_api_enabled():
@@ -16,7 +18,7 @@ def twitter_config_api_enabled():
         retry_delay=1.0,
         request_timeout=30.0,
         sync_interval_hours=24,
-        delete_after_import=False
+        delete_after_import=False,
     )
 
 @pytest.fixture
@@ -27,7 +29,7 @@ def twitter_config_api_disabled():
         bearer_token=None,
         username=None,
         sync_interval_hours=24,
-        delete_after_import=False
+        delete_after_import=False,
     )
 
 @pytest.fixture
@@ -38,7 +40,7 @@ def twitter_config_disabled():
         bearer_token="valid_token",
         username="testuser",
         sync_interval_hours=24,
-        delete_after_import=False
+        delete_after_import=False,
     )
 
 @pytest.fixture
@@ -54,9 +56,9 @@ def sample_twitter_api_user_response():
                 "followers_count": 100,
                 "following_count": 50,
                 "tweet_count": 200,
-                "listed_count": 5
-            }
-        }
+                "listed_count": 5,
+            },
+        },
     }
 
 @pytest.fixture
@@ -72,28 +74,28 @@ def sample_twitter_api_tweets_response():
                     "retweet_count": 5,
                     "like_count": 25,
                     "reply_count": 3,
-                    "quote_count": 2
+                    "quote_count": 2,
                 },
                 "context_annotations": [
                     {
                         "domain": {
                             "id": "66",
                             "name": "Twitter Platform",
-                            "description": "A prominent social media platform"
+                            "description": "A prominent social media platform",
                         },
                         "entity": {
                             "id": "781974596752842752",
                             "name": "Services",
-                            "description": "Entity representing a commercial service"
-                        }
-                    }
+                            "description": "Entity representing a commercial service",
+                        },
+                    },
                 ],
                 "entities": {
                     "hashtags": [
                         {"start": 50, "end": 57, "tag": "coding"},
-                        {"start": 58, "end": 63, "tag": "tech"}
-                    ]
-                }
+                        {"start": 58, "end": 63, "tag": "tech"},
+                    ],
+                },
             },
             {
                 "id": "1750123456789012346",
@@ -103,22 +105,22 @@ def sample_twitter_api_tweets_response():
                     "retweet_count": 12,
                     "like_count": 48,
                     "reply_count": 7,
-                    "quote_count": 4
+                    "quote_count": 4,
                 },
                 "context_annotations": [
                     {
                         "domain": {
                             "id": "65",
                             "name": "Interests and Hobbies Vertical",
-                            "description": "A vertical for interests and hobbies"
+                            "description": "A vertical for interests and hobbies",
                         },
                         "entity": {
                             "id": "1255885797584535552",
                             "name": "Machine learning",
-                            "description": "Machine learning and artificial intelligence"
-                        }
-                    }
-                ]
+                            "description": "Machine learning and artificial intelligence",
+                        },
+                    },
+                ],
             },
             {
                 "id": "1750123456789012347",
@@ -128,15 +130,15 @@ def sample_twitter_api_tweets_response():
                     "retweet_count": 2,
                     "like_count": 15,
                     "reply_count": 1,
-                    "quote_count": 0
-                }
-            }
+                    "quote_count": 0,
+                },
+            },
         ],
         "meta": {
             "result_count": 3,
             "newest_id": "1750123456789012347",
-            "oldest_id": "1750123456789012345"
-        }
+            "oldest_id": "1750123456789012345",
+        },
     }
 
 @pytest.fixture
@@ -144,8 +146,8 @@ def sample_twitter_api_empty_response():
     """Sample empty Twitter API response"""
     return {
         "meta": {
-            "result_count": 0
-        }
+            "result_count": 0,
+        },
     }
 
 @pytest.fixture
@@ -162,22 +164,22 @@ def sample_transformed_api_tweets():
                 "retweet_count": 5,
                 "like_count": 25,
                 "reply_count": 3,
-                "quote_count": 2
+                "quote_count": 2,
             },
             "context_annotations": [
                 {
                     "domain": {
                         "id": "66",
                         "name": "Twitter Platform",
-                        "description": "A prominent social media platform"
+                        "description": "A prominent social media platform",
                     },
                     "entity": {
                         "id": "781974596752842752",
                         "name": "Services",
-                        "description": "Entity representing a commercial service"
-                    }
-                }
-            ]
+                        "description": "Entity representing a commercial service",
+                    },
+                },
+            ],
         },
         {
             "tweet_id": "1750123456789012346",
@@ -189,22 +191,22 @@ def sample_transformed_api_tweets():
                 "retweet_count": 12,
                 "like_count": 48,
                 "reply_count": 7,
-                "quote_count": 4
+                "quote_count": 4,
             },
             "context_annotations": [
                 {
                     "domain": {
                         "id": "65",
                         "name": "Interests and Hobbies Vertical",
-                        "description": "A vertical for interests and hobbies"
+                        "description": "A vertical for interests and hobbies",
                     },
                     "entity": {
                         "id": "1255885797584535552",
                         "name": "Machine learning",
-                        "description": "Machine learning and artificial intelligence"
-                    }
-                }
-            ]
+                        "description": "Machine learning and artificial intelligence",
+                    },
+                },
+            ],
         },
         {
             "tweet_id": "1750123456789012347",
@@ -216,10 +218,10 @@ def sample_transformed_api_tweets():
                 "retweet_count": 2,
                 "like_count": 15,
                 "reply_count": 1,
-                "quote_count": 0
+                "quote_count": 0,
             },
-            "context_annotations": []
-        }
+            "context_annotations": [],
+        },
     ]
 
 @pytest.fixture
@@ -234,24 +236,24 @@ def sample_existing_twitter_data():
                 "media_urls": "[]",
                 "original_created_at": "2024-01-14T15:30:00+00:00",
                 "days_date": "2024-01-14",
-                "source_type": "twitter_archive"
+                "source_type": "twitter_archive",
             }),
             "created_at": "2024-01-14T15:30:00+00:00",
-            "updated_at": "2024-01-14T15:30:00+00:00"
+            "updated_at": "2024-01-14T15:30:00+00:00",
         },
         {
             "namespace": "twitter",
             "source_id": "1749000000000000002",
             "content": "Another archived tweet",
             "metadata": json.dumps({
-                "media_urls": "[\"https://pbs.twimg.com/media/example.jpg\"]",
+                "media_urls": '["https://pbs.twimg.com/media/example.jpg"]',
                 "original_created_at": "2024-01-14T20:15:00+00:00",
                 "days_date": "2024-01-14",
-                "source_type": "twitter_archive"
+                "source_type": "twitter_archive",
             }),
             "created_at": "2024-01-14T20:15:00+00:00",
-            "updated_at": "2024-01-14T20:15:00+00:00"
-        }
+            "updated_at": "2024-01-14T20:15:00+00:00",
+        },
     ]
 
 @pytest.fixture
@@ -273,10 +275,10 @@ def sample_twitter_api_errors():
                 "errors": [
                     {
                         "message": "Unauthorized",
-                        "code": 32
-                    }
-                ]
-            }
+                        "code": 32,
+                    },
+                ],
+            },
         },
         "rate_limited": {
             "status": 429,
@@ -284,13 +286,13 @@ def sample_twitter_api_errors():
                 "errors": [
                     {
                         "message": "Rate limit exceeded",
-                        "code": 88
-                    }
-                ]
+                        "code": 88,
+                    },
+                ],
             },
             "headers": {
-                "retry-after": "900"  # 15 minutes
-            }
+                "retry-after": "900",  # 15 minutes
+            },
         },
         "user_not_found": {
             "status": 404,
@@ -303,10 +305,10 @@ def sample_twitter_api_errors():
                         "resource_type": "user",
                         "parameter": "username",
                         "resource_id": "nonexistentuser",
-                        "type": "https://api.twitter.com/2/problems/resource-not-found"
-                    }
-                ]
-            }
+                        "type": "https://api.twitter.com/2/problems/resource-not-found",
+                    },
+                ],
+            },
         },
         "server_error": {
             "status": 500,
@@ -314,11 +316,11 @@ def sample_twitter_api_errors():
                 "errors": [
                     {
                         "message": "Internal Server Error",
-                        "code": 131
-                    }
-                ]
-            }
-        }
+                        "code": 131,
+                    },
+                ],
+            },
+        },
     }
 
 @pytest.fixture
@@ -338,17 +340,17 @@ def twitter_archive_sample_data(tmp_path):
                 "entities": {
                     "media": [
                         {
-                            "media_url_https": "https://pbs.twimg.com/media/sample1.jpg"
+                            "media_url_https": "https://pbs.twimg.com/media/sample1.jpg",
                         },
                         {
-                            "media_url_https": "https://pbs.twimg.com/media/sample2.jpg"
-                        }
+                            "media_url_https": "https://pbs.twimg.com/media/sample2.jpg",
+                        },
                     ],
                     "hashtags": [
-                        {"text": "sample", "indices": [10, 17]}
-                    ]
-                }
-            }
+                        {"text": "sample", "indices": [10, 17]},
+                    ],
+                },
+            },
         },
         {
             "tweet": {
@@ -358,10 +360,10 @@ def twitter_archive_sample_data(tmp_path):
                 "full_text": "Another archived tweet without media",
                 "entities": {
                     "hashtags": [],
-                    "urls": []
-                }
-            }
-        }
+                    "urls": [],
+                },
+            },
+        },
     ]
 
     with open(tweets_js_path, "w", encoding="utf-8") as f:

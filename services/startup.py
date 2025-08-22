@@ -1,31 +1,31 @@
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-from services.scheduler import AsyncScheduler
-from services.ingestion import IngestionService
-from services.sync_manager_service import SyncManagerService
+from config.models import AppConfig
+from core.database import DatabaseService
+from core.embeddings import EmbeddingService
+from core.logging_config import setup_application_logging
+from core.vector_store import VectorStoreService
 from services.chat_service import ChatService
 from services.document_service import DocumentService
+from services.ingestion import IngestionService
 from services.llm_service import LLMService
+from services.scheduler import AsyncScheduler
+from services.sync_manager_service import SyncManagerService
 from services.sync_status_service import SyncStatusService, set_sync_status_service
 from sources.limitless import LimitlessSource
 from sources.news import NewsSource
-from sources.weather import WeatherSource
 from sources.twitter import TwitterSource
-from core.database import DatabaseService
-from core.vector_store import VectorStoreService
-from core.embeddings import EmbeddingService
-from core.logging_config import setup_application_logging
-from config.models import AppConfig
+from sources.weather import WeatherSource
 
 logger = logging.getLogger(__name__)
 
 
 class StartupService:
     """Service responsible for application initialization and startup orchestration"""
-    
+
     def __init__(self, config: AppConfig):
         self.config = config
         self.database: Optional[DatabaseService] = None
@@ -40,7 +40,7 @@ class StartupService:
         self.sync_status_service: Optional[SyncStatusService] = None
         self.startup_complete = False
         self.logging_setup_result: Optional[Dict[str, Any]] = None
-        
+
     async def initialize_application(self) -> Dict[str, Any]:
         """Initialize all application services and components"""
         startup_result = {
@@ -50,67 +50,67 @@ class StartupService:
             "auto_sync_enabled": True,
             "auto_register_sources": True,
             "errors": [],
-            "startup_time": datetime.now(timezone.utc).isoformat()
+            "startup_time": datetime.now(timezone.utc).isoformat(),
         }
-        
+
         try:
             # 0. Initialize centralized logging first (before any other logging)
             await self._initialize_logging(startup_result)
-            
+
             logger.info("Starting application initialization...")
-            
+
             # 1. Initialize core services
             await self._initialize_core_services(startup_result)
-            
+
             # 2. Initialize ingestion service
             await self._initialize_ingestion_service(startup_result)
-            
+
             # 2.5. Initialize chat service (Phase 7)
             await self._initialize_chat_service(startup_result)
-            
+
             # 2.6. Initialize document service
             await self._initialize_document_service(startup_result)
-            
+
             # 2.7. Initialize LLM service
             await self._initialize_llm_service(startup_result)
-            
+
             # 3. Register data sources
             await self._register_data_sources(startup_result)
-            
+
             # 4. Initialize sync status service
             await self._initialize_sync_status_service(startup_result)
-            
+
             # 5. Initialize scheduler and sync management
             await self._initialize_sync_services(startup_result)
             await self._start_auto_sync(startup_result)
-            
+
             # 6. Start background sync
             await self._start_background_sync(startup_result)
-            
+
             # 7. Perform startup health check
             health_status = await self._perform_startup_health_check()
             startup_result["health_check"] = health_status
-            
+
             self.startup_complete = True
             startup_result["success"] = True
-            
+
             logger.info(f"Application initialization completed successfully. "
                        f"Services: {len(startup_result['services_initialized'])}, "
                        f"Sources: {len(startup_result['sources_registered'])}")
-            
+
         except Exception as e:
-            error_msg = f"Application initialization failed: {str(e)}"
+            error_msg = f"Application initialization failed: {e!s}"
             logger.error(error_msg)
             startup_result["errors"].append(error_msg)
             startup_result["success"] = False
-        
+
         return startup_result
-    
+
     async def _initialize_logging(self, startup_result: Dict[str, Any]):
         """Initialize centralized logging system"""
         try:
             logger.info("Initializing centralized logging system...")
-            
+
             # Setup application logging using the configuration parameters
             self.logging_setup_result = setup_application_logging(
                 log_level=self.config.logging.level,
@@ -118,9 +118,9 @@ class StartupService:
                 max_file_size=self.config.logging.max_file_size,
                 backup_count=self.config.logging.backup_count,
                 console_logging=self.config.logging.console_logging,
-                include_correlation_ids=self.config.logging.include_correlation_ids
+                include_correlation_ids=self.config.logging.include_correlation_ids,
             )
-            
+
             if self.logging_setup_result.get("success", False):
                 startup_result["services_initialized"].append("logging")
                 logger.info("Centralized logging system initialized successfully")
@@ -129,18 +129,18 @@ class StartupService:
                 error_msg = f"Logging setup failed: {self.logging_setup_result.get('error', 'Unknown error')}"
                 logger.warning(error_msg)
                 startup_result["errors"].append(error_msg)
-                
+
         except Exception as e:
             # Fallback logging setup failed - continue with basic logging
-            error_msg = f"Failed to initialize logging system: {str(e)}"
+            error_msg = f"Failed to initialize logging system: {e!s}"
             logger.error(error_msg)
             startup_result["errors"].append(error_msg)
-            
+
             # Store failed result for status reporting
             self.logging_setup_result = {
                 "success": False,
                 "error": str(e),
-                "fallback_logging": True
+                "fallback_logging": True,
             }
 
     async def _initialize_core_services(self, startup_result: Dict[str, Any]):
@@ -150,118 +150,118 @@ class StartupService:
             logger.info("Initializing database service...")
             self.database = DatabaseService(self.config.database.path)
             startup_result["services_initialized"].append("database")
-            
+
             # Embedding service
             logger.info("Initializing embedding service...")
             self.embedding_service = EmbeddingService(self.config.embeddings)
             startup_result["services_initialized"].append("embeddings")
-            
+
             # Vector store service
             logger.info("Initializing vector store service...")
             self.vector_store = VectorStoreService(self.config.vector_store)
             startup_result["services_initialized"].append("vector_store")
-            
+
             logger.info("Core services initialized successfully")
-            
+
         except Exception as e:
-            error_msg = f"Failed to initialize core services: {str(e)}"
+            error_msg = f"Failed to initialize core services: {e!s}"
             logger.error(error_msg)
             raise Exception(error_msg)
-    
+
     async def _initialize_ingestion_service(self, startup_result: Dict[str, Any]):
         """Initialize the ingestion service"""
         try:
             logger.info("Initializing ingestion service...")
-            
+
             self.ingestion_service = IngestionService(
                 database=self.database,
                 vector_store=self.vector_store,
                 embedding_service=self.embedding_service,
-                config=self.config
+                config=self.config,
             )
-            
+
             startup_result["services_initialized"].append("ingestion")
             logger.info("Ingestion service initialized successfully")
-            
+
         except Exception as e:
-            error_msg = f"Failed to initialize ingestion service: {str(e)}"
+            error_msg = f"Failed to initialize ingestion service: {e!s}"
             logger.error(error_msg)
             raise Exception(error_msg)
-    
+
     async def _initialize_chat_service(self, startup_result: Dict[str, Any]):
         """Initialize the chat service (Phase 7)"""
         try:
             logger.info("Initializing chat service...")
-            
+
             self.chat_service = ChatService(
                 config=self.config,
                 database=self.database,
                 vector_store=self.vector_store,
-                embeddings=self.embedding_service
+                embeddings=self.embedding_service,
             )
-            
+
             # Initialize the chat service (sets up LLM provider)
             await self.chat_service.initialize()
-            
+
             startup_result["services_initialized"].append("chat")
             logger.info("Chat service initialized successfully")
-            
+
         except Exception as e:
-            error_msg = f"Failed to initialize chat service: {str(e)}"
+            error_msg = f"Failed to initialize chat service: {e!s}"
             logger.error(error_msg)
             raise Exception(error_msg)
-    
+
     async def _initialize_document_service(self, startup_result: Dict[str, Any]):
         """Initialize the document service"""
         try:
             logger.info("Initializing document service...")
-            
+
             self.document_service = DocumentService(
                 database=self.database,
                 vector_store=self.vector_store,
                 embedding_service=self.embedding_service,
-                config=self.config
+                config=self.config,
             )
-            
+
             # Initialize the document service
             await self.document_service._initialize_service()
-            
+
             startup_result["services_initialized"].append("documents")
             logger.info("Document service initialized successfully")
-            
+
         except Exception as e:
-            error_msg = f"Failed to initialize document service: {str(e)}"
+            error_msg = f"Failed to initialize document service: {e!s}"
             logger.error(error_msg)
             raise Exception(error_msg)
-    
+
     async def _initialize_llm_service(self, startup_result: Dict[str, Any]):
         """Initialize the LLM service"""
         try:
             logger.info("Initializing LLM service...")
-            
+
             self.llm_service = LLMService(
                 database=self.database,
                 document_service=self.document_service,
-                config=self.config
+                config=self.config,
             )
-            
+
             # Initialize the LLM service
             await self.llm_service._initialize_service()
-            
+
             startup_result["services_initialized"].append("llm")
             logger.info("LLM service initialized successfully")
-            
+
         except Exception as e:
-            error_msg = f"Failed to initialize LLM service: {str(e)}"
+            error_msg = f"Failed to initialize LLM service: {e!s}"
             logger.error(error_msg)
             # Don't raise - LLM service failure shouldn't block startup
             startup_result["errors"].append(error_msg)
-    
+
     async def _register_data_sources(self, startup_result: Dict[str, Any]):
         """Register available data sources"""
         try:
             logger.info("Registering data sources...")
-            
+
             # Register Limitless source if API key is available
             if self.config.limitless.is_api_key_configured():
                 try:
@@ -270,14 +270,14 @@ class StartupService:
                     self.ingestion_service.register_source(limitless_source)
                     startup_result["sources_registered"].append("limitless")
                     logger.info("Limitless source registered successfully")
-                    
+
                 except Exception as e:
-                    error_msg = f"Failed to register Limitless source: {str(e)}"
+                    error_msg = f"Failed to register Limitless source: {e!s}"
                     logger.warning(error_msg)
                     startup_result["errors"].append(error_msg)
             else:
                 logger.info("Limitless API key not configured, skipping source registration")
-            
+
             # Register News source if fully configured (enabled, API key, and endpoint)
             if self.config.news.is_fully_configured():
                 try:
@@ -286,21 +286,20 @@ class StartupService:
                     self.ingestion_service.register_source(news_source)
                     startup_result["sources_registered"].append("news")
                     logger.info("News source registered successfully")
-                    
+
                 except Exception as e:
-                    error_msg = f"Failed to register News source: {str(e)}"
+                    error_msg = f"Failed to register News source: {e!s}"
                     logger.warning(error_msg)
                     startup_result["errors"].append(error_msg)
+            elif not self.config.news.enabled:
+                logger.info("News service disabled in configuration, skipping source registration")
+            elif not self.config.news.is_api_key_configured():
+                logger.info("News API key not configured, skipping source registration")
+            elif not self.config.news.is_endpoint_configured():
+                logger.info("News endpoint not configured, skipping source registration")
             else:
-                if not self.config.news.enabled:
-                    logger.info("News service disabled in configuration, skipping source registration")
-                elif not self.config.news.is_api_key_configured():
-                    logger.info("News API key not configured, skipping source registration")
-                elif not self.config.news.is_endpoint_configured():
-                    logger.info("News endpoint not configured, skipping source registration")
-                else:
-                    logger.info("News source not fully configured, skipping source registration")
-            
+                logger.info("News source not fully configured, skipping source registration")
+
             # Register Twitter source if enabled and path is provided
             if self.config.twitter.is_configured():
                 try:
@@ -308,13 +307,13 @@ class StartupService:
                     twitter_source = TwitterSource(
                         self.config.twitter,
                         self.database,
-                        self.ingestion_service
+                        self.ingestion_service,
                     )
                     self.ingestion_service.register_source(twitter_source)
                     startup_result["sources_registered"].append("twitter")
                     logger.info("Twitter source registered successfully")
                 except Exception as e:
-                    error_msg = f"Failed to register Twitter source: {str(e)}"
+                    error_msg = f"Failed to register Twitter source: {e!s}"
                     logger.warning(error_msg)
                     startup_result["errors"].append(error_msg)
             else:
@@ -329,191 +328,190 @@ class StartupService:
                     startup_result["sources_registered"].append("weather")
                     logger.info("Weather source registered successfully")
                 except Exception as e:
-                    error_msg = f"Failed to register Weather source: {str(e)}"
+                    error_msg = f"Failed to register Weather source: {e!s}"
                     logger.error(error_msg)
                     startup_result["errors"].append(error_msg)
+            elif not self.config.weather.enabled:
+                logger.info("Weather service disabled in configuration, skipping source registration")
+            elif not self.config.weather.is_api_key_configured():
+                logger.info("Weather API key not configured, skipping source registration")
+            elif not self.config.weather.is_endpoint_configured():
+                logger.info("Weather endpoint not configured, skipping source registration")
             else:
-                if not self.config.weather.enabled:
-                    logger.info("Weather service disabled in configuration, skipping source registration")
-                elif not self.config.weather.is_api_key_configured():
-                    logger.info("Weather API key not configured, skipping source registration")
-                elif not self.config.weather.is_endpoint_configured():
-                    logger.info("Weather endpoint not configured, skipping source registration")
-                else:
-                    logger.info("Weather source not fully configured, skipping source registration")
+                logger.info("Weather source not fully configured, skipping source registration")
 
             # Future: Add other source registrations here
             # if self.config.notion.api_key:
             #     notion_source = NotionSource(self.config.notion)
             #     self.ingestion_service.register_source(notion_source)
             #     startup_result["sources_registered"].append("notion")
-            
+
             logger.info(f"Data source registration completed. "
                        f"Registered: {startup_result['sources_registered']}")
-            
+
         except Exception as e:
-            error_msg = f"Failed to register data sources: {str(e)}"
+            error_msg = f"Failed to register data sources: {e!s}"
             logger.error(error_msg)
             raise Exception(error_msg)
-    
+
     async def _initialize_sync_status_service(self, startup_result: Dict[str, Any]):
         """Initialize sync status tracking service"""
         try:
             logger.info("Initializing sync status service...")
-            
+
             self.sync_status_service = SyncStatusService(self.config)
             await self.sync_status_service.initialize()
-            
+
             # Set as global instance for easy access
             set_sync_status_service(self.sync_status_service)
-            
+
             startup_result["services_initialized"].append("sync_status")
             logger.info("Sync status service initialized successfully")
-            
+
         except Exception as e:
-            error_msg = f"Failed to initialize sync status service: {str(e)}"
+            error_msg = f"Failed to initialize sync status service: {e!s}"
             logger.error(error_msg)
             raise Exception(error_msg)
-    
+
     async def _initialize_sync_services(self, startup_result: Dict[str, Any]):
         """Initialize scheduler and sync management services"""
         try:
             logger.info("Initializing sync services...")
-            
+
             # Initialize scheduler
             self.scheduler = AsyncScheduler(
                 check_interval_seconds=self.config.scheduler.check_interval_seconds,
-                max_concurrent_jobs=self.config.scheduler.max_concurrent_jobs
+                max_concurrent_jobs=self.config.scheduler.max_concurrent_jobs,
             )
-            
+
             # Initialize sync manager
             self.sync_manager = SyncManagerService(
                 scheduler=self.scheduler,
                 ingestion_service=self.ingestion_service,
-                config=self.config
+                config=self.config,
             )
-            
+
             startup_result["services_initialized"].extend(["scheduler", "sync_manager"])
             logger.info("Sync services initialized successfully")
-            
+
         except Exception as e:
-            error_msg = f"Failed to initialize sync services: {str(e)}"
+            error_msg = f"Failed to initialize sync services: {e!s}"
             logger.error(error_msg)
             raise Exception(error_msg)
-    
+
     async def _start_auto_sync(self, startup_result: Dict[str, Any]):
         """Start automatic synchronization"""
         try:
             logger.info("Starting automatic synchronization...")
-            
+
             success = await self.sync_manager.start_auto_sync()
-            
+
             if success:
                 startup_result["auto_sync_started"] = True
                 logger.info("Automatic synchronization started successfully")
             else:
                 startup_result["auto_sync_started"] = False
                 logger.warning("Automatic synchronization could not be started (no sources available)")
-            
+
         except Exception as e:
-            error_msg = f"Failed to start automatic synchronization: {str(e)}"
+            error_msg = f"Failed to start automatic synchronization: {e!s}"
             logger.error(error_msg)
             startup_result["errors"].append(error_msg)
             startup_result["auto_sync_started"] = False
-    
+
     async def _start_background_sync(self, startup_result: Dict[str, Any]):
         """Start background sync process without blocking startup"""
         try:
             logger.info("Starting background sync process...")
-            
+
             if not self.sync_status_service:
                 logger.warning("Sync status service not available - skipping background sync")
                 return
-                
+
             # Mark global sync as started
             self.sync_status_service.start_global_sync()
-            
+
             # Register all sources with sync status service
             for namespace in startup_result.get("sources_registered", []):
                 # Source type mapping
                 source_type_map = {
                     "limitless": "limitless_api",
                     "news": "news_api",
-                    "twitter": "twitter_archive", 
-                    "weather": "weather_api"
+                    "twitter": "twitter_archive",
+                    "weather": "weather_api",
                 }
                 source_type = source_type_map.get(namespace, "unknown")
                 self.sync_status_service.register_source(namespace, source_type)
-            
+
             # Start background sync task
             asyncio.create_task(self._background_sync_worker(startup_result.get("sources_registered", [])))
-            
+
             startup_result["background_sync_started"] = True
             logger.info("Background sync process started successfully")
-            
+
         except Exception as e:
-            error_msg = f"Failed to start background sync: {str(e)}"
+            error_msg = f"Failed to start background sync: {e!s}"
             logger.error(error_msg)
             startup_result["errors"].append(error_msg)
             startup_result["background_sync_started"] = False
-    
+
     async def _background_sync_worker(self, registered_sources: List[str]):
         """Background worker that performs the actual sync operations"""
         try:
             logger.info("Background sync worker started")
-            
+
             # Wait a brief moment to let the server finish starting up completely
             await asyncio.sleep(5)
-            
+
             sync_results = {}
-            
+
             for namespace in registered_sources:
                 try:
                     logger.info(f"Starting background sync for {namespace}")
                     self.sync_status_service.start_source_sync(namespace)
-                    
+
                     # Check if this source should be synced based on time interval
                     should_sync = await self.sync_manager.should_sync_on_startup(namespace)
-                    
+
                     if should_sync:
                         logger.info(f"Performing background sync for {namespace}")
                         result = await self.sync_manager.trigger_immediate_sync(namespace, force_full_sync=False)
-                        
+
                         # Update sync status with results
                         self.sync_status_service.complete_source_sync(
-                            namespace, 
-                            result.items_processed, 
-                            result.items_stored
+                            namespace,
+                            result.items_processed,
+                            result.items_stored,
                         )
-                        
+
                         sync_results[namespace] = result.to_dict()
                         logger.info(f"Background sync completed for {namespace}: {result.items_processed} processed")
-                        
+
                     else:
                         logger.info(f"Skipping background sync for {namespace} - not due for sync yet")
                         self.sync_status_service.skip_source_sync(namespace, "Not due for sync")
                         sync_results[namespace] = {"skipped": True, "reason": "Not due for sync"}
-                    
+
                 except Exception as e:
-                    error_msg = f"Background sync failed for {namespace}: {str(e)}"
+                    error_msg = f"Background sync failed for {namespace}: {e!s}"
                     logger.error(error_msg)
                     self.sync_status_service.fail_source_sync(namespace, error_msg)
                     sync_results[namespace] = {"error": error_msg}
-            
+
             # Mark global sync as complete
             self.sync_status_service.complete_global_sync()
-            
+
             logger.info("Background sync worker completed for all sources")
-            
+
         except Exception as e:
             logger.error(f"Critical error in background sync worker: {e}")
             if self.sync_status_service:
                 # Mark any remaining sources as failed
                 for namespace in registered_sources:
                     source_status = self.sync_status_service.get_source_status(namespace)
-                    if source_status and source_status['status'] in ['pending', 'in_progress']:
-                        self.sync_status_service.fail_source_sync(namespace, f"Worker error: {str(e)}")
-    
+                    if source_status and source_status["status"] in ["pending", "in_progress"]:
+                        self.sync_status_service.fail_source_sync(namespace, f"Worker error: {e!s}")
+
     async def _perform_startup_health_check(self) -> Dict[str, Any]:
         """Perform health check after startup"""
         health_status = {
@@ -524,20 +522,20 @@ class StartupService:
             "scheduler_healthy": False,
             "sync_manager_healthy": False,
             "sync_status_healthy": False,
-            "overall_healthy": False
+            "overall_healthy": False,
         }
-        
+
         try:
             # Check database
             if self.database:
                 db_stats = self.database.get_database_stats()
                 health_status["database_healthy"] = db_stats is not None
-            
+
             # Check vector store
             if self.vector_store:
                 vs_stats = self.vector_store.get_stats()
                 health_status["vector_store_healthy"] = vs_stats is not None
-            
+
             # Check embedding service
             if self.embedding_service:
                 # Simple health check - try to embed a test string
@@ -546,16 +544,16 @@ class StartupService:
                     health_status["embedding_service_healthy"] = len(test_embeddings) > 0
                 except:
                     health_status["embedding_service_healthy"] = False
-            
+
             # Check ingestion service
             if self.ingestion_service:
                 ingestion_status = self.ingestion_service.get_ingestion_status()
                 health_status["ingestion_service_healthy"] = ingestion_status is not None
-            
+
             # Check scheduler
             if self.scheduler:
                 health_status["scheduler_healthy"] = self.scheduler.is_running
-            
+
             # Check sync manager
             if self.sync_manager:
                 try:
@@ -564,7 +562,7 @@ class StartupService:
                     health_status["sync_health_details"] = sync_health
                 except:
                     health_status["sync_manager_healthy"] = False
-            
+
             # Check sync status service
             if self.sync_status_service:
                 try:
@@ -573,15 +571,15 @@ class StartupService:
                     health_status["sync_status_details"] = sync_status_health
                 except:
                     health_status["sync_status_healthy"] = False
-            
+
             # Overall health
             core_services_healthy = all([
                 health_status["database_healthy"],
                 health_status["vector_store_healthy"],
                 health_status["embedding_service_healthy"],
-                health_status["ingestion_service_healthy"]
+                health_status["ingestion_service_healthy"],
             ])
-            
+
             # Sync services are optional
             sync_services_healthy = True
             if self.scheduler:
@@ -590,22 +588,22 @@ class StartupService:
                 sync_services_healthy = sync_services_healthy and health_status["sync_manager_healthy"]
             if self.sync_status_service:
                 sync_services_healthy = sync_services_healthy and health_status["sync_status_healthy"]
-            
+
             health_status["overall_healthy"] = core_services_healthy and sync_services_healthy
-            
+
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             health_status["health_check_error"] = str(e)
-        
+
         return health_status
-    
+
     async def shutdown_application(self):
         """Gracefully shutdown all services with timeout protection"""
         logger.info("SHUTDOWN_SERVICE: *** Starting application shutdown ***")
-        
+
         shutdown_tasks = []
         shutdown_errors = []
-        
+
         try:
             # Stop sync manager and scheduler first (most critical)
             if self.sync_manager:
@@ -621,7 +619,7 @@ class StartupService:
                     shutdown_errors.append(f"Sync manager error: {e}")
             else:
                 logger.info("SHUTDOWN_SERVICE: No sync manager to stop")
-            
+
             # Stop scheduler if it exists
             if self.scheduler:
                 logger.info("SHUTDOWN_SERVICE: Stopping scheduler...")
@@ -634,7 +632,7 @@ class StartupService:
                 except Exception as e:
                     logger.error(f"SHUTDOWN_SERVICE: Error stopping scheduler: {e}")
                     shutdown_errors.append(f"Scheduler error: {e}")
-            
+
             # Close chat service
             if self.chat_service:
                 logger.info("SHUTDOWN_SERVICE: Closing chat service...")
@@ -649,7 +647,7 @@ class StartupService:
                     shutdown_errors.append(f"Chat service error: {e}")
             else:
                 logger.info("SHUTDOWN_SERVICE: No chat service to close")
-            
+
             # Close document service
             if self.document_service:
                 logger.info("SHUTDOWN_SERVICE: Closing document service...")
@@ -664,13 +662,13 @@ class StartupService:
                     shutdown_errors.append(f"Document service error: {e}")
             else:
                 logger.info("SHUTDOWN_SERVICE: No document service to close")
-            
+
             # Database cleanup (uses context managers, no explicit cleanup needed)
             if self.database:
                 logger.info("SHUTDOWN_SERVICE: Database uses context managers - no explicit cleanup needed")
             else:
                 logger.info("SHUTDOWN_SERVICE: No database service to cleanup")
-            
+
             # Clean up vector store
             if self.vector_store:
                 logger.info("SHUTDOWN_SERVICE: Cleaning up vector store...")
@@ -682,39 +680,39 @@ class StartupService:
                     shutdown_errors.append(f"Vector store error: {e}")
             else:
                 logger.info("SHUTDOWN_SERVICE: No vector store to cleanup")
-            
+
             # Clean up embedding service if needed
             if self.embedding_service:
                 logger.info("SHUTDOWN_SERVICE: Cleaning up embedding service...")
                 try:
                     # Most embedding services don't need explicit cleanup, but check if method exists
-                    if hasattr(self.embedding_service, 'cleanup'):
+                    if hasattr(self.embedding_service, "cleanup"):
                         self.embedding_service.cleanup()
                     logger.info("SHUTDOWN_SERVICE: Embedding service cleaned up")
                 except Exception as e:
                     logger.error(f"SHUTDOWN_SERVICE: Error cleaning embedding service: {e}")
                     shutdown_errors.append(f"Embedding service error: {e}")
-            
+
             # Final cleanup
             self.startup_complete = False
-            
+
             if shutdown_errors:
                 logger.warning(f"SHUTDOWN_SERVICE: Completed with {len(shutdown_errors)} errors: {shutdown_errors}")
             else:
                 logger.info("SHUTDOWN_SERVICE: *** Application shutdown completed successfully ***")
-            
+
         except Exception as e:
             logger.error(f"SHUTDOWN_SERVICE: Critical error during application shutdown: {e}")
             logger.exception("SHUTDOWN_SERVICE: Full shutdown exception details:")
             shutdown_errors.append(f"Critical shutdown error: {e}")
-        
+
         finally:
             # Log final status regardless of errors
             logger.info(f"SHUTDOWN_SERVICE: Shutdown process complete. Errors: {len(shutdown_errors)}")
             if shutdown_errors:
                 for i, error in enumerate(shutdown_errors, 1):
                     logger.error(f"SHUTDOWN_SERVICE: Error {i}: {error}")
-    
+
     def get_application_status(self) -> Dict[str, Any]:
         """Get current application status"""
         status = {
@@ -729,35 +727,35 @@ class StartupService:
                 "document_service": self.document_service is not None,
                 "scheduler": self.scheduler is not None,
                 "sync_manager": self.sync_manager is not None,
-                "sync_status": self.sync_status_service is not None
-            }
+                "sync_status": self.sync_status_service is not None,
+            },
         }
-        
+
         # Add logging setup details if available
         if self.logging_setup_result:
             status["logging_details"] = self.logging_setup_result
-        
+
         # Add detailed status if services are available
         if self.ingestion_service:
             status["ingestion_status"] = self.ingestion_service.get_ingestion_status()
-        
+
         if self.sync_manager:
             status["sync_status"] = self.sync_manager.get_all_sources_sync_status()
-        
+
         return status
-    
+
     async def trigger_immediate_sync(self, namespace: str, force_full_sync: bool = False):
         """Trigger immediate sync for a namespace"""
         if not self.sync_manager:
             raise Exception("Sync manager not initialized")
-        
+
         return await self.sync_manager.trigger_immediate_sync(namespace, force_full_sync)
-    
+
     async def process_pending_embeddings(self, batch_size: int = 32):
         """Process any pending embeddings"""
         if not self.ingestion_service:
             raise Exception("Ingestion service not initialized")
-        
+
         return await self.ingestion_service.process_pending_embeddings(batch_size)
 
 
@@ -779,23 +777,23 @@ def set_startup_service(startup_service: StartupService):
 async def initialize_application(config: AppConfig) -> Dict[str, Any]:
     """Initialize the application with the given configuration"""
     logger.info("STARTUP: *** BEGINNING APPLICATION INITIALIZATION ***")
-    
+
     startup_service = StartupService(config)
     set_startup_service(startup_service)
-    
+
     logger.info("STARTUP: Starting service initialization...")
     result = await startup_service.initialize_application()
-    
+
     logger.info(f"STARTUP: Initialization completed with result: {result.get('success', False)}")
     logger.info("STARTUP: *** APPLICATION INITIALIZATION FINISHED ***")
-    
+
     return result
 
 
 async def shutdown_application():
     """Shutdown the application with timeout protection"""
     logger.info("SHUTDOWN: *** SHUTDOWN APPLICATION CALLED ***")
-    
+
     startup_service = get_startup_service()
     if startup_service:
         logger.info("SHUTDOWN: Startup service found, proceeding with shutdown...")
@@ -813,7 +811,7 @@ async def shutdown_application():
             logger.exception("SHUTDOWN: Full shutdown exception details:")
     else:
         logger.warning("SHUTDOWN: No startup service found to shutdown")
-    
+
     # Clear the global startup service reference
     global _startup_service
     _startup_service = None

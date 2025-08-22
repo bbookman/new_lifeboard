@@ -6,15 +6,15 @@ specifically for daily summaries and other AI-generated content.
 """
 
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Any, Dict, Optional
 
-from services.llm_service import LLMService, LLMGenerationResult
-from services.startup import StartupService
-from core.exception_handling import handle_api_exceptions
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
 from core.dependencies import get_startup_service_dependency
+from core.exception_handling import handle_api_exceptions
+from services.llm_service import LLMGenerationResult, LLMService
+from services.startup import StartupService
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class GenerateSummaryResponse(BaseModel):
     cached: bool = False
 
     @classmethod
-    def from_generation_result(cls, result: LLMGenerationResult, days_date: str, cached: bool = False) -> 'GenerateSummaryResponse':
+    def from_generation_result(cls, result: LLMGenerationResult, days_date: str, cached: bool = False) -> "GenerateSummaryResponse":
         return cls(
             success=result.success,
             content=result.content,
@@ -53,7 +53,7 @@ class GenerateSummaryResponse(BaseModel):
             model_info=result.model_info,
             generation_time=result.generation_time,
             error_message=result.error_message,
-            cached=cached
+            cached=cached,
         )
 
 
@@ -68,7 +68,7 @@ class GetSummaryResponse(BaseModel):
 @handle_api_exceptions("Failed to generate summary", 500, include_details=True)
 async def generate_daily_summary(
     request: GenerateSummaryRequest,
-    llm_service: LLMService = Depends(get_llm_service_for_route)
+    llm_service: LLMService = Depends(get_llm_service_for_route),
 ) -> GenerateSummaryResponse:
     """Generate daily summary using selected prompt and daily data"""
     logger.info(f"Received request to generate summary for date: {request.days_date}, force_regenerate: {request.force_regenerate}")
@@ -86,7 +86,7 @@ async def generate_daily_summary(
                     prompt_used="Cached",
                     model_info={"provider": "cache"},
                     generation_time=0.0,
-                    cached=True
+                    cached=True,
                 )
             logger.info(f"No cached summary found for {request.days_date}.")
 
@@ -94,12 +94,12 @@ async def generate_daily_summary(
         # Generate new summary
         result = await llm_service.generate_daily_summary(
             days_date=request.days_date,
-            force_regenerate=request.force_regenerate
+            force_regenerate=request.force_regenerate,
         )
-        
+
         logger.info(f"Successfully generated summary for {request.days_date}. Generation time: {result.generation_time:.2f}s")
         return GenerateSummaryResponse.from_generation_result(result, request.days_date)
-        
+
     except Exception as e:
         logger.error(f"Fatal error in generate_daily_summary endpoint for date {request.days_date}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate daily summary: {e}")
@@ -109,18 +109,18 @@ async def generate_daily_summary(
 @handle_api_exceptions("Failed to get summary", 500, include_details=True)
 async def get_daily_summary(
     days_date: str,
-    llm_service: LLMService = Depends(get_llm_service_for_route)
+    llm_service: LLMService = Depends(get_llm_service_for_route),
 ) -> GetSummaryResponse:
     """Get daily summary for a specific date (cached only)"""
     try:
         cached_content = await llm_service.get_cached_summary(days_date)
-        
+
         return GetSummaryResponse(
             content=cached_content,
             days_date=days_date,
-            cached=True
+            cached=True,
         )
-        
+
     except Exception as e:
         logger.error(f"Error getting daily summary for {days_date}: {e}")
         raise HTTPException(status_code=500, detail="Failed to get daily summary")
@@ -129,13 +129,13 @@ async def get_daily_summary(
 @router.get("/health", response_model=Dict[str, Any])
 @handle_api_exceptions("Failed to get LLM service health", 500, include_details=True)
 async def get_llm_service_health(
-    llm_service: LLMService = Depends(get_llm_service_for_route)
+    llm_service: LLMService = Depends(get_llm_service_for_route),
 ) -> Dict[str, Any]:
     """Get LLM service health status"""
     try:
         health_info = await llm_service._check_service_health()
         return health_info
-        
+
     except Exception as e:
         logger.error(f"Error getting LLM service health: {e}")
         raise HTTPException(status_code=500, detail="Failed to get service health")

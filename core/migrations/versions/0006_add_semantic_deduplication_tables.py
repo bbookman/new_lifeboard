@@ -3,7 +3,7 @@ CREATED_AT = "2025-01-15T00:00:00Z"
 
 def up(connection):
     """Create tables for semantic deduplication system"""
-    
+
     # Create semantic clusters table
     connection.execute("""
         CREATE TABLE IF NOT EXISTS semantic_clusters (
@@ -16,7 +16,7 @@ def up(connection):
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
+
     # Create bridge table linking lines to clusters
     connection.execute("""
         CREATE TABLE IF NOT EXISTS line_cluster_mapping (
@@ -33,17 +33,17 @@ def up(connection):
             FOREIGN KEY (cluster_id) REFERENCES semantic_clusters(id) ON DELETE CASCADE
         )
     """)
-    
+
     # Create indexes for performance
     connection.execute("CREATE INDEX IF NOT EXISTS idx_clusters_theme ON semantic_clusters(theme)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_clusters_frequency ON semantic_clusters(frequency_count DESC)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_clusters_confidence ON semantic_clusters(confidence_score DESC)")
-    
+
     connection.execute("CREATE INDEX IF NOT EXISTS idx_line_mapping_item ON line_cluster_mapping(data_item_id)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_line_mapping_cluster ON line_cluster_mapping(cluster_id)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_line_mapping_canonical ON line_cluster_mapping(is_canonical)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_line_mapping_similarity ON line_cluster_mapping(similarity_score DESC)")
-    
+
     # Create composite indexes for common queries
     connection.execute("CREATE INDEX IF NOT EXISTS idx_line_mapping_item_canonical ON line_cluster_mapping(data_item_id, is_canonical)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_line_mapping_cluster_canonical ON line_cluster_mapping(cluster_id, is_canonical)")

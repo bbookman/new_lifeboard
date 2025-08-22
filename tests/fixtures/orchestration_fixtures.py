@@ -5,31 +5,32 @@ Provides reusable fixtures, mocks, and utilities for testing the
 refactored orchestration components.
 """
 
-import pytest
 import asyncio
-from unittest.mock import Mock, MagicMock, patch
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+from unittest.mock import patch
+
+import pytest
+
 from core.orchestration import (
-    ProcessInfo,
-    PortResolution, 
-    FullStackOrchestrator,
+    FrontendEnvironmentValidator,
     FrontendService,
+    FullStackOrchestrator,
     PortManager,
-    ProcessTerminator,
-    FrontendEnvironmentValidator
+    PortResolution,
+    ProcessInfo,
 )
 
 
 class MockProcess:
     """Mock process for testing process management"""
-    
+
     def __init__(self, pid: int = 12345, returncode: Optional[int] = None, should_terminate_gracefully: bool = True):
         self.pid = pid
         self.returncode = returncode
         self._poll_return_values = [None, returncode] if returncode is not None else [None]
         self._poll_index = 0
         self.should_terminate_gracefully = should_terminate_gracefully
-        
+
         # Mock method calls tracking
         self.terminate_called = False
         self.kill_called = False
@@ -68,7 +69,7 @@ class MockProcess:
 
 class MockSocket:
     """Mock socket for testing port operations"""
-    
+
     def __init__(self, should_bind_succeed: bool = True):
         self.should_bind_succeed = should_bind_succeed
         self.bound_addresses = []
@@ -88,7 +89,6 @@ class MockSocket:
 
     def settimeout(self, timeout):
         """Mock settimeout method"""
-        pass
 
     def __enter__(self):
         return self
@@ -99,7 +99,7 @@ class MockSocket:
 
 class MockSubprocessResult:
     """Mock subprocess result"""
-    
+
     def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = ""):
         self.returncode = returncode
         self.stdout = stdout
@@ -149,7 +149,7 @@ def successful_process_info():
         process=MockProcess(),
         pid=12345,
         port=5173,
-        success=True
+        success=True,
     )
 
 
@@ -161,7 +161,7 @@ def failed_process_info():
         pid=None,
         port=5173,
         success=False,
-        error="Process failed to start"
+        error="Process failed to start",
     )
 
 
@@ -172,7 +172,7 @@ def successful_port_resolution():
         requested_port=8000,
         resolved_port=8000,
         auto_port_used=False,
-        available=True
+        available=True,
     )
 
 
@@ -183,7 +183,7 @@ def auto_resolved_port_resolution():
         requested_port=8000,
         resolved_port=8001,
         auto_port_used=True,
-        available=True
+        available=True,
     )
 
 
@@ -195,14 +195,14 @@ def failed_port_resolution():
         resolved_port=8000,
         auto_port_used=False,
         available=False,
-        error="Port in use"
+        error="Port in use",
     )
 
 
 class OrchestrationMockContext:
     """Context manager for comprehensive orchestration mocking"""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  node_installed: bool = True,
                  dependencies_ready: bool = True,
                  frontend_dir_exists: bool = True,
@@ -222,62 +222,62 @@ class OrchestrationMockContext:
         validation_result = {
             "node_installed": self.node_installed,
             "dependencies_ready": self.dependencies_ready,
-            "frontend_dir_exists": self.frontend_dir_exists
+            "frontend_dir_exists": self.frontend_dir_exists,
         }
-        
+
         env_patch = patch.object(
-            FrontendEnvironmentValidator, 
-            'validate_environment', 
-            return_value=validation_result
+            FrontendEnvironmentValidator,
+            "validate_environment",
+            return_value=validation_result,
         )
         self.patches.append(env_patch)
         env_patch.start()
-        
+
         # Mock dependency installation
         install_patch = patch.object(
             FrontendEnvironmentValidator,
-            'install_frontend_dependencies',
-            return_value=True
+            "install_frontend_dependencies",
+            return_value=True,
         )
         self.patches.append(install_patch)
         install_patch.start()
-        
+
         # Mock port availability
         port_patch = patch.object(
             PortManager,
-            'check_port_available',
-            return_value=self.ports_available
+            "check_port_available",
+            return_value=self.ports_available,
         )
         self.patches.append(port_patch)
         port_patch.start()
-        
+
         # Mock socket operations
         mock_socket = MockSocket(should_bind_succeed=self.ports_available)
         mock_socket.connect_results = {5173: 0 if self.port_responsive else 1}
-        socket_patch = patch('socket.socket', return_value=mock_socket)
+        socket_patch = patch("socket.socket", return_value=mock_socket)
         self.patches.append(socket_patch)
         socket_patch.start()
-        
+
         # Mock subprocess for frontend startup
         if self.frontend_startup_success:
             mock_process = MockProcess()
         else:
             mock_process = None
-        
-        subprocess_patch = patch('subprocess.Popen', return_value=mock_process)
+
+        subprocess_patch = patch("subprocess.Popen", return_value=mock_process)
         self.patches.append(subprocess_patch)
         subprocess_patch.start()
-        
+
         # Mock os.environ.copy
-        environ_patch = patch('os.environ.copy', return_value={"PATH": "/usr/bin"})
+        environ_patch = patch("os.environ.copy", return_value={"PATH": "/usr/bin"})
         self.patches.append(environ_patch)
         environ_patch.start()
-        
+
         # Mock time.sleep to speed up tests
-        sleep_patch = patch('time.sleep')
+        sleep_patch = patch("time.sleep")
         self.patches.append(sleep_patch)
         sleep_patch.start()
-        
+
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -299,13 +299,13 @@ def orchestration_failure_mocks():
         dependencies_ready=False,
         ports_available=False,
         frontend_startup_success=False,
-        port_responsive=False
+        port_responsive=False,
     )
 
 
 class TestDataFactory:
     """Factory for creating test data"""
-    
+
     @staticmethod
     def create_startup_result(success: bool = True, **kwargs) -> Dict[str, Any]:
         """Create a startup result dictionary"""
@@ -313,14 +313,14 @@ class TestDataFactory:
             "success": success,
             "backend_port": kwargs.get("backend_port", 8000),
             "frontend_port": kwargs.get("frontend_port", 5173),
-            "frontend_info": kwargs.get("frontend_info")
+            "frontend_info": kwargs.get("frontend_info"),
         }
-        
+
         if not success:
             base_result["error"] = kwargs.get("error", "Startup failed")
-        
+
         return base_result
-    
+
     @staticmethod
     def create_process_list(count: int, mixed_states: bool = False) -> List[MockProcess]:
         """Create a list of mock processes"""
@@ -333,16 +333,16 @@ class TestDataFactory:
             else:
                 returncode = None
                 should_terminate = True
-            
+
             process = MockProcess(
                 pid=10000 + i,
                 returncode=returncode,
-                should_terminate_gracefully=should_terminate
+                should_terminate_gracefully=should_terminate,
             )
             processes.append(process)
-        
+
         return processes
-    
+
     @staticmethod
     def create_environment_scenarios() -> List[Dict[str, Any]]:
         """Create various environment validation scenarios"""
@@ -365,7 +365,7 @@ def assert_process_info_valid(process_info: ProcessInfo, should_succeed: bool = 
     assert isinstance(process_info, ProcessInfo)
     assert isinstance(process_info.port, int)
     assert isinstance(process_info.success, bool)
-    
+
     if should_succeed:
         assert process_info.success is True
         assert process_info.error is None
@@ -382,7 +382,7 @@ def assert_port_resolution_valid(port_resolution: PortResolution, expected_avail
     assert isinstance(port_resolution.resolved_port, int)
     assert isinstance(port_resolution.auto_port_used, bool)
     assert isinstance(port_resolution.available, bool)
-    
+
     if expected_available:
         assert port_resolution.available is True
         assert port_resolution.error is None
@@ -396,7 +396,7 @@ def assert_startup_result_valid(startup_result: Dict[str, Any], should_succeed: 
     assert isinstance(startup_result, dict)
     assert "success" in startup_result
     assert isinstance(startup_result["success"], bool)
-    
+
     if should_succeed:
         assert startup_result["success"] is True
         assert "backend_port" in startup_result
@@ -416,31 +416,31 @@ async def async_test_helper(coro, timeout: float = 5.0):
 
 class PerformanceTimer:
     """Utility for measuring performance in tests"""
-    
+
     def __init__(self):
         self.start_time = None
         self.end_time = None
-    
+
     def start(self):
         """Start timing"""
         import time
         self.start_time = time.perf_counter()
-    
+
     def stop(self):
         """Stop timing"""
         import time
         self.end_time = time.perf_counter()
-    
+
     def elapsed(self) -> float:
         """Get elapsed time in seconds"""
         if self.start_time is None or self.end_time is None:
             raise ValueError("Timer not properly started/stopped")
         return self.end_time - self.start_time
-    
+
     def __enter__(self):
         self.start()
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
@@ -448,13 +448,13 @@ class PerformanceTimer:
 def skip_if_no_node():
     """Decorator to skip tests if Node.js is not available"""
     import subprocess
-    
+
     try:
-        result = subprocess.run(["node", "--version"], capture_output=True, timeout=5)
+        result = subprocess.run(["node", "--version"], check=False, capture_output=True, timeout=5)
         has_node = result.returncode == 0
     except (FileNotFoundError, subprocess.SubprocessError, subprocess.TimeoutExpired):
         has_node = False
-    
+
     return pytest.mark.skipif(not has_node, reason="Node.js not available")
 
 
@@ -462,9 +462,9 @@ def parametrize_port_ranges():
     """Decorator for parametrizing tests with various port ranges"""
     port_ranges = [
         (8000, 8099),
-        (5000, 5099), 
+        (5000, 5099),
         (3000, 3099),
-        (9000, 9099)
+        (9000, 9099),
     ]
     return pytest.mark.parametrize("start_port,end_port", port_ranges)
 
@@ -472,10 +472,10 @@ def parametrize_port_ranges():
 # Custom pytest markers for test organization
 pytest_markers = {
     "unit": "Mark test as unit test",
-    "integration": "Mark test as integration test", 
+    "integration": "Mark test as integration test",
     "performance": "Mark test as performance test",
     "regression": "Mark test as regression test",
-    "slow": "Mark test as slow-running"
+    "slow": "Mark test as slow-running",
 }
 
 # Test configuration constants
@@ -485,14 +485,14 @@ TEST_CONFIG = {
     "MAX_PORT_ATTEMPTS": 50,
     "DEFAULT_BACKEND_PORT": 8000,
     "DEFAULT_FRONTEND_PORT": 5173,
-    "TEST_HOST": "localhost"
+    "TEST_HOST": "localhost",
 }
 
 
 def get_available_test_port(start_port: int = 9000) -> int:
     """Get an available port for testing"""
     import socket
-    
+
     for port in range(start_port, start_port + 100):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -500,14 +500,14 @@ def get_available_test_port(start_port: int = 9000) -> int:
                 return port
         except OSError:
             continue
-    
+
     raise RuntimeError(f"No available ports found starting from {start_port}")
 
 
 def cleanup_test_processes(process_list: List[MockProcess]):
     """Clean up test processes"""
     for process in process_list:
-        if hasattr(process, 'terminate'):
+        if hasattr(process, "terminate"):
             try:
                 process.terminate()
             except:
@@ -516,19 +516,19 @@ def cleanup_test_processes(process_list: List[MockProcess]):
 
 # Export commonly used fixtures and utilities
 __all__ = [
+    "TEST_CONFIG",
     "MockProcess",
-    "MockSocket", 
+    "MockSocket",
     "MockSubprocessResult",
     "OrchestrationMockContext",
+    "PerformanceTimer",
     "TestDataFactory",
+    "assert_port_resolution_valid",
     "assert_process_info_valid",
-    "assert_port_resolution_valid", 
     "assert_startup_result_valid",
     "async_test_helper",
-    "PerformanceTimer",
-    "skip_if_no_node",
-    "parametrize_port_ranges",
-    "TEST_CONFIG",
+    "cleanup_test_processes",
     "get_available_test_port",
-    "cleanup_test_processes"
+    "parametrize_port_ranges",
+    "skip_if_no_node",
 ]

@@ -1,10 +1,17 @@
-import pytest
-import sys
 import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from unittest.mock import MagicMock, AsyncMock
+import sys
 
-from core.base_service import BaseService, ServiceStatus, ServiceHealth, AsyncServiceManager
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from core.base_service import (
+    AsyncServiceManager,
+    BaseService,
+    ServiceHealth,
+    ServiceStatus,
+)
+
 
 # A concrete implementation of BaseService for testing
 class ConcreteService(BaseService):

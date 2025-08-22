@@ -1,26 +1,23 @@
 
-import pytest
-import asyncio
-import time
-import sys
 import os
-from unittest.mock import MagicMock, AsyncMock, patch
+import sys
+import time
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.retry_utils import (
-    RetryConfig,
     BackoffStrategy,
-    RetryExecutor,
-    NetworkErrorRetryCondition,
     HTTPStatusRetryCondition,
-    RateLimitRetryCondition,
-    CompositeRetryCondition,
+    NetworkErrorRetryCondition,
+    RetryConfig,
+    RetryExecutor,
+    parse_retry_after_header,
     with_retry,
     with_retry_sync,
-    parse_retry_after_header,
 )
 
 # --- Fixtures ---
@@ -85,8 +82,8 @@ async def test_async_retry_and_fail(default_config):
 
 # --- Backoff Strategy Tests ---
 
-@patch('time.sleep', return_value=None)
-@patch('asyncio.sleep', return_value=None)
+@patch("time.sleep", return_value=None)
+@patch("asyncio.sleep", return_value=None)
 def test_backoff_strategies(mock_async_sleep, mock_sync_sleep, default_config):
     """Tests the different backoff strategies."""
     # This is a simplified test focusing on the delay calculation.
@@ -172,19 +169,19 @@ def test_with_retry_sync_decorator():
 def test_parse_retry_after_header():
     """Tests parsing of the Retry-After header."""
     # Integer value
-    response_int = httpx.Response(200, headers={'Retry-After': '120'})
+    response_int = httpx.Response(200, headers={"Retry-After": "120"})
     assert parse_retry_after_header(response_int) == 120
 
     # HTTP-date value
     # Note: This is a simplified test. A real test would use a library like `freezegun`
     # to control the current time for accurate date parsing.
     in_two_minutes = time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(time.time() + 120))
-    response_date = httpx.Response(200, headers={'Retry-After': in_two_minutes})
+    response_date = httpx.Response(200, headers={"Retry-After": in_two_minutes})
     delay = parse_retry_after_header(response_date)
     assert delay is not None and 119 <= delay <= 120
 
     # Invalid header
-    response_invalid = httpx.Response(200, headers={'Retry-After': 'invalid'})
+    response_invalid = httpx.Response(200, headers={"Retry-After": "invalid"})
     assert parse_retry_after_header(response_invalid) is None
 
     # No header

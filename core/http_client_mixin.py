@@ -6,9 +6,10 @@ eliminating duplication across sources and LLM providers.
 """
 
 import asyncio
-from typing import Optional, Dict, Any
-import httpx
 from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+
+import httpx
 
 
 class HTTPClientMixin(ABC):
@@ -18,12 +19,12 @@ class HTTPClientMixin(ABC):
     Classes using this mixin must implement _create_client_config() to specify
     their specific client configuration (base_url, headers, timeout, etc.).
     """
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._client: Optional[httpx.AsyncClient] = None
         self._client_lock: Optional[asyncio.Lock] = None
-    
+
     @abstractmethod
     def _create_client_config(self) -> Dict[str, Any]:
         """
@@ -36,8 +37,7 @@ class HTTPClientMixin(ABC):
             - timeout: float
             - Any other httpx.AsyncClient kwargs
         """
-        pass
-    
+
     def _get_client(self) -> httpx.AsyncClient:
         """
         Get or create the HTTP client instance.
@@ -49,7 +49,7 @@ class HTTPClientMixin(ABC):
             config = self._create_client_config()
             self._client = httpx.AsyncClient(**config)
         return self._client
-    
+
     async def _ensure_client(self) -> httpx.AsyncClient:
         """
         Thread-safe way to ensure the client is created.
@@ -65,7 +65,7 @@ class HTTPClientMixin(ABC):
                     config = self._create_client_config()
                     self._client = httpx.AsyncClient(**config)
         return self._client
-    
+
     async def close(self):
         """
         Close the HTTP client and clean up resources.
@@ -73,15 +73,15 @@ class HTTPClientMixin(ABC):
         if self._client is not None:
             await self._client.aclose()
             self._client = None
-    
+
     async def __aenter__(self):
         """Async context manager entry."""
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit with automatic cleanup."""
         await self.close()
-    
+
     @property
     def client(self) -> Optional[httpx.AsyncClient]:
         """
@@ -98,11 +98,11 @@ class BaseHTTPSource(HTTPClientMixin):
     Combines HTTPClientMixin with common source patterns.
     Note: This is a mixin, classes should also inherit from BaseSource.
     """
-    
+
     def __init__(self, config, *args, **kwargs):
         self.config = config
         super().__init__(*args, **kwargs)
-    
+
     async def test_connection(self) -> bool:
         """
         Test if the HTTP connection is working.
@@ -116,7 +116,7 @@ class BaseHTTPSource(HTTPClientMixin):
             return response.status_code < 400
         except Exception:
             return False
-    
+
     @abstractmethod
     async def _make_test_request(self, client: httpx.AsyncClient) -> httpx.Response:
         """
@@ -128,7 +128,6 @@ class BaseHTTPSource(HTTPClientMixin):
         Returns:
             httpx.Response: The response from the test request
         """
-        pass
 
 
 class BaseLLMProvider(HTTPClientMixin):
@@ -137,11 +136,11 @@ class BaseLLMProvider(HTTPClientMixin):
     
     Combines HTTPClientMixin with common LLM provider patterns.
     """
-    
+
     def __init__(self, config, *args, **kwargs):
         self.config = config
         super().__init__(*args, **kwargs)
-    
+
     async def test_connection(self) -> bool:
         """
         Test if the LLM provider connection is working.
@@ -155,7 +154,7 @@ class BaseLLMProvider(HTTPClientMixin):
             return response.status_code < 400
         except Exception:
             return False
-    
+
     @abstractmethod
     async def _make_test_request(self, client: httpx.AsyncClient) -> httpx.Response:
         """
@@ -167,4 +166,3 @@ class BaseLLMProvider(HTTPClientMixin):
         Returns:
             httpx.Response: The response from the test request
         """
-        pass

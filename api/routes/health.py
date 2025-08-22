@@ -6,15 +6,15 @@ and status checking.
 """
 
 import logging
-from typing import Dict, Any
 from datetime import datetime, timezone
+from typing import Any, Dict
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from services.startup import StartupService
-from core.exception_handling import handle_api_exceptions
 from core.dependencies import get_startup_service_dependency
+from core.exception_handling import handle_api_exceptions
+from services.startup import StartupService
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,11 @@ class StatusResponse(BaseModel):
 async def health_check(startup_service: StartupService = Depends(get_startup_service_dependency)):
     """Get application health status"""
     app_status = startup_service.get_application_status()
-    
+
     return HealthResponse(
         healthy=app_status.get("startup_complete", False),
         services=app_status.get("services", {}),
-        details=app_status
+        details=app_status,
     )
 
 
@@ -55,8 +55,8 @@ async def health_check(startup_service: StartupService = Depends(get_startup_ser
 async def get_application_status(startup_service: StartupService = Depends(get_startup_service_dependency)):
     """Get detailed application status"""
     status_data = startup_service.get_application_status()
-    
+
     return StatusResponse(
         timestamp=datetime.now(timezone.utc).isoformat(),
-        data=status_data
+        data=status_data,
     )

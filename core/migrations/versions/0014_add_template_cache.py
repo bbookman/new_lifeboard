@@ -8,7 +8,7 @@ Migration ID: 0014
 Dependencies: 0013
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def get_migration_info() -> Dict[str, Any]:
@@ -17,13 +17,13 @@ def get_migration_info() -> Dict[str, Any]:
         "id": "0014",
         "name": "add_template_cache",
         "description": "Add template cache table for template processing performance",
-        "dependencies": ["0013"]
+        "dependencies": ["0013"],
     }
 
 
 def upgrade(cursor) -> None:
     """Apply the migration"""
-    
+
     # Create template_cache table
     cursor.execute("""
         CREATE TABLE template_cache (
@@ -37,29 +37,29 @@ def upgrade(cursor) -> None:
             expires_at TIMESTAMP NOT NULL
         )
     """)
-    
+
     # Add indexes for performance
     cursor.execute("""
         CREATE INDEX idx_template_cache_hash_date 
         ON template_cache(template_hash, target_date)
     """)
-    
+
     cursor.execute("""
         CREATE INDEX idx_template_cache_expires 
         ON template_cache(expires_at)
     """)
-    
+
     print("✅ Created template_cache table with indexes")
 
 
 def downgrade(cursor) -> None:
     """Rollback the migration"""
-    
+
     # Drop indexes first
     cursor.execute("DROP INDEX IF EXISTS idx_template_cache_expires")
     cursor.execute("DROP INDEX IF EXISTS idx_template_cache_hash_date")
-    
+
     # Drop table
     cursor.execute("DROP TABLE IF EXISTS template_cache")
-    
+
     print("✅ Dropped template_cache table and indexes")

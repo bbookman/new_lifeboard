@@ -7,14 +7,15 @@ conversation management.
 
 import logging
 from datetime import datetime
-from typing import List, Dict, Any
-from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from core.dependencies import get_startup_service_dependency
+from core.exception_handling import handle_api_exceptions
 from services.chat_service import ChatService
 from services.startup import StartupService
-from core.exception_handling import handle_api_exceptions
-from core.dependencies import get_startup_service_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -50,17 +51,17 @@ class ChatHistoryResponse(BaseModel):
 @handle_api_exceptions("Failed to send chat message", 500, include_details=True)
 async def send_chat_message(
     request_data: ChatMessageRequest,
-    chat_service: ChatService = Depends(get_chat_service_for_route)
+    chat_service: ChatService = Depends(get_chat_service_for_route),
 ) -> ChatMessageResponse:
     """Send a chat message and get AI response (JSON API)"""
     try:
         # Process the chat message
         response = await chat_service.process_chat_message(request_data.message)
-        
+
         # Return JSON response
         return ChatMessageResponse(
             response=response,
-            timestamp=str(datetime.now().isoformat())
+            timestamp=str(datetime.now().isoformat()),
         )
     except Exception as e:
         logger.error(f"Error processing chat message: {e}")
@@ -71,23 +72,23 @@ async def send_chat_message(
 @handle_api_exceptions("Failed to get chat history", 500, include_details=True)
 async def get_chat_history_api(
     limit: int = 20,
-    chat_service: ChatService = Depends(get_chat_service_for_route)
+    chat_service: ChatService = Depends(get_chat_service_for_route),
 ) -> ChatHistoryResponse:
     """Get chat history (JSON API)"""
     try:
         # Get chat history from service
         history = chat_service.get_chat_history(limit=limit)
-        
+
         # Convert to API response format
         messages = []
         for item in history:
             messages.append(ChatHistoryItem(
-                id=item.get('id', 0),
-                user_message=item.get('user_message', ''),
-                assistant_response=item.get('assistant_response', ''),
-                timestamp=item.get('timestamp', '')
+                id=item.get("id", 0),
+                user_message=item.get("user_message", ""),
+                assistant_response=item.get("assistant_response", ""),
+                timestamp=item.get("timestamp", ""),
             ))
-        
+
         return ChatHistoryResponse(messages=messages)
     except Exception as e:
         logger.error(f"Error getting chat history: {e}")
