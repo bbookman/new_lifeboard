@@ -612,6 +612,150 @@ async def fetch_limitless_for_date(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
+@router.post("/api/news/fetch/{date}")
+async def fetch_news_for_date(
+    date: str,
+    database: DatabaseService = Depends(get_database_service),
+    ingestion_service: IngestionService = Depends(get_ingestion_service)
+) -> Dict[str, Any]:
+    """
+    Fetch news data for a specific date on-demand.
+    This endpoint automatically fetches current news and stores it with the specified date.
+    """
+    try:
+        logger.info(f"[OnDemandNewsFetch] Starting on-demand news fetch for date: {date}")
+        
+        # Validate date format
+        try:
+            parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
+            logger.debug(f"[OnDemandNewsFetch] Parsed date: {parsed_date}")
+        except ValueError:
+            logger.error(f"[OnDemandNewsFetch] Invalid date format: {date}")
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Check if news data already exists for this date
+        existing_items = database.get_data_items_by_date(date, namespaces=['news'])
+        if existing_items:
+            logger.info(f"[OnDemandNewsFetch] News data already exists for {date}: {len(existing_items)} items")
+            return {
+                "success": True,
+                "message": f"News data already exists for {date}",
+                "items_processed": 0,
+                "items_existing": len(existing_items),
+                "date": date
+            }
+        
+        logger.debug(f"[OnDemandNewsFetch] No existing news data found for {date}, proceeding with fetch")
+        
+        # Get configuration and create News source
+        config = get_config()
+        if not config.news.is_api_key_configured():
+            logger.error("[OnDemandNewsFetch] News API key not configured")
+            raise HTTPException(status_code=503, detail="News API key not configured")
+        
+        logger.debug(f"[OnDemandNewsFetch] Creating NewsSource with config")
+        from sources.news import NewsSource
+        news_source = NewsSource(config.news, database)
+        
+        # Test API connectivity first
+        logger.debug(f"[OnDemandNewsFetch] Testing News API connectivity")
+        connection_ok = await news_source.test_connection()
+        if not connection_ok:
+            logger.error("[OnDemandNewsFetch] Failed to connect to News API")
+            raise HTTPException(status_code=503, detail="Failed to connect to News API")
+        
+        logger.info(f"[OnDemandNewsFetch] Successfully connected to News API")
+        
+        # Fetch news data
+        logger.info(f"[OnDemandNewsFetch] Fetching news data from API")
+        items_fetched = []
+        
+        try:
+            # Use the existing fetch_items method
+            async for item in news_source.fetch_items(limit=config.news.unique_items_per_day):
+                # Override the days_date to match the requested date
+                item.days_date = date
+                items_fetched.append(item)
+                logger.debug(f"[OnDemandNewsFetch] Fetched item: {item.source_id}")
+            
+            logger.info(f"[OnDemandNewsFetch] Fetched {len(items_fetched)} news items")
+            
+        except Exception as e:
+            logger.error(f"[OnDemandNewsFetch] Error fetching news data from API: {e}")
+            raise HTTPException(status_code=503, detail=f"Error fetching news data from API: {str(e)}")
+        
+        if not items_fetched:
+            logger.info(f"[OnDemandNewsFetch] No news data found")
+            return {
+                "success": True,
+                "message": f"No news data available for {date}",
+                "items_processed": 0,
+                "items_existing": 0,
+                "date": date
+            }
+        
+        # Register the source with ingestion service if not already registered
+        if 'news' not in ingestion_service.sources:
+            logger.debug(f"[OnDemandNewsFetch] Registering News source with ingestion service")
+            ingestion_service.register_source(news_source)
+        
+        # Process items through existing pipeline using proper ingestion service methods
+        logger.info(f"[OnDemandNewsFetch] Processing {len(items_fetched)} items through ingestion pipeline")
+        
+        # Import IngestionResult for proper result tracking
+        from services.ingestion import IngestionResult
+        result = IngestionResult()
+        result.start_time = datetime.now(timezone.utc)
+        
+        try:
+            # Process each item using the ingestion service's standard processing method
+            for item in items_fetched:
+                logger.debug(f"[OnDemandNewsFetch] Processing item: {item.source_id}")
+                await ingestion_service._process_and_store_item(item, result)
+                result.items_processed += 1  # Manually track processed count
+                logger.debug(f"[OnDemandNewsFetch] Successfully processed item: {item.source_id}")
+            
+            result.end_time = datetime.now(timezone.utc)
+            processed_count = result.items_processed
+            stored_count = result.items_stored 
+            errors = result.errors
+            
+            logger.info(f"[OnDemandNewsFetch] Processing completed: {processed_count} processed, {stored_count} stored, {len(errors)} errors")
+            
+        except Exception as e:
+            logger.error(f"[OnDemandNewsFetch] Critical error during processing: {e}")
+            raise HTTPException(status_code=500, detail=f"Error processing data: {str(e)}")
+        
+        # Process embeddings for the newly stored items
+        logger.info(f"[OnDemandNewsFetch] Processing embeddings for newly stored items")
+        try:
+            embedding_result = await ingestion_service.process_pending_embeddings(batch_size=32)
+            logger.debug(f"[OnDemandNewsFetch] Embedding processing result: {embedding_result}")
+        except Exception as e:
+            logger.warning(f"[OnDemandNewsFetch] Error processing embeddings (non-critical): {e}")
+        
+        # Verify final result
+        final_items = database.get_data_items_by_date(date, namespaces=['news'])
+        
+        logger.info(f"[OnDemandNewsFetch] On-demand news fetch completed for {date}: processed={processed_count}, stored={stored_count}, final_count={len(final_items)}")
+        
+        return {
+            "success": True,
+            "message": f"Successfully fetched and processed news data for {date}",
+            "items_processed": processed_count,
+            "items_stored": stored_count,
+            "items_final": len(final_items),
+            "errors": errors,
+            "date": date
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[OnDemandNewsFetch] Critical error in news fetch endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
 @router.get("/api/data_items/{date}")
 async def get_data_items_for_date(
     date: str, 

@@ -5,12 +5,20 @@ import logging
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.dependencies import get_database_service
+from core.dependencies import get_startup_service_dependency
 from core.database import DatabaseService
 from services.news_service import NewsService
+from services.startup import StartupService
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/news", tags=["news"])
+router = APIRouter(prefix="/api/news", tags=["news"])
+
+
+def get_database_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> DatabaseService:
+    """Get database service from startup service"""
+    if not startup_service.database:
+        raise HTTPException(status_code=503, detail="Database service not available")
+    return startup_service.database
 
 
 def get_news_service(database: DatabaseService = Depends(get_database_service)) -> NewsService:

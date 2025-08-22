@@ -1,5 +1,35 @@
 # Lifeboard Codebase Cleanup Plan
 
+## Phase Status Overview
+
+### Phase 1: Critical Architecture Fixes (Week 1) - **PENDING**
+- [x] 1.0 Deep Debug Logging Infrastructure (Day 0.5) - **COMPLETE**
+- [ ] 1.1 API Server Refactoring (Days 1-3) - **PENDING**
+  - [ ] 1.1.1 ProcessManager Extraction (Day 1) - **PENDING**
+  - [ ] 1.1.2 SignalHandler Extraction (Day 2) - **PENDING**
+  - [ ] 1.1.3 FrontendOrchestrator Extraction (Day 3) - **PENDING**
+- [ ] 1.2 Configuration Standardization (Days 4-5) - **PENDING**
+- [ ] 1.3 Feature Flag Infrastructure (Day 0.5) - **PENDING**
+
+### Phase 2: Service Layer Improvements (Week 2) - **PENDING**
+- [ ] 2.0 Enhanced Debug Logging for Services (Day 0.5) - **PENDING**
+- [ ] 2.1 Database Connection Management (Days 1-2) - **PENDING**
+- [ ] 2.2 HTTP Client Unification (Day 3) - **PENDING**
+- [ ] 2.3 Dependency Injection Container (Days 4-5) - **PENDING**
+
+### Phase 3: Test Suite Organization (Week 3, Days 1-2) - **PENDING**
+- [ ] 3.0 Contract Testing and Performance Regression (Day 0.5) - **PENDING**
+- [ ] 3.1 Test Reorganization - **PENDING**
+
+### Phase 4: Code Quality Improvements (Week 3, Days 3-5) - **PENDING**
+- [ ] 4.0 Quality Metrics Debug Logging (Day 0.5) - **PENDING**
+- [ ] 4.1 Service Layer Consolidation - **PENDING**
+- [ ] 4.2 Error Handling Standardization - **PENDING**
+- [ ] 4.3 Frontend Test Integration - **PENDING**
+- [ ] 4.4 Architectural Decision Records and Documentation - **PENDING**
+
+---
+
 ## Executive Summary
 
 This document outlines a comprehensive, TDD-driven cleanup plan for the Lifeboard codebase. The plan addresses critical architectural issues, improves maintainability, and reduces technical debt while ensuring no regressions through extensive test coverage.
@@ -7,6 +37,8 @@ This document outlines a comprehensive, TDD-driven cleanup plan for the Lifeboar
 **Estimated Timeline**: 3 weeks  
 **Approach**: Test-Driven Development (TDD)  
 **Impact**: 30% reduction in complexity, significantly improved maintainability
+
+**Overall Status**: **PENDING** - Cleanup plan ready for implementation
 
 ## Current State Analysis
 
