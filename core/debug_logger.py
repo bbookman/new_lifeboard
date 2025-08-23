@@ -70,7 +70,7 @@ class DebugLogger:
                 # Log function entry
                 self.logger.debug(f"ENTER {name}", extra={
                     'function': name,
-                    'module': self.module_name,
+                    'debug_module': self.module_name,
                     'args_count': len(args),
                     'kwargs_keys': list(kwargs.keys()),
                     'timestamp': datetime.utcnow().isoformat(),
@@ -84,7 +84,7 @@ class DebugLogger:
                     # Log successful exit
                     self.logger.debug(f"EXIT {name} [SUCCESS]", extra={
                         'function': name,
-                        'module': self.module_name,
+                        'debug_module': self.module_name,
                         'duration_ms': round(duration * 1000, 2),
                         'result_type': type(result).__name__,
                         'timestamp': datetime.utcnow().isoformat(),
@@ -98,7 +98,7 @@ class DebugLogger:
                     # Log error exit with full context
                     self.logger.error(f"EXIT {name} [ERROR]", extra={
                         'function': name,
-                        'module': self.module_name,
+                        'debug_module': self.module_name,
                         'duration_ms': round(duration * 1000, 2),
                         'error_type': type(e).__name__,
                         'error_message': str(e),
@@ -126,7 +126,7 @@ class DebugLogger:
         
         self.logger.log(log_level, f"STATE {component}", extra={
             'component': component,
-            'module': self.module_name,
+            'debug_module': self.module_name,  # Renamed to avoid conflict with LogRecord.module
             'state': self._sanitize_state(state),
             'timestamp': datetime.utcnow().isoformat(),
             'thread_id': self._get_thread_id()
@@ -143,7 +143,7 @@ class DebugLogger:
         """
         self.logger.info(f"PERFORMANCE {metric_name}", extra={
             'metric_name': metric_name,
-            'module': self.module_name,
+            'debug_module': self.module_name,
             'value': value,
             'unit': unit,
             'timestamp': datetime.utcnow().isoformat(),
@@ -161,7 +161,7 @@ class DebugLogger:
         refactor_logger = logging.getLogger("refactor")
         refactor_logger.info(f"MILESTONE {milestone}", extra={
             'milestone': milestone,
-            'module': self.module_name,
+            'debug_module': self.module_name,
             'data': self._sanitize_state(data or {}),
             'timestamp': datetime.utcnow().isoformat(),
             'thread_id': self._get_thread_id()

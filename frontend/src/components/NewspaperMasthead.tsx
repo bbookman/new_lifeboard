@@ -1,18 +1,10 @@
 import mastheadImage from "@/assets/newspaper-masthead.jpg";
 
 interface NewspaperMastheadProps {
-  selectedDate?: string;
+  formattedDate: string;
 }
 
-export const NewspaperMasthead = ({ selectedDate }: NewspaperMastheadProps) => {
-  const displayDate = selectedDate ? new Date(selectedDate + 'T00:00:00') : new Date();
-  const formattedDate = displayDate.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-
+export const NewspaperMasthead = ({ formattedDate }: NewspaperMastheadProps) => {
   return (
     <header className="bg-gradient-to-r from-newspaper-masthead to-newspaper-masthead/90 text-white py-6 mb-8">
       <div className="container mx-auto px-4">

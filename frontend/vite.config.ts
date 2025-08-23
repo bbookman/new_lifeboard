@@ -17,8 +17,21 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/upload': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8000/api/settings',
         changeOrigin: true,
+        timeout: 300000,
+        proxyTimeout: 300000,
+        configure: (proxy, _options) => {
+          proxy.on('timeout', () => {
+            console.log('Proxy timeout occurred');
+          });
+          proxy.on('proxyReqWs', (proxyReq, req, socket) => {
+            proxyReq.setTimeout(300000);
+          });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            proxyRes.setTimeout(300000);
+          });
+        }
       },
       '/sync': {
         target: 'http://localhost:8000',

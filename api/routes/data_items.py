@@ -5,8 +5,8 @@ import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.dependencies import get_database_service
-from core.database import DatabaseService
+from core.dependencies import get_startup_service_dependency
+from services.startup import StartupService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/data_items", tags=["data_items"])
@@ -17,7 +17,7 @@ async def get_data_items(
     namespace: Optional[str] = Query(None, description="Filter by namespace (e.g., 'twitter', 'news', 'limitless')"),
     date: Optional[str] = Query(None, description="Filter by date in YYYY-MM-DD format"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of items to return"),
-    database: DatabaseService = Depends(get_database_service)
+    startup_service: StartupService = Depends(get_startup_service_dependency)
 ):
     """Get data items filtered by namespace and/or date."""
     try:
@@ -47,7 +47,7 @@ async def get_data_items(
         """
         params.append(limit)
         
-        with database.get_connection() as conn:
+        with startup_service.database.get_connection() as conn:
             cursor = conn.execute(query, params)
             items = []
             
@@ -76,13 +76,13 @@ async def get_data_items(
 
 @router.get("/namespaces", response_model=List[str])
 async def get_namespaces(
-    database: DatabaseService = Depends(get_database_service)
+    startup_service: StartupService = Depends(get_startup_service_dependency)
 ):
     """Get all available namespaces."""
     try:
         logger.info("Getting all namespaces")
         
-        with database.get_connection() as conn:
+        with startup_service.database.get_connection() as conn:
             cursor = conn.execute("""
                 SELECT DISTINCT namespace 
                 FROM data_items 
@@ -102,7 +102,7 @@ async def get_namespaces(
 async def get_data_items_count(
     namespace: Optional[str] = Query(None, description="Filter by namespace"),
     date: Optional[str] = Query(None, description="Filter by date in YYYY-MM-DD format"),
-    database: DatabaseService = Depends(get_database_service)
+    startup_service: StartupService = Depends(get_startup_service_dependency)
 ):
     """Get count of data items filtered by namespace and/or date."""
     try:
@@ -128,7 +128,7 @@ async def get_data_items_count(
             WHERE {where_clause}
         """
         
-        with database.get_connection() as conn:
+        with startup_service.database.get_connection() as conn:
             cursor = conn.execute(query, params)
             count = cursor.fetchone()["count"]
         

@@ -185,6 +185,10 @@ show_servers() {
     echo -e "${GREEN}Frontend (New UI):${NC} http://localhost:5173"
     echo -e "${BLUE}Backend API:${NC}      http://localhost:8000"
     echo ""
+    echo "==============================="
+    echo "FOR BEST RESULTS, LET THE SERVERS BAKE FOR A FEW MOMENTS"
+    echo "==============================="
+    echo ""
     print_status "Press Ctrl+C to stop both servers"
     echo ""
 }

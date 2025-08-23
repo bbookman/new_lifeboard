@@ -29,11 +29,15 @@ export const DateNavigation = ({ selectedDate, onDateChange, isDayViewActive }: 
 
   const handleDateChange = useCallback((date: Date) => {
     const newDate = format(date, 'yyyy-MM-dd');
+    console.log('[DateNavigation] Date change:', { oldDate: displayDate, newDate });
     setDisplayDate(newDate);
     if (onDateChange) {
+      console.log('[DateNavigation] Calling onDateChange with:', newDate);
       onDateChange(newDate);
+    } else {
+      console.log('[DateNavigation] No onDateChange callback provided');
     }
-  }, [onDateChange]);
+  }, [onDateChange, displayDate]);
 
   const handlePrevDay = useCallback(() => {
     if (displayDate) {
