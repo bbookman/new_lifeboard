@@ -38,159 +38,44 @@ logger = logging.getLogger(__name__)
 # Templates are no longer used - backend serves JSON API only
 logger.info("SERVER: Running in API-only mode (no HTML templates)")
 
-# Global shutdown flag
-_shutdown_requested = False
-_server_instance = None
-_frontend_process = None
+# Import the extracted SignalHandler
+from core.signal_handler import SignalHandler
 
-# Signal handling for graceful shutdown with safety checks
+# Global signal handler instance
+_signal_handler = SignalHandler()
+
+# Legacy compatibility functions for existing code that still references these globals
+_shutdown_requested = False  # Will be deprecated - use _signal_handler.is_shutdown_requested()
+_server_instance = None      # Will be deprecated - use _signal_handler.set_server_instance()  
+_frontend_process = None     # Will be deprecated - use _signal_handler.set_frontend_process()
+
 def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully with enhanced safety checks"""
+    """
+    Legacy compatibility wrapper for the extracted SignalHandler.
+    Delegates to the new SignalHandler implementation.
+    """
     global _shutdown_requested, _server_instance, _frontend_process
     
-    # Safety check for signal number
-    try:
-        if hasattr(signal, 'Signals') and hasattr(signal.Signals, '__getitem__'):
-            signal_name = signal.Signals(signum).name
-        else:
-            signal_name = f"signal-{signum}"
-    except (ValueError, AttributeError):
-        signal_name = f"unknown-signal-{signum}"
+    # Delegate to the extracted SignalHandler
+    _signal_handler.graceful_shutdown(signum, frame)
     
-    logger.info(f"SIGNAL: Received shutdown signal {signal_name} ({signum})")
-    logger.info(f"SIGNAL: Initiating graceful shutdown...")
-    
-    # Set shutdown flag atomically
-    _shutdown_requested = True
-    
-    # Handle SIGINT (CTRL-C) specially
-    if signum == signal.SIGINT:
-        logger.info("SIGNAL: CTRL-C detected - starting graceful shutdown")
-        try:
-            print("\n\n🛑 Graceful shutdown initiated... Please wait for cleanup to complete.")
-            print("⏳ Shutting down services and releasing port bindings...")
-        except Exception as print_error:
-            logger.debug(f"SIGNAL: Error printing shutdown message: {print_error}")
-        
-        # Cleanup frontend process if running
-        if _frontend_process is not None:
-            try:
-                print("🧹 Stopping frontend server...")
-                _frontend_process.terminate()
-                import time
-                time.sleep(2)
-                if _frontend_process.poll() is None:
-                    _frontend_process.kill()
-                    time.sleep(1)
-                print("✅ Frontend server stopped")
-                logger.info("SIGNAL: Frontend process terminated successfully")
-            except Exception as frontend_error:
-                logger.warning(f"SIGNAL: Error stopping frontend process: {frontend_error}")
-                print("⚠️  Frontend cleanup encountered an issue")
-        
-        # Trigger uvicorn shutdown if server instance is available
-        if _server_instance is not None:
-            logger.info("SIGNAL: Triggering uvicorn server shutdown...")
-            try:
-                # Safety checks before accessing server instance attributes
-                if hasattr(_server_instance, 'should_exit'):
-                    _server_instance.should_exit = True
-                    logger.debug("SIGNAL: Set server.should_exit = True")
-                else:
-                    logger.warning("SIGNAL: Server instance has no 'should_exit' attribute")
-                
-                if hasattr(_server_instance, 'force_exit'):
-                    _server_instance.force_exit = False  # Graceful shutdown, not forced
-                    logger.debug("SIGNAL: Set server.force_exit = False")
-                else:
-                    logger.debug("SIGNAL: Server instance has no 'force_exit' attribute")
-                
-                logger.info("SIGNAL: Uvicorn shutdown signal sent successfully")
-            except AttributeError as attr_error:
-                logger.error(f"SIGNAL: Server instance missing expected attributes: {attr_error}")
-            except Exception as e:
-                logger.error(f"SIGNAL: Error triggering uvicorn shutdown: {e}")
-                logger.exception("SIGNAL: Full exception details:")
-        else:
-            logger.warning("SIGNAL: No server instance available to shutdown")
-    
-    # Handle SIGTERM
-    elif signum == signal.SIGTERM:
-        logger.info("SIGNAL: SIGTERM received - initiating shutdown")
-        if _server_instance is not None:
-            try:
-                if hasattr(_server_instance, 'should_exit'):
-                    _server_instance.should_exit = True
-                    logger.info("SIGNAL: Set server.should_exit = True for SIGTERM")
-                else:
-                    logger.warning("SIGNAL: Server instance has no 'should_exit' attribute for SIGTERM")
-            except Exception as e:
-                logger.error(f"SIGNAL: Error handling SIGTERM: {e}")
-        else:
-            logger.warning("SIGNAL: No server instance available for SIGTERM handling")
-    
-    # Handle other signals
-    else:
-        logger.info(f"SIGNAL: Received {signal_name} - setting shutdown flag only")
-        # For other signals, we just set the shutdown flag and let the application handle it
-    
-    logger.debug(f"SIGNAL: Signal handler for {signal_name} completed successfully")
+    # Update legacy globals for backward compatibility
+    _shutdown_requested = _signal_handler.is_shutdown_requested()
 
-# Setup graceful shutdown handling with enhanced safety
 def setup_signal_handlers():
-    """Setup signal handlers for graceful shutdown with enhanced safety checks"""
-    logger.info("SIGNAL: Setting up signal handlers...")
+    """
+    Setup signal handlers using the extracted SignalHandler.
+    This replaces the old monolithic signal handling code.
+    """
+    logger.info("SIGNAL: Setting up signal handlers using extracted SignalHandler...")
     
-    # Handle SIGINT (CTRL-C) and SIGTERM gracefully
-    try:
-        signal.signal(signal.SIGINT, signal_handler)
-        logger.info("SIGNAL: Registered graceful shutdown handler for SIGINT")
-    except (OSError, ValueError) as e:
-        logger.error(f"SIGNAL: Failed to register SIGINT handler: {e}")
+    # Register signal handlers using the extracted SignalHandler
+    success = _signal_handler.register_handlers()
     
-    try:
-        signal.signal(signal.SIGTERM, signal_handler)
-        logger.info("SIGNAL: Registered graceful shutdown handler for SIGTERM")
-    except (OSError, ValueError) as e:
-        logger.error(f"SIGNAL: Failed to register SIGTERM handler: {e}")
-    
-    # Optional: Handle other signals for logging only with better error handling
-    optional_signals = []
-    
-    # Check for platform-specific signals safely
-    for signal_name in ['SIGHUP', 'SIGQUIT', 'SIGUSR1', 'SIGUSR2']:
-        if hasattr(signal, signal_name):
-            sig_value = getattr(signal, signal_name)
-            optional_signals.append((signal_name, sig_value))
-            logger.debug(f"SIGNAL: Found optional signal {signal_name} = {sig_value}")
-    
-    def log_only_handler(signum, frame):
-        """Safe logging-only signal handler"""
-        try:
-            if hasattr(signal, 'Signals') and hasattr(signal.Signals, '__getitem__'):
-                signal_name = signal.Signals(signum).name
-            else:
-                signal_name = f"signal-{signum}"
-        except (ValueError, AttributeError):
-            signal_name = f"unknown-signal-{signum}"
-        
-        logger.info(f"SIGNAL: Received {signal_name} ({signum}) - logging only")
-    
-    # Register optional signal handlers
-    registered_optional = 0
-    for signal_name, sig_value in optional_signals:
-        try:
-            signal.signal(sig_value, log_only_handler)
-            logger.debug(f"SIGNAL: Registered logging handler for {signal_name} ({sig_value})")
-            registered_optional += 1
-        except (OSError, ValueError) as e:
-            logger.debug(f"SIGNAL: Could not register handler for {signal_name}: {e}")
-            # Some signals might not be available on all platforms - this is expected
-        except Exception as e:
-            logger.warning(f"SIGNAL: Unexpected error registering handler for {signal_name}: {e}")
-    
-    logger.info(f"SIGNAL: Successfully registered {registered_optional} optional signal handlers")
-    logger.info("SIGNAL: Signal handler setup completed")
+    if success:
+        logger.info("SIGNAL: Successfully registered signal handlers via SignalHandler")
+    else:
+        logger.error("SIGNAL: Failed to register some signal handlers via SignalHandler")
 
 # Signal handlers will be configured by uvicorn server function
 # setup_signal_handlers()  # Disabled - handled by uvicorn runner
@@ -394,13 +279,12 @@ async def lifespan(app: FastAPI):
         
         # Create a monitoring task to track asyncio health
         async def monitor_loop():
-            global _shutdown_requested
             monitor_count = 0
-            while not _shutdown_requested:
+            while not _signal_handler.is_shutdown_requested():
                 await asyncio.sleep(30)  # Monitor every 30 seconds
                 monitor_count += 1
                 
-                if _shutdown_requested:
+                if _signal_handler.is_shutdown_requested():
                     logger.info("LIFESPAN: Shutdown requested - stopping monitoring loop")
                     break
                     
@@ -486,6 +370,7 @@ async def lifespan(app: FastAPI):
                 else:
                     logger.info("LIFESPAN: Frontend process already terminated")
                 _frontend_process = None
+                _signal_handler.set_frontend_process(None)
             except Exception as frontend_error:
                 logger.warning(f"LIFESPAN: Error cleaning up frontend process: {frontend_error}")
                 shutdown_errors.append(f"Frontend cleanup error: {frontend_error}")
@@ -578,8 +463,8 @@ async def lifespan(app: FastAPI):
             
         # Final cleanup - make sure global state is reset
         try:
-            global _shutdown_requested
-            _shutdown_requested = True
+            # Note: _signal_handler already tracks shutdown state internally
+            pass
         except:
             pass
 
@@ -1212,11 +1097,13 @@ async def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = Fals
         global _server_instance
         if server is not None:
             _server_instance = server
-            logger.info(f"UVICORN: Server instance stored for graceful shutdown")
+            _signal_handler.set_server_instance(server)
+            logger.info(f"UVICORN: Server instance stored for graceful shutdown (legacy and new SignalHandler)")
             logger.info(f"UVICORN: Server starting with graceful shutdown timeout: 30s")
         else:
             logger.error("UVICORN: Server instance is None - cannot store for shutdown")
             _server_instance = None
+            _signal_handler.set_server_instance(None)
         
         print("✅ Server configuration complete")
         print("⏳ Initializing application services...")
@@ -1259,9 +1146,9 @@ async def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = Fals
             except Exception as print_error:
                 logger.debug(f"UVICORN: Error printing shutdown message: {print_error}")
             
-            # Set the shutdown flag and trigger uvicorn shutdown with safety checks
-            global _shutdown_requested
-            _shutdown_requested = True
+            # Use SignalHandler to manage shutdown state
+            # Note: shutdown flag is managed internally by SignalHandler
+            pass
             
             # Safely access server attributes
             try:
@@ -1774,6 +1661,7 @@ async def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port:
         if frontend_info and frontend_info.process:
             global _frontend_process
             _frontend_process = frontend_info.process
+            _signal_handler.set_frontend_process(frontend_info.process)
         
         # Start backend (this will block)
         resolved_backend_port = startup_result["backend_port"]

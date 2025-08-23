@@ -171,7 +171,7 @@ class WeatherConfig(BaseModel, BaseConfigMixin):
     api_key: Optional[str] = Field(None, env="RAPID_API_KEY")
     endpoint: Optional[str] = Field(None, env="WEATHER_ENDPOINT")
     latitude: str = Field("34.0522", env="USER_HOME_LATITUDE")
-    longitude: str = Field("-118.2437", env="USER_HOME_LOGITUDE")
+    longitude: str = Field("-118.2437", env="USER_HOME_LONGITUDE")
     units: str = Field("metric", env="UNITS")
     enabled: bool = True
     max_retries: int = 3

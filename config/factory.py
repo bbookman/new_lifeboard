@@ -143,7 +143,7 @@ def create_production_config() -> AppConfig:
             api_key=os.getenv("RAPID_API_KEY"),
             endpoint=os.getenv("WEATHER_ENDPOINT"),
             latitude=os.getenv("USER_HOME_LATITUDE", "34.0522"),
-            longitude=os.getenv("USER_HOME_LOGITUDE", "-118.2437"),
+            longitude=os.getenv("USER_HOME_LONGITUDE", "-118.2437"),
             units=os.getenv("UNITS", "metric"),
             enabled=os.getenv("TURN_ON_WEATHER", "true").lower() == "true",
             max_retries=int(os.getenv("WEATHER_MAX_RETRIES", "3")),
