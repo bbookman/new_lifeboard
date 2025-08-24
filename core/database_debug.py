@@ -1,429 +1,318 @@
 """
-Database connection debug monitoring for Lifeboard cleanup.
+Database Debug Connection for Enhanced Database Monitoring.
 
-This module provides enhanced database connection monitoring including:
-- Connection lifecycle tracking
-- Performance metrics collection
-- Connection pool monitoring
-- Query execution timing
-- Connection leak detection
-
-Usage:
-    from core.database_debug import DebugDatabaseConnection
-    
-    db_debug = DebugDatabaseConnection("lifeboard.db")
-    with db_debug.get_connection() as conn:
-        # database operations
+This module provides the DebugDatabaseConnection class that wraps database
+connections with comprehensive logging and monitoring capabilities.
 """
 
 import sqlite3
 import time
-import threading
 from contextlib import contextmanager
-from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
+from typing import Dict, Any
 from core.debug_logger import DebugLogger
-
-
-class ConnectionInfo:
-    """Information about a database connection."""
-    
-    def __init__(self, connection_id: str, created_at: datetime, thread_id: str):
-        self.connection_id = connection_id
-        self.created_at = created_at
-        self.thread_id = thread_id
-        self.queries_executed = 0
-        self.total_query_time = 0.0
-        self.last_activity = created_at
-        
-    def update_activity(self, query_time: float = 0.0):
-        """Update connection activity metrics."""
-        self.last_activity = datetime.utcnow()
-        if query_time > 0:
-            self.queries_executed += 1
-            self.total_query_time += query_time
-            
-    @property
-    def age_seconds(self) -> float:
-        """Get connection age in seconds."""
-        return (datetime.utcnow() - self.created_at).total_seconds()
-        
-    @property
-    def idle_seconds(self) -> float:
-        """Get idle time in seconds."""
-        return (datetime.utcnow() - self.last_activity).total_seconds()
-        
-    @property
-    def average_query_time(self) -> float:
-        """Get average query execution time."""
-        return self.total_query_time / max(self.queries_executed, 1)
 
 
 class DebugDatabaseConnection:
     """
-    Enhanced database connection manager with comprehensive debugging.
+    Debug wrapper for database connections with comprehensive monitoring.
     
-    Provides connection pooling, monitoring, and debugging capabilities
-    for tracking database usage during the cleanup process.
+    This class provides enhanced database connection management with:
+    - Connection lifecycle tracking
+    - Connection duration monitoring
+    - Active connection counting
+    - Detailed logging for debugging
+    - Proper resource cleanup
+    
+    Usage:
+        debug_db = DebugDatabaseConnection("path/to/database.db")
+        
+        with debug_db.get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM users")
+            results = cursor.fetchall()
     """
     
-    def __init__(self, db_path: str, pool_size: int = 5, connection_timeout: float = 30.0):
+    def __init__(self, db_path: str):
         """
-        Initialize debug database connection manager.
+        Initialize the debug database connection wrapper.
         
         Args:
-            db_path: Path to SQLite database file
-            pool_size: Maximum number of connections in pool
-            connection_timeout: Timeout for connection operations in seconds
+            db_path: Path to the SQLite database file or ":memory:" for in-memory DB
         """
         self.db_path = db_path
-        self.pool_size = pool_size
-        self.connection_timeout = connection_timeout
-        
-        # Debug logging
         self.debug = DebugLogger("database")
-        
-        # Connection tracking
         self.connection_count = 0
-        self.active_connections: Dict[str, ConnectionInfo] = {}
-        self.connection_pool: List[sqlite3.Connection] = []
-        self.pool_lock = threading.Lock()
-        
-        # Performance metrics
-        self.total_connections_created = 0
-        self.total_queries_executed = 0
-        self.total_query_time = 0.0
-        self.connection_errors = 0
-        
-        # Initialize monitoring
-        self._setup_monitoring()
-        
-    def _setup_monitoring(self):
-        """Setup connection monitoring and health checks."""
-        self.debug.log_milestone("database_monitor_initialized", {
-            'db_path': self.db_path,
-            'pool_size': self.pool_size,
-            'connection_timeout': self.connection_timeout
-        })
+        self.active_connections: Dict[str, float] = {}
         
     @contextmanager
     def get_connection(self):
         """
-        Get a database connection with comprehensive monitoring.
+        Context manager to get a database connection with debug monitoring.
+        
+        Provides:
+        - Automatic connection management
+        - Connection duration tracking
+        - Active connection monitoring  
+        - Proper cleanup on exit
+        - Row factory configuration
         
         Yields:
-            SQLite connection object
+            sqlite3.Connection: Database connection with row factory configured
             
-        Raises:
-            sqlite3.Error: If connection fails
-            TimeoutError: If connection timeout exceeded
+        Example:
+            with debug_db.get_connection() as conn:
+                cursor = conn.execute("SELECT id, name FROM users")
+                for row in cursor:
+                    print(row['name'])  # Access by column name
         """
+        # Generate unique connection ID
         conn_id = f"conn_{self.connection_count}"
         self.connection_count += 1
         start_time = time.time()
-        thread_id = str(threading.current_thread().ident)
         
-        self.debug.log_state("connection_requested", {
+        # Log connection opening
+        self.debug.log_state("connection_open", {
             'connection_id': conn_id,
-            'thread_id': thread_id,
-            'active_connections': len(self.active_connections),
-            'pool_size': len(self.connection_pool)
+            'total_connections': len(self.active_connections) + 1,
+            'db_path': self.db_path,
+            'connection_count': self.connection_count
         })
         
-        connection = None
+        # Create connection and configure
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row  # Enable column name access
+        
+        # Track active connection
+        self.active_connections[conn_id] = start_time
+        
         try:
-            # Get connection from pool or create new one
-            connection = self._get_pooled_connection()
-            if connection is None:
-                connection = self._create_new_connection()
-                
-            # Track connection
-            conn_info = ConnectionInfo(conn_id, datetime.utcnow(), thread_id)
-            self.active_connections[conn_id] = conn_info
-            
-            connection_time = time.time() - start_time
-            
-            self.debug.log_state("connection_established", {
-                'connection_id': conn_id,
-                'connection_time_ms': round(connection_time * 1000, 2),
-                'total_active': len(self.active_connections),
-                'thread_id': thread_id
-            })
-            
-            # Wrap connection for query monitoring
-            monitored_connection = self._wrap_connection_for_monitoring(
-                connection, conn_id, conn_info
-            )
-            
-            yield monitored_connection
-            
-        except Exception as e:
-            self.connection_errors += 1
-            self.debug.logger.error(f"Connection failed for {conn_id}", extra={
-                'connection_id': conn_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'thread_id': thread_id,
-                'connection_errors_total': self.connection_errors
-            })
-            raise
-            
+            yield conn
         finally:
-            # Clean up connection
-            if connection:
-                self._cleanup_connection(conn_id, connection)
-                
-    def _get_pooled_connection(self) -> Optional[sqlite3.Connection]:
-        """Get a connection from the pool if available."""
-        with self.pool_lock:
-            if self.connection_pool:
-                return self.connection_pool.pop()
-        return None
-        
-    def _create_new_connection(self) -> sqlite3.Connection:
-        """Create a new database connection."""
-        try:
-            conn = sqlite3.connect(
-                self.db_path,
-                timeout=self.connection_timeout,
-                check_same_thread=False
-            )
-            conn.row_factory = sqlite3.Row
+            # Calculate connection duration
+            duration = time.time() - start_time
             
-            # Enable WAL mode for better concurrency
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
-            
-            self.total_connections_created += 1
-            
-            self.debug.log_performance_metric(
-                "new_connection_created", 
-                self.total_connections_created, 
-                "count"
-            )
-            
-            return conn
-            
-        except sqlite3.Error as e:
-            self.debug.logger.error(f"Failed to create connection", extra={
-                'db_path': self.db_path,
-                'error_type': type(e).__name__,
-                'error_message': str(e)
-            })
-            raise
-            
-    def _wrap_connection_for_monitoring(
-        self, 
-        connection: sqlite3.Connection, 
-        conn_id: str, 
-        conn_info: ConnectionInfo
-    ) -> sqlite3.Connection:
-        """Wrap connection to monitor query execution."""
-        
-        # Store original execute methods
-        original_execute = connection.execute
-        original_executemany = connection.executemany
-        
-        def monitored_execute(sql, parameters=None):
-            start_time = time.time()
-            try:
-                result = original_execute(sql, parameters or [])
-                query_time = time.time() - start_time
-                
-                self._log_query_execution(conn_id, sql, query_time, success=True)
-                conn_info.update_activity(query_time)
-                
-                return result
-                
-            except Exception as e:
-                query_time = time.time() - start_time
-                self._log_query_execution(
-                    conn_id, sql, query_time, success=False, error=str(e)
-                )
-                raise
-                
-        def monitored_executemany(sql, parameters):
-            start_time = time.time()
-            try:
-                result = original_executemany(sql, parameters)
-                query_time = time.time() - start_time
-                
-                self._log_query_execution(
-                    conn_id, f"{sql} (batch: {len(parameters)} items)", 
-                    query_time, success=True
-                )
-                conn_info.update_activity(query_time)
-                
-                return result
-                
-            except Exception as e:
-                query_time = time.time() - start_time
-                self._log_query_execution(
-                    conn_id, f"{sql} (batch)", query_time, 
-                    success=False, error=str(e)
-                )
-                raise
-        
-        # Replace execute methods
-        connection.execute = monitored_execute
-        connection.executemany = monitored_executemany
-        
-        return connection
-        
-    def _log_query_execution(
-        self, 
-        conn_id: str, 
-        sql: str, 
-        execution_time: float, 
-        success: bool, 
-        error: Optional[str] = None
-    ):
-        """Log query execution details."""
-        self.total_queries_executed += 1
-        self.total_query_time += execution_time
-        
-        log_data = {
-            'connection_id': conn_id,
-            'sql_preview': sql[:100] + "..." if len(sql) > 100 else sql,
-            'execution_time_ms': round(execution_time * 1000, 2),
-            'success': success,
-            'total_queries': self.total_queries_executed
-        }
-        
-        if error:
-            log_data['error'] = error
-            
-        if success:
-            self.debug.logger.debug("QUERY_EXECUTED", extra=log_data)
-        else:
-            self.debug.logger.error("QUERY_FAILED", extra=log_data)
-            
-        # Log slow queries
-        if execution_time > 1.0:  # Queries taking more than 1 second
-            self.debug.logger.warning("SLOW_QUERY", extra=log_data)
-            
-    def _cleanup_connection(self, conn_id: str, connection: sqlite3.Connection):
-        """Clean up connection and update metrics."""
-        start_time = time.time()
-        
-        try:
-            # Get connection info
-            conn_info = self.active_connections.pop(conn_id, None)
-            
-            # Return to pool if space available
-            with self.pool_lock:
-                if len(self.connection_pool) < self.pool_size:
-                    self.connection_pool.append(connection)
-                    pooled = True
-                else:
-                    connection.close()
-                    pooled = False
-                    
-            cleanup_time = time.time() - start_time
-            
-            self.debug.log_state("connection_cleanup", {
+            # Log connection closing
+            self.debug.log_state("connection_close", {
                 'connection_id': conn_id,
-                'cleanup_time_ms': round(cleanup_time * 1000, 2),
-                'pooled': pooled,
-                'remaining_active': len(self.active_connections),
-                'pool_size': len(self.connection_pool),
-                'queries_executed': conn_info.queries_executed if conn_info else 0,
-                'total_query_time_ms': round(
-                    (conn_info.total_query_time * 1000) if conn_info else 0, 2
-                ),
-                'connection_age_seconds': round(
-                    conn_info.age_seconds if conn_info else 0, 2
-                )
+                'duration_ms': round(duration * 1000, 2),
+                'remaining_connections': len(self.active_connections) - 1,
+                'db_path': self.db_path
             })
             
-        except Exception as e:
-            self.debug.logger.error(f"Connection cleanup failed", extra={
-                'connection_id': conn_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e)
-            })
+            # Clean up tracking
+            if conn_id in self.active_connections:
+                del self.active_connections[conn_id]
+                
+            # Close connection
+            conn.close()
             
     def get_connection_stats(self) -> Dict[str, Any]:
-        """Get comprehensive connection statistics."""
-        return {
-            'active_connections': len(self.active_connections),
-            'pool_size': len(self.connection_pool),
-            'total_created': self.total_connections_created,
-            'total_queries': self.total_queries_executed,
-            'total_query_time_seconds': self.total_query_time,
-            'average_query_time_ms': round(
-                (self.total_query_time / max(self.total_queries_executed, 1)) * 1000, 2
-            ),
-            'connection_errors': self.connection_errors,
-            'oldest_connection_age': max(
-                (info.age_seconds for info in self.active_connections.values()),
-                default=0
-            ),
-            'most_idle_connection': max(
-                (info.idle_seconds for info in self.active_connections.values()),
-                default=0
-            )
+        """
+        Get current connection statistics.
+        
+        Returns:
+            Dictionary containing connection statistics including:
+            - total_connections_created: Total connections created since initialization
+            - active_connections_count: Currently active connections
+            - active_connection_ids: List of active connection IDs
+            - db_path: Database file path
+        """
+        stats = {
+            'total_connections_created': self.connection_count,
+            'active_connections_count': len(self.active_connections),
+            'active_connection_ids': list(self.active_connections.keys()),
+            'db_path': self.db_path,
+            'timestamp': time.time()
         }
         
-    def health_check(self) -> Dict[str, Any]:
-        """Perform database health check."""
-        start_time = time.time()
+        # Log statistics request
+        self.debug.log_state("connection_stats", stats, "INFO")
         
-        try:
-            with self.get_connection() as conn:
-                # Test basic connectivity
-                conn.execute("SELECT 1").fetchone()
-                
-                # Check database integrity
-                integrity_result = conn.execute("PRAGMA integrity_check").fetchone()
-                
-            health_check_time = time.time() - start_time
+        return stats
+        
+    def get_active_connection_durations(self) -> Dict[str, float]:
+        """
+        Get the duration of all currently active connections.
+        
+        Returns:
+            Dictionary mapping connection IDs to their duration in milliseconds
+        """
+        current_time = time.time()
+        durations = {}
+        
+        for conn_id, start_time in self.active_connections.items():
+            duration_ms = round((current_time - start_time) * 1000, 2)
+            durations[conn_id] = duration_ms
             
-            health_status = {
-                'status': 'healthy',
-                'health_check_time_ms': round(health_check_time * 1000, 2),
-                'integrity': integrity_result[0] if integrity_result else 'unknown',
-                'stats': self.get_connection_stats()
-            }
-            
-            self.debug.log_state("health_check_completed", health_status)
-            
-            return health_status
-            
-        except Exception as e:
-            health_status = {
-                'status': 'unhealthy',
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'stats': self.get_connection_stats()
-            }
-            
-            self.debug.logger.error("Database health check failed", extra=health_status)
-            
-            return health_status
-            
-    def close_all_connections(self):
-        """Close all connections and clean up resources."""
-        self.debug.log_milestone("closing_all_connections", {
+        # Log active connection durations
+        self.debug.log_state("active_connection_durations", {
+            'active_count': len(durations),
+            'durations': durations,
+            'timestamp': current_time
+        }, "DEBUG")
+        
+        return durations
+        
+    def log_connection_health(self) -> Dict[str, Any]:
+        """
+        Log and return connection health information.
+        
+        Returns:
+            Dictionary containing health metrics for database connections
+        """
+        current_time = time.time()
+        active_durations = self.get_active_connection_durations()
+        
+        # Calculate health metrics
+        health_data = {
+            'status': 'healthy' if len(self.active_connections) < 10 else 'warning',
+            'total_connections_created': self.connection_count,
             'active_connections': len(self.active_connections),
-            'pool_connections': len(self.connection_pool)
-        })
+            'longest_active_duration_ms': max(active_durations.values()) if active_durations else 0,
+            'average_active_duration_ms': (
+                round(sum(active_durations.values()) / len(active_durations), 2) 
+                if active_durations else 0
+            ),
+            'db_path': self.db_path,
+            'timestamp': current_time
+        }
         
-        # Close active connections
-        for conn_id in list(self.active_connections.keys()):
-            self.active_connections.pop(conn_id, None)
+        # Add warning if too many active connections
+        if len(self.active_connections) >= 10:
+            health_data['warning'] = f"High number of active connections: {len(self.active_connections)}"
             
-        # Close pooled connections
-        with self.pool_lock:
-            for conn in self.connection_pool:
-                try:
-                    conn.close()
-                except Exception as e:
-                    self.debug.logger.error(f"Error closing pooled connection", extra={
-                        'error_type': type(e).__name__,
-                        'error_message': str(e)
-                    })
-            self.connection_pool.clear()
+        # Add warning for long-running connections (>30 seconds)
+        long_running = [conn_id for conn_id, duration in active_durations.items() if duration > 30000]
+        if long_running:
+            health_data['long_running_connections'] = long_running
             
-        self.debug.log_milestone("all_connections_closed")
+        # Log health check
+        log_level = "WARNING" if health_data['status'] != 'healthy' else "INFO"
+        self.debug.log_state("connection_health", health_data, log_level)
+        
+        return health_data
+        
+    def close_all_connections(self) -> int:
+        """
+        Emergency method to close all tracked connections.
+        
+        Note: This method cannot actually close the connections since they're 
+        managed by context managers, but it can reset the tracking state.
+        
+        Returns:
+            Number of connections that were being tracked
+        """
+        active_count = len(self.active_connections)
+        
+        self.debug.log_state("emergency_connection_cleanup", {
+            'active_connections_cleared': active_count,
+            'connection_ids': list(self.active_connections.keys()),
+            'timestamp': time.time()
+        }, "WARNING")
+        
+        # Clear tracking (actual connections will be closed by their context managers)
+        self.active_connections.clear()
+        
+        return active_count
+        
+    def __repr__(self) -> str:
+        """String representation of the debug database connection."""
+        return (f"DebugDatabaseConnection(db_path='{self.db_path}', "
+                f"total_created={self.connection_count}, "
+                f"active={len(self.active_connections)})")
+
+
+# Convenience functions for common database patterns
+@contextmanager
+def debug_database_transaction(debug_db: DebugDatabaseConnection):
+    """
+    Context manager for database transactions with debug monitoring.
+    
+    Args:
+        debug_db: DebugDatabaseConnection instance
+        
+    Yields:
+        sqlite3.Connection: Database connection with transaction management
+        
+    Example:
+        with debug_database_transaction(debug_db) as conn:
+            conn.execute("INSERT INTO users (name) VALUES (?)", ("John",))
+            conn.execute("UPDATE users SET status = 'active' WHERE name = ?", ("John",))
+            # Transaction automatically committed on success, rolled back on error
+    """
+    with debug_db.get_connection() as conn:
+        try:
+            yield conn
+            conn.commit()
+            debug_db.debug.log_state("transaction_committed", {
+                'db_path': debug_db.db_path,
+                'timestamp': time.time()
+            }, "INFO")
+        except Exception as e:
+            conn.rollback()
+            debug_db.debug.log_state("transaction_rolled_back", {
+                'db_path': debug_db.db_path,
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'timestamp': time.time()
+            }, "WARNING")
+            raise
+
+
+def execute_with_debug_timing(debug_db: DebugDatabaseConnection, query: str, params=None):
+    """
+    Execute a query with debug timing information.
+    
+    Args:
+        debug_db: DebugDatabaseConnection instance
+        query: SQL query to execute
+        params: Optional query parameters
+        
+    Returns:
+        Query results as a list of Row objects
+    """
+    start_time = time.time()
+    
+    with debug_db.get_connection() as conn:
+        cursor = conn.execute(query, params or ())
+        results = cursor.fetchall()
+        
+    execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+    
+    # Log query execution
+    debug_db.debug.log_state("query_executed", {
+        'query': query[:100] + "..." if len(query) > 100 else query,  # Truncate long queries
+        'params_count': len(params) if params else 0,
+        'result_count': len(results),
+        'execution_time_ms': round(execution_time, 2),
+        'db_path': debug_db.db_path,
+        'timestamp': time.time()
+    }, "DEBUG")
+    
+    return results
+
+
+# Example usage and integration patterns
+class ExampleDatabaseService:
+    """Example service showing how to integrate DebugDatabaseConnection."""
+    
+    def __init__(self, db_path: str):
+        self.debug_db = DebugDatabaseConnection(db_path)
+        
+    def get_user_by_id(self, user_id: int):
+        """Example method using debug database connection."""
+        with self.debug_db.get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            return cursor.fetchone()
+            
+    def create_user(self, name: str, email: str):
+        """Example method using transaction with debug monitoring."""
+        with debug_database_transaction(self.debug_db) as conn:
+            cursor = conn.execute(
+                "INSERT INTO users (name, email) VALUES (?, ?) RETURNING id",
+                (name, email)
+            )
+            return cursor.fetchone()['id']
+            
+    def get_database_health(self):
+        """Get database connection health metrics."""
+        return self.debug_db.log_connection_health()

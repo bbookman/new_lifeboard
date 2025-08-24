@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import time
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
 from core.base_service import BaseService
+from services.debug_mixin import ServiceDebugMixin
 from services.scheduler import AsyncScheduler
 from services.ingestion import IngestionService, IngestionResult
 from sources.base import BaseSource
@@ -15,17 +17,24 @@ from config.models import AppConfig
 logger = logging.getLogger(__name__)
 
 
-class SyncManagerService(BaseService):
+class SyncManagerService(BaseService, ServiceDebugMixin):
     """Service that coordinates scheduled syncing of data sources"""
     
     def __init__(self, 
                  scheduler: AsyncScheduler,
                  ingestion_service: IngestionService,
                  config: AppConfig):
-        super().__init__(service_name="SyncManagerService", config=config)
+        BaseService.__init__(self, service_name="SyncManagerService", config=config)
+        ServiceDebugMixin.__init__(self, "sync_manager_service")
         self.scheduler = scheduler
         self.ingestion_service = ingestion_service
         self.source_job_mapping: Dict[str, str] = {}  # namespace -> job_id
+        
+        # Log service initialization
+        self.log_service_call("__init__", {
+            "scheduler_available": scheduler is not None,
+            "ingestion_service_available": ingestion_service is not None
+        })
         
         # Add dependencies and capabilities
         self.add_dependency("AsyncScheduler")
@@ -38,9 +47,17 @@ class SyncManagerService(BaseService):
         """Register a source for automatic scheduled syncing"""
         namespace = source.namespace
         
+        self.log_service_call("register_source_for_auto_sync", {
+            "namespace": namespace,
+            "source_type": type(source).__name__,
+            "force_full_sync": force_full_sync,
+            "currently_registered_sources": len(self.source_job_mapping)
+        })
+        
         # Check if source is already registered for auto-sync
         if namespace in self.source_job_mapping:
             logger.warning(f"Source {namespace} is already registered for auto-sync")
+            self.log_service_performance_metric("duplicate_source_registrations", 1, "count")
             return False
         
         # Determine sync interval
@@ -66,6 +83,14 @@ class SyncManagerService(BaseService):
                 logger.info(f"SYNC_FUNCTION: Starting scheduled sync for {namespace}")
                 logger.info(f"SYNC_FUNCTION: Current asyncio tasks before sync: {len(asyncio.all_tasks())}")
                 
+                # Log sync start with service debug mixin (access through outer scope)
+                sync_start_time = time.time()
+                self.log_service_call(f"scheduled_sync_{namespace}", {
+                    "namespace": namespace,
+                    "force_full_sync": force_full_sync,
+                    "active_tasks_before": len(asyncio.all_tasks())
+                })
+                
                 # Add timeout protection
                 try:
                     result = await asyncio.wait_for(
@@ -78,22 +103,50 @@ class SyncManagerService(BaseService):
                         timeout=300.0  # 5 minute timeout
                     )
                     
+                    sync_duration = (time.time() - sync_start_time) * 1000
+                    
                     logger.info(f"SYNC_FUNCTION: Scheduled sync completed for {namespace}: "
                                f"{result.items_processed} processed, "
                                f"{result.items_stored} stored, "
                                f"{result.errors} errors")
                                
                     logger.info(f"SYNC_FUNCTION: Current asyncio tasks after sync: {len(asyncio.all_tasks())}")
+                    
+                    # Log sync completion metrics
+                    self.log_service_performance_metric(f"sync_duration_{namespace}", sync_duration, "ms")
+                    self.log_service_performance_metric(f"sync_items_processed_{namespace}", result.items_processed, "count")
+                    self.log_service_performance_metric(f"sync_items_stored_{namespace}", result.items_stored, "count")
+                    if result.errors:
+                        self.log_service_performance_metric(f"sync_errors_{namespace}", len(result.errors), "count")
+                    
                     return result.to_dict()
                                
-                except asyncio.TimeoutError:
+                except asyncio.TimeoutError as timeout_error:
+                    sync_duration = (time.time() - sync_start_time) * 1000
                     logger.error(f"SYNC_FUNCTION: Sync for {namespace} timed out after 5 minutes")
+                    
+                    # Log timeout error
+                    self.log_service_error(f"scheduled_sync_{namespace}_timeout", timeout_error, {
+                        "namespace": namespace,
+                        "timeout_duration_ms": sync_duration,
+                        "timeout_limit_ms": 300000
+                    })
+                    
                     # Return a failure result instead of raising
                     return {"success": False, "error": "timeout", "items_processed": 0, "items_stored": 0}
                 except Exception as sync_error:
+                    sync_duration = (time.time() - sync_start_time) * 1000
                     logger.error(f"SYNC_FUNCTION: Sync operation failed for {namespace}: {sync_error}")
                     logger.error(f"SYNC_FUNCTION: Exception type: {type(sync_error).__name__}")
                     logger.error(f"SYNC_FUNCTION: Full traceback: {traceback.format_exc()}")
+                    
+                    # Log sync error with debug context
+                    self.log_service_error(f"scheduled_sync_{namespace}", sync_error, {
+                        "namespace": namespace,
+                        "sync_duration_ms": sync_duration,
+                        "error_type": type(sync_error).__name__
+                    })
+                    
                     # Return a failure result instead of raising
                     return {"success": False, "error": str(sync_error), "items_processed": 0, "items_stored": 0}
                 

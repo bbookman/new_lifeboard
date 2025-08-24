@@ -35,5 +35,5 @@ pytest-asyncio>=0.21.0
 faker
 
 # Debug Logging Infrastructure
-pythonjsonlogger>=2.0.0
+python-json-loggerpythonj
 psutil>=5.9.0

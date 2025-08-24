@@ -52,7 +52,7 @@ def setup_debug_logging(
             },
             'json': {
                 'format': '%(asctime)s | %(levelname)s | %(name)s | %(message)s | %(pathname)s:%(lineno)d',
-                'class': 'pythonjsonlogger.jsonlogger.JsonFormatter'
+                'class': 'pythonjsonlogger.json.JsonFormatter'
             },
             'simple': {
                 'format': '%(asctime)s | %(levelname)-8s | %(message)s',

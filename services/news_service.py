@@ -1,9 +1,12 @@
 import json
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
 
 from core.database import DatabaseService
+from core.database_debug import DebugDatabaseConnection
+from services.debug_mixin import ServiceDebugMixin
 from config.models import NewsConfig
 
 # Configure logging
@@ -14,14 +17,28 @@ file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelnam
 logger.addHandler(file_handler)
 
 
-class NewsService:
+class NewsService(ServiceDebugMixin):
     """Service for handling news data queries and operations"""
     
     def __init__(self, db_service: DatabaseService, config: NewsConfig = None):
+        super().__init__("news_service")
         self.db_service = db_service
         self.config = config
         # Default to 5 if no config provided
         self.items_per_day = config.unique_items_per_day if config else 5
+        
+        # Set up debug database connection if we have database path access
+        if hasattr(db_service, 'db_path'):
+            self.debug_db = DebugDatabaseConnection(db_service.db_path)
+        else:
+            self.debug_db = None
+            
+        # Log service initialization
+        self.log_service_call("__init__", {
+            "items_per_day": self.items_per_day,
+            "has_config": config is not None,
+            "debug_db_available": self.debug_db is not None
+        })
 
     def get_news_by_date(self, date: str) -> List[Dict[str, Any]]:
         """Get news articles for a specific date (YYYY-MM-DD format)"""

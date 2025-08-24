@@ -1,39 +1,42 @@
 """
-Service debug mixin for performance tracking during Lifeboard cleanup.
+Service Debug Extensions for Enhanced Debug Logging.
 
-This module provides a mixin class that can be added to any service
-to provide comprehensive debugging and performance monitoring capabilities.
-
-Usage:
-    class MyService(ServiceDebugMixin):
-        def __init__(self):
-            super().__init__("my_service")
-            
-        def my_method(self):
-            self.log_service_call("my_method", {"param": "value"})
-            # service implementation
+This module provides the ServiceDebugMixin class that extends services with
+comprehensive logging and monitoring capabilities for service operations,
+database queries, and external API calls.
 """
 
-import time
-import psutil
 import logging
-from typing import Any, Dict, Optional, List
-from datetime import datetime
-from contextlib import contextmanager
+import time
+from typing import Any, Dict, Optional
+import psutil
 from core.debug_logger import DebugLogger
 
 
 class ServiceDebugMixin:
     """
-    Mixin class providing comprehensive debugging capabilities for services.
+    Debug mixin for services providing comprehensive logging and monitoring.
     
-    Provides automatic performance monitoring, resource tracking,
-    and standardized logging for service operations during cleanup.
+    This mixin provides services with enhanced debugging capabilities including:
+    - Service method call logging with system metrics
+    - Database operation performance tracking
+    - External API call monitoring
+    - Resource usage monitoring (CPU, memory)
+    - Timing and performance metrics
+    
+    Usage:
+        class MyService(ServiceDebugMixin):
+            def __init__(self, service_name: str):
+                super().__init__(service_name)
+                
+            def my_method(self, param1, param2=None):
+                self.log_service_call("my_method", {"param1": param1, "param2": param2})
+                # ... method implementation
     """
     
     def __init__(self, service_name: str):
         """
-        Initialize service debug capabilities.
+        Initialize the service debug mixin.
         
         Args:
             service_name: Name of the service for logging identification
@@ -42,401 +45,263 @@ class ServiceDebugMixin:
         self.debug = DebugLogger(f"service.{service_name}")
         self.performance_logger = logging.getLogger("performance")
         
-        # Performance tracking
-        self.operation_count = 0
-        self.total_operation_time = 0.0
-        self.error_count = 0
-        self.start_time = datetime.utcnow()
-        
-        # Resource baseline
-        self.baseline_memory = self._get_memory_usage()
-        self.baseline_cpu = psutil.Process().cpu_percent()
-        
-        self.debug.log_milestone(f"{service_name}_service_initialized", {
-            'baseline_memory_mb': self.baseline_memory,
-            'baseline_cpu_percent': self.baseline_cpu
-        })
-        
-    def log_service_call(
-        self, 
-        method: str, 
-        params: Optional[Dict[str, Any]] = None,
-        log_resources: bool = True
-    ) -> None:
+    def log_service_call(self, method: str, params: Optional[Dict[str, Any]] = None) -> None:
         """
         Log service method calls with system metrics.
         
-        Args:
-            method: Name of the method being called
-            params: Optional parameters passed to the method
-            log_resources: Whether to log current resource usage
-        """
-        self.operation_count += 1
+        This method captures and logs:
+        - Service and method name
+        - Method parameters (sanitized)
+        - Current memory usage
+        - Current CPU percentage
+        - Timestamp
         
+        Args:
+            method: Name of the service method being called
+            params: Optional dictionary of method parameters
+        """
+        # Get system metrics (with error handling)
+        try:
+            process = psutil.Process()
+            memory_usage = process.memory_info().rss / 1024 / 1024  # Convert to MB
+            cpu_percent = process.cpu_percent()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            # Handle psutil errors gracefully
+            memory_usage = None
+            cpu_percent = None
+        
+        # Prepare log data
         log_data = {
             'service': self.service_name,
             'method': method,
-            'operation_number': self.operation_count,
-            'params': self._sanitize_params(params or {}),
-            'timestamp': datetime.utcnow().isoformat()
+            'params': params or {},
+            'timestamp': time.time()
         }
         
-        if log_resources:
-            memory_usage = self._get_memory_usage()
-            cpu_percent = psutil.Process().cpu_percent()
+        # Add system metrics if available
+        if memory_usage is not None:
+            log_data['memory_mb'] = round(memory_usage, 2)
+        if cpu_percent is not None:
+            log_data['cpu_percent'] = cpu_percent
             
-            log_data.update({
-                'memory_mb': memory_usage,
-                'memory_delta_mb': round(memory_usage - self.baseline_memory, 2),
-                'cpu_percent': cpu_percent,
-                'cpu_delta_percent': round(cpu_percent - self.baseline_cpu, 2)
-            })
+        # Log the service call
+        self.performance_logger.debug(
+            f"SERVICE_CALL {self.service_name}.{method}",
+            extra=log_data
+        )
         
-        self.performance_logger.debug(f"SERVICE_CALL {self.service_name}.{method}", extra=log_data)
-        
-    @contextmanager
-    def track_operation(self, operation_name: str, **context):
-        """
-        Context manager for tracking operation performance.
-        
-        Args:
-            operation_name: Name of the operation being tracked
-            **context: Additional context data
-            
-        Usage:
-            with self.track_operation("data_processing", record_count=100):
-                # operation implementation
-        """
-        start_time = time.time()
-        start_memory = self._get_memory_usage()
-        
-        self.debug.log_state(f"{operation_name}_started", {
-            'operation': operation_name,
-            'context': context,
-            'start_memory_mb': start_memory
-        })
-        
-        try:
-            yield
-            
-            # Log successful completion
-            duration = time.time() - start_time
-            end_memory = self._get_memory_usage()
-            self.total_operation_time += duration
-            
-            self.debug.log_state(f"{operation_name}_completed", {
-                'operation': operation_name,
-                'duration_ms': round(duration * 1000, 2),
-                'memory_delta_mb': round(end_memory - start_memory, 2),
-                'context': context
-            })
-            
-            self.performance_logger.info(f"OPERATION_SUCCESS {operation_name}", extra={
-                'service': self.service_name,
-                'operation': operation_name,
-                'duration_ms': round(duration * 1000, 2),
-                'memory_delta_mb': round(end_memory - start_memory, 2),
-                'context': context
-            })
-            
-        except Exception as e:
-            # Log error
-            duration = time.time() - start_time
-            end_memory = self._get_memory_usage()
-            self.error_count += 1
-            
-            error_data = {
-                'service': self.service_name,
-                'operation': operation_name,
-                'duration_ms': round(duration * 1000, 2),
-                'memory_delta_mb': round(end_memory - start_memory, 2),
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'error_count_total': self.error_count,
-                'context': context
-            }
-            
-            self.debug.logger.error(f"OPERATION_FAILED {operation_name}", extra=error_data)
-            raise
-            
-    def log_database_operation(
-        self, 
-        operation: str, 
-        table: str, 
-        duration_ms: float,
-        record_count: Optional[int] = None,
-        query_preview: Optional[str] = None
-    ) -> None:
+    def log_database_operation(self, operation: str, table: str, duration_ms: float) -> None:
         """
         Log database operations with performance metrics.
         
+        This method captures and logs:
+        - Database operation type (SELECT, INSERT, UPDATE, etc.)
+        - Target table name
+        - Operation duration in milliseconds
+        - Service context
+        
         Args:
-            operation: Type of database operation (SELECT, INSERT, UPDATE, DELETE)
-            table: Database table being operated on
-            duration_ms: Operation duration in milliseconds
-            record_count: Number of records affected (optional)
-            query_preview: Preview of the SQL query (optional)
+            operation: Type of database operation (e.g., "SELECT", "INSERT", "UPDATE")
+            table: Name of the database table involved
+            duration_ms: Duration of the operation in milliseconds
         """
         log_data = {
             'service': self.service_name,
             'operation': operation,
             'table': table,
             'duration_ms': duration_ms,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': time.time()
         }
         
-        if record_count is not None:
-            log_data['record_count'] = record_count
-            log_data['records_per_second'] = round(
-                (record_count / (duration_ms / 1000)) if duration_ms > 0 else 0, 2
-            )
-            
-        if query_preview:
-            log_data['query_preview'] = query_preview[:200] + "..." if len(query_preview) > 200 else query_preview
-            
-        self.performance_logger.debug(f"DB_OPERATION {operation}", extra=log_data)
+        self.performance_logger.debug(
+            f"DB_OPERATION {operation}",
+            extra=log_data
+        )
         
-        # Log slow database operations
-        if duration_ms > 1000:  # Operations taking more than 1 second
-            self.debug.logger.warning(f"SLOW_DB_OPERATION {operation}", extra=log_data)
-            
-    def log_external_api_call(
-        self, 
-        api: str, 
-        endpoint: str, 
-        status_code: int, 
-        duration_ms: float,
-        method: str = "GET",
-        response_size_bytes: Optional[int] = None
-    ) -> None:
+    def log_external_api_call(self, api: str, endpoint: str, status_code: int, duration_ms: float) -> None:
         """
-        Log external API calls with timing and status.
+        Log external API calls with timing and status information.
+        
+        This method captures and logs:
+        - API service name
+        - Endpoint called
+        - HTTP status code
+        - Call duration in milliseconds
+        - Service context
         
         Args:
-            api: Name of the external API (e.g., "limitless", "weather")
-            endpoint: API endpoint called
+            api: Name of the external API service
+            endpoint: API endpoint that was called
             status_code: HTTP status code returned
-            duration_ms: Request duration in milliseconds
-            method: HTTP method used
-            response_size_bytes: Size of response in bytes (optional)
+            duration_ms: Duration of the API call in milliseconds
         """
         log_data = {
             'service': self.service_name,
             'api': api,
             'endpoint': endpoint,
-            'method': method,
             'status_code': status_code,
             'duration_ms': duration_ms,
-            'success': 200 <= status_code < 300,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': time.time()
         }
         
-        if response_size_bytes is not None:
-            log_data['response_size_bytes'] = response_size_bytes
-            log_data['throughput_bytes_per_second'] = round(
-                (response_size_bytes / (duration_ms / 1000)) if duration_ms > 0 else 0, 2
-            )
-            
-        level = "info" if log_data['success'] else "warning"
-        
-        self.performance_logger.log(
-            getattr(logging, level.upper()),
+        self.performance_logger.debug(
             f"API_CALL {api}",
             extra=log_data
         )
         
-        # Log slow API calls
-        if duration_ms > 5000:  # API calls taking more than 5 seconds
-            self.debug.logger.warning(f"SLOW_API_CALL {api}", extra=log_data)
-            
-    def log_cache_operation(
-        self, 
-        operation: str, 
-        cache_key: str, 
-        hit: bool,
-        duration_ms: Optional[float] = None
-    ) -> None:
+    def log_service_error(self, method: str, error: Exception, context: Optional[Dict[str, Any]] = None) -> None:
         """
-        Log cache operations for performance analysis.
+        Log service errors with full context for debugging.
         
         Args:
-            operation: Cache operation (get, set, delete, clear)
-            cache_key: Key being operated on
-            hit: Whether operation was a cache hit
-            duration_ms: Operation duration in milliseconds
+            method: Name of the method where the error occurred
+            error: The exception that was raised
+            context: Optional additional context about the error
         """
         log_data = {
             'service': self.service_name,
-            'cache_operation': operation,
-            'cache_key': cache_key[:100] + "..." if len(cache_key) > 100 else cache_key,
-            'cache_hit': hit,
-            'timestamp': datetime.utcnow().isoformat()
+            'method': method,
+            'error_type': type(error).__name__,
+            'error_message': str(error),
+            'context': context or {},
+            'timestamp': time.time()
         }
         
-        if duration_ms is not None:
-            log_data['duration_ms'] = duration_ms
-            
-        self.performance_logger.debug(f"CACHE_{operation.upper()}", extra=log_data)
+        self.debug.logger.error(
+            f"SERVICE_ERROR {self.service_name}.{method}",
+            extra=log_data,
+            exc_info=True
+        )
         
-    def get_service_metrics(self) -> Dict[str, Any]:
+    def log_service_performance_metric(self, metric_name: str, value: float, unit: str = "ms") -> None:
         """
-        Get comprehensive service performance metrics.
-        
-        Returns:
-            Dictionary containing service performance data
-        """
-        current_time = datetime.utcnow()
-        uptime_seconds = (current_time - self.start_time).total_seconds()
-        current_memory = self._get_memory_usage()
-        
-        return {
-            'service_name': self.service_name,
-            'uptime_seconds': round(uptime_seconds, 2),
-            'operation_count': self.operation_count,
-            'error_count': self.error_count,
-            'error_rate_percent': round(
-                (self.error_count / max(self.operation_count, 1)) * 100, 2
-            ),
-            'total_operation_time_seconds': round(self.total_operation_time, 2),
-            'average_operation_time_ms': round(
-                (self.total_operation_time / max(self.operation_count, 1)) * 1000, 2
-            ),
-            'operations_per_second': round(
-                self.operation_count / max(uptime_seconds, 1), 2
-            ),
-            'current_memory_mb': current_memory,
-            'memory_delta_mb': round(current_memory - self.baseline_memory, 2),
-            'memory_growth_rate_mb_per_hour': round(
-                ((current_memory - self.baseline_memory) / max(uptime_seconds / 3600, 0.001)), 2
-            ),
-            'timestamp': current_time.isoformat()
-        }
-        
-    def log_service_health_check(self) -> Dict[str, Any]:
-        """
-        Perform and log service health check.
-        
-        Returns:
-            Health check results
-        """
-        metrics = self.get_service_metrics()
-        
-        # Determine health status
-        health_issues = []
-        
-        if metrics['error_rate_percent'] > 10:
-            health_issues.append(f"High error rate: {metrics['error_rate_percent']}%")
-            
-        if metrics['memory_growth_rate_mb_per_hour'] > 100:
-            health_issues.append(f"High memory growth: {metrics['memory_growth_rate_mb_per_hour']} MB/hour")
-            
-        if metrics['average_operation_time_ms'] > 5000:
-            health_issues.append(f"Slow operations: {metrics['average_operation_time_ms']} ms average")
-            
-        health_status = {
-            'status': 'healthy' if not health_issues else 'degraded',
-            'issues': health_issues,
-            'metrics': metrics
-        }
-        
-        self.debug.log_state("health_check", health_status)
-        
-        return health_status
-        
-    def _get_memory_usage(self) -> float:
-        """Get current memory usage in MB."""
-        try:
-            process = psutil.Process()
-            return round(process.memory_info().rss / 1024 / 1024, 2)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            return 0.0
-            
-    def _sanitize_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Sanitize parameters to remove sensitive information.
+        Log custom performance metrics for the service.
         
         Args:
-            params: Original parameters dictionary
-            
-        Returns:
-            Sanitized parameters safe for logging
+            metric_name: Name of the performance metric
+            value: Measured value
+            unit: Unit of measurement (e.g., "ms", "bytes", "count")
         """
-        sanitized = {}
-        sensitive_keys = {'password', 'token', 'key', 'secret', 'auth', 'credential', 'api_key'}
+        log_data = {
+            'service': self.service_name,
+            'metric_name': metric_name,
+            'value': value,
+            'unit': unit,
+            'timestamp': time.time()
+        }
         
-        for key, value in params.items():
-            if any(sensitive in key.lower() for sensitive in sensitive_keys):
-                sanitized[key] = "[REDACTED]"
-            elif isinstance(value, (dict, list)) and len(str(value)) > 500:
-                sanitized[key] = f"<{type(value).__name__} with {len(value) if hasattr(value, '__len__') else '?'} items>"
-            else:
-                sanitized[key] = value
-                
-        return sanitized
+        self.performance_logger.info(
+            f"SERVICE_METRIC {self.service_name}.{metric_name}",
+            extra=log_data
+        )
+        
+    def get_service_health_metrics(self) -> Dict[str, Any]:
+        """
+        Get current health metrics for the service.
+        
+        Returns:
+            Dictionary containing current health and performance metrics
+        """
+        try:
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            
+            metrics = {
+                'service': self.service_name,
+                'memory_mb': round(memory_info.rss / 1024 / 1024, 2),
+                'memory_percent': process.memory_percent(),
+                'cpu_percent': process.cpu_percent(),
+                'num_threads': process.num_threads(),
+                'status': process.status(),
+                'timestamp': time.time()
+            }
+            
+            # Log the health check
+            self.debug.log_state("health_check", metrics, "INFO")
+            
+            return metrics
+            
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+            # Handle psutil errors
+            error_metrics = {
+                'service': self.service_name,
+                'error': str(e),
+                'status': 'error',
+                'timestamp': time.time()
+            }
+            
+            self.debug.log_state("health_check_error", error_metrics, "WARNING")
+            return error_metrics
 
 
-class ServicePerformanceCollector:
+# Convenience function to create service with debug capabilities
+def create_debug_enabled_service(service_class, service_name: str, *args, **kwargs):
     """
-    Collector for aggregating performance data across multiple services.
+    Factory function to create a service instance with debug capabilities.
+    
+    Args:
+        service_class: The service class to instantiate
+        service_name: Name for debug logging
+        *args: Positional arguments for the service constructor
+        **kwargs: Keyword arguments for the service constructor
+        
+    Returns:
+        Service instance with debug capabilities mixed in
     """
+    class DebugEnabledService(service_class, ServiceDebugMixin):
+        def __init__(self, *args, **kwargs):
+            service_class.__init__(self, *args, **kwargs)
+            ServiceDebugMixin.__init__(self, service_name)
+            
+    return DebugEnabledService(*args, **kwargs)
+
+
+# Example usage and integration patterns
+class ExampleServiceWithDebug(ServiceDebugMixin):
+    """Example service showing how to integrate ServiceDebugMixin."""
     
     def __init__(self):
-        self.services: List[ServiceDebugMixin] = []
-        self.debug = DebugLogger("performance_collector")
+        super().__init__("example_service")
+        self.data_cache = {}
         
-    def register_service(self, service: ServiceDebugMixin):
-        """Register a service for performance monitoring."""
-        self.services.append(service)
-        self.debug.log_state("service_registered", {
-            'service_name': service.service_name,
-            'total_services': len(self.services)
+    def fetch_data(self, user_id: int, include_details: bool = False) -> Dict[str, Any]:
+        """Example method showing debug integration."""
+        # Log the service call
+        self.log_service_call("fetch_data", {
+            "user_id": user_id,
+            "include_details": include_details
         })
         
-    def collect_all_metrics(self) -> Dict[str, Any]:
-        """Collect metrics from all registered services."""
-        all_metrics = {}
-        
-        for service in self.services:
-            try:
-                all_metrics[service.service_name] = service.get_service_metrics()
-            except Exception as e:
-                all_metrics[service.service_name] = {
-                    'error': f"Failed to collect metrics: {str(e)}"
-                }
-                
-        self.debug.log_state("metrics_collected", {
-            'services_count': len(self.services),
-            'successful_collections': len([m for m in all_metrics.values() if 'error' not in m])
-        })
-        
-        return all_metrics
-        
-    def get_system_performance_summary(self) -> Dict[str, Any]:
-        """Get system-wide performance summary."""
-        all_metrics = self.collect_all_metrics()
-        
-        total_operations = sum(
-            m.get('operation_count', 0) for m in all_metrics.values() if 'error' not in m
-        )
-        total_errors = sum(
-            m.get('error_count', 0) for m in all_metrics.values() if 'error' not in m
-        )
-        total_memory = sum(
-            m.get('current_memory_mb', 0) for m in all_metrics.values() if 'error' not in m
-        )
-        
-        return {
-            'services_monitored': len(self.services),
-            'total_operations': total_operations,
-            'total_errors': total_errors,
-            'system_error_rate_percent': round(
-                (total_errors / max(total_operations, 1)) * 100, 2
-            ),
-            'total_memory_mb': round(total_memory, 2),
-            'services_metrics': all_metrics,
-            'timestamp': datetime.utcnow().isoformat()
-        }
-
-
-# Global performance collector instance
-performance_collector = ServicePerformanceCollector()
+        try:
+            # Simulate database operation
+            start_time = time.time()
+            
+            # Simulate query
+            time.sleep(0.1)
+            
+            # Log database operation
+            db_duration = (time.time() - start_time) * 1000
+            self.log_database_operation("SELECT", "users", db_duration)
+            
+            # Simulate API call for additional details
+            if include_details:
+                api_start = time.time()
+                # Simulate external API call
+                time.sleep(0.05)
+                api_duration = (time.time() - api_start) * 1000
+                self.log_external_api_call("user_details_api", f"/users/{user_id}/details", 200, api_duration)
+            
+            # Return mock data
+            return {"user_id": user_id, "name": f"User {user_id}", "details": include_details}
+            
+        except Exception as e:
+            # Log service errors
+            self.log_service_error("fetch_data", e, {
+                "user_id": user_id,
+                "include_details": include_details
+            })
+            raise
+            
+    def get_health_status(self) -> Dict[str, Any]:
+        """Example health check method."""
+        return self.get_service_health_metrics()

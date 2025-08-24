@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import time
 from typing import Dict, Any, List, Optional, AsyncIterator
 from datetime import datetime, timezone
 
 from core.base_service import BaseService
+from services.debug_mixin import ServiceDebugMixin
 from sources.base import DataItem, BaseSource
 from sources.sync_manager import SyncManager
 from sources.limitless_processor import LimitlessProcessor, BaseProcessor
@@ -47,7 +49,7 @@ class IngestionResult:
         }
 
 
-class IngestionService(BaseService):
+class IngestionService(BaseService, ServiceDebugMixin):
     """Service for ingesting data from various sources into the Lifeboard system"""
     
     def __init__(self,
@@ -55,10 +57,18 @@ class IngestionService(BaseService):
                  vector_store: VectorStoreService,
                  embedding_service: EmbeddingService,
                  config: AppConfig):
-        super().__init__(service_name="IngestionService", config=config)
+        BaseService.__init__(self, service_name="IngestionService", config=config)
+        ServiceDebugMixin.__init__(self, "ingestion_service")
         self.database = database
         self.vector_store = vector_store
         self.embedding_service = embedding_service
+        
+        # Log service initialization
+        self.log_service_call("__init__", {
+            "database_available": database is not None,
+            "vector_store_available": vector_store is not None,
+            "embedding_service_available": embedding_service is not None
+        })
         
         # Initialize processors
         self.processors: Dict[str, BaseProcessor] = {
