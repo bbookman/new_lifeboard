@@ -39,6 +39,8 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "regression: mark test as regression test")
     config.addinivalue_line("markers", "slow: mark test as slow-running test")
     config.addinivalue_line("markers", "requires_node: mark test as requiring Node.js")
+    config.addinivalue_line("markers", "contract: mark test as contract test")
+    config.addinivalue_line("markers", "benchmark: mark test as benchmark test")
 
 # Collect performance test results
 performance_results = []
@@ -80,6 +82,8 @@ def pytest_collection_modifyitems(config, items):
         # Add markers based on test file names
         if "performance" in item.fspath.basename:
             item.add_marker(pytest.mark.performance)
+        elif "contract" in str(item.fspath):
+            item.add_marker(pytest.mark.contract)
         elif "e2e" in item.fspath.basename:
             item.add_marker(pytest.mark.integration)
         elif "integration" in item.fspath.basename:
@@ -88,12 +92,16 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.unit)
         
         # Add slow marker for tests that might be slow
-        if any(word in item.name.lower() for word in ["performance", "concurrent", "load"]):
+        if any(word in item.name.lower() for word in ["performance", "concurrent", "load", "benchmark"]):
             item.add_marker(pytest.mark.slow)
         
         # Add requires_node marker for tests that need Node.js
         if any(word in item.name.lower() for word in ["frontend", "node", "npm"]):
             item.add_marker(pytest.mark.requires_node)
+            
+        # Add benchmark marker for performance benchmarks
+        if "benchmark" in item.name.lower() or "PerformanceBenchmarks" in str(item.cls):
+            item.add_marker(pytest.mark.benchmark)
 
 # Fixtures for common test scenarios
 @pytest.fixture
@@ -200,3 +208,188 @@ def resource_tracker():
     
     if object_growth > 1000:  # Allow for reasonable object growth
         print(f"\nWarning: Object count increased by {object_growth} during test")
+
+
+# Contract Testing Fixtures
+@pytest.fixture(scope="session")
+def contract_test_config():
+    """Configuration for contract testing."""
+    return {
+        'enable_contract_validation': True,
+        'strict_interface_compliance': True,
+        'validate_return_types': True,
+        'check_method_signatures': True
+    }
+
+
+@pytest.fixture
+def mock_service_registry():
+    """Mock service registry for contract testing."""
+    try:
+        from core.service_interfaces import (
+            ServiceInterface, DatabaseServiceInterface, HTTPClientInterface,
+            EmbeddingServiceInterface, VectorStoreInterface, ChatServiceInterface,
+            IngestionServiceInterface, SchedulerServiceInterface
+        )
+        
+        # Import mock implementations
+        class MockService(ServiceInterface):
+            def initialize(self) -> bool:
+                return True
+            def health_check(self) -> dict:
+                return {'status': 'healthy', 'service': 'mock'}
+            def shutdown(self) -> bool:
+                return True
+        
+        class MockDatabaseService(DatabaseServiceInterface):
+            def __init__(self):
+                self.connections = {}
+            def initialize(self) -> bool:
+                return True
+            def health_check(self) -> dict:
+                return {'status': 'healthy', 'service': 'mock_database'}
+            def shutdown(self) -> bool:
+                return True
+            def get_connection(self):
+                import sqlite3
+                return sqlite3.connect(':memory:')
+            def execute_query(self, query: str, params: tuple = None):
+                conn = self.get_connection()
+                cursor = conn.execute(query, params or ())
+                return cursor.fetchall()
+            def execute_transaction(self, queries: list) -> bool:
+                return True
+        
+        return {
+            DatabaseServiceInterface: MockDatabaseService(),
+            HTTPClientInterface: None,  # Not implemented in this example
+            EmbeddingServiceInterface: None,
+            VectorStoreInterface: None,
+            ChatServiceInterface: None,
+            IngestionServiceInterface: None,
+            SchedulerServiceInterface: None
+        }
+    except ImportError:
+        return {}
+
+
+# Performance Testing Fixtures
+@pytest.fixture(scope="session") 
+def performance_test_config():
+    """Configuration for performance testing."""
+    return {
+        'enable_performance_tracking': True,
+        'performance_db_path': 'test_performance_history.db',
+        'regression_threshold_percent': 20.0,
+        'benchmark_iterations': 3,
+        'memory_threshold_mb': 100,
+        'response_time_threshold_ms': 200
+    }
+
+
+@pytest.fixture
+def performance_tracker(performance_test_config):
+    """Performance tracking fixture for regression detection."""
+    import tempfile
+    import os
+    
+    try:
+        from tests.performance.test_performance_benchmarks import PerformanceRegressionTracker
+        
+        # Use temporary database for testing
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
+            temp_db_path = f.name
+        
+        tracker = PerformanceRegressionTracker(temp_db_path)
+        
+        yield tracker
+        
+        # Cleanup
+        try:
+            os.unlink(temp_db_path)
+        except OSError:
+            pass
+    except ImportError:
+        yield None
+
+
+@pytest.fixture
+def performance_profiler():
+    """Performance profiler fixture for measuring test performance."""
+    try:
+        from tests.performance.test_performance_benchmarks import PerformanceProfiler
+        return PerformanceProfiler()
+    except ImportError:
+        return None
+
+
+# Additional database fixture for testing
+@pytest.fixture
+def in_memory_database():
+    """Provide clean in-memory SQLite database for testing."""
+    import sqlite3
+    
+    conn = sqlite3.connect(':memory:')
+    
+    # Initialize with basic schema
+    conn.execute('''
+        CREATE TABLE data_items (
+            id TEXT PRIMARY KEY,
+            namespace TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            content TEXT,
+            metadata TEXT,
+            embedding_status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            days_date TEXT NOT NULL
+        )
+    ''')
+    
+    conn.execute('''
+        CREATE TABLE data_sources (
+            namespace TEXT PRIMARY KEY,
+            source_type TEXT NOT NULL,
+            metadata TEXT,
+            item_count INTEGER DEFAULT 0,
+            is_active BOOLEAN DEFAULT TRUE,
+            last_synced TIMESTAMP,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    yield conn
+    
+    conn.close()
+
+
+# Integration Test Fixtures  
+@pytest.fixture
+def integration_test_services():
+    """Setup services for integration testing."""
+    services = {}
+    
+    try:
+        from core.dependencies import get_container
+        container = get_container()
+        
+        # Get available services from container
+        services['container'] = container
+        services['database'] = getattr(container, 'resolve_optional', lambda x: None)('DatabaseService')
+        services['http_client'] = getattr(container, 'resolve_optional', lambda x: None)('HTTPClient')
+        services['embedding'] = getattr(container, 'resolve_optional', lambda x: None)('EmbeddingService')
+        services['vector_store'] = getattr(container, 'resolve_optional', lambda x: None)('VectorStore')
+        services['chat'] = getattr(container, 'resolve_optional', lambda x: None)('ChatService')
+        
+    except ImportError:
+        # Fallback to mock services if container not available
+        services = {
+            'container': None,
+            'database': None,
+            'http_client': None,
+            'embedding': None,
+            'vector_store': None,
+            'chat': None
+        }
+    
+    yield services
