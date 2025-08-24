@@ -40,9 +40,14 @@ logger.info("SERVER: Running in API-only mode (no HTML templates)")
 
 # Import the extracted SignalHandler
 from core.signal_handler import SignalHandler
+# Import the extracted FrontendOrchestrator
+from core.frontend_orchestrator import FrontendOrchestrator
 
 # Global signal handler instance
 _signal_handler = SignalHandler()
+
+# Global frontend orchestrator instance
+_frontend_orchestrator = FrontendOrchestrator.create_orchestrator()
 
 # Legacy compatibility functions for existing code that still references these globals
 _shutdown_requested = False  # Will be deprecated - use _signal_handler.is_shutdown_requested()
@@ -1414,210 +1419,95 @@ def is_node_installed() -> bool:
 
 
 def check_frontend_dependencies() -> bool:
-    """Check if frontend dependencies are installed"""
+    """
+    Check if frontend dependencies are installed.
+    
+    Legacy wrapper that delegates to the extracted FrontendOrchestrator.
+    This function maintains backward compatibility while using the new implementation.
+    """
     try:
-        frontend_dir = Path(__file__).parent.parent / "frontend"
-        node_modules = frontend_dir / "node_modules"
-        package_json = frontend_dir / "package.json"
-        
-        if not frontend_dir.exists():
-            logger.error(f"FRONTEND: Frontend directory not found: {frontend_dir}")
-            return False
-            
-        if not package_json.exists():
-            logger.error(f"FRONTEND: package.json not found: {package_json}")
-            return False
-            
-        if not node_modules.exists():
-            logger.warning(f"FRONTEND: node_modules not found, dependencies may need installation")
-            return False
-            
-        logger.debug("FRONTEND: Frontend dependencies appear to be installed")
-        return True
-        
+        return _frontend_orchestrator.check_dependencies()
     except Exception as e:
-        logger.error(f"FRONTEND: Error checking frontend dependencies: {e}")
+        logger.error(f"FRONTEND: Error checking frontend dependencies via FrontendOrchestrator: {e}")
         return False
 
 
 def install_frontend_dependencies() -> bool:
-    """Install frontend dependencies if needed"""
+    """
+    Install frontend dependencies if needed.
+    
+    Legacy wrapper that delegates to the extracted FrontendOrchestrator.
+    This function maintains backward compatibility while using the new implementation.
+    """
     try:
-        frontend_dir = Path(__file__).parent.parent / "frontend"
-        
-        logger.info("FRONTEND: Installing dependencies with npm install...")
-        import subprocess
-        
-        result = subprocess.run(
-            ['npm', 'install'], 
-            cwd=frontend_dir,
-            capture_output=True, 
-            text=True, 
-            timeout=180  # 3 minutes timeout
-        )
-        
-        if result.returncode == 0:
-            logger.info("FRONTEND: Dependencies installed successfully")
-            return True
-        else:
-            logger.error(f"FRONTEND: npm install failed with return code {result.returncode}")
-            if result.stderr:
-                logger.error(f"FRONTEND: npm install stderr: {result.stderr}")
-            return False
-            
-    except subprocess.TimeoutExpired:
-        logger.error("FRONTEND: npm install timed out after 3 minutes")
-        return False
+        return _frontend_orchestrator.install_dependencies()
     except Exception as e:
-        logger.error(f"FRONTEND: Error installing frontend dependencies: {e}")
+        logger.error(f"FRONTEND: Error installing frontend dependencies via FrontendOrchestrator: {e}")
         return False
 
 
 def kill_frontend_processes() -> bool:
-    """Kill existing frontend development server processes"""
+    """
+    Kill existing frontend development server processes.
+    
+    Legacy wrapper that delegates to the extracted FrontendOrchestrator.
+    This function maintains backward compatibility while using the new implementation.
+    """
     try:
-        import subprocess
-        
-        # Kill Vite dev servers
-        try:
-            result = subprocess.run(['pkill', '-f', 'vite'], 
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                logger.info("FRONTEND: Killed existing Vite processes")
-            else:
-                logger.debug("FRONTEND: No existing Vite processes found")
-        except Exception as e:
-            logger.debug(f"FRONTEND: Error killing Vite processes: {e}")
-        
-        # Kill npm processes that might be running dev servers
-        try:
-            result = subprocess.run(['pkill', '-f', 'npm.*dev'], 
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                logger.info("FRONTEND: Killed existing npm dev processes")
-            else:
-                logger.debug("FRONTEND: No existing npm dev processes found")
-        except Exception as e:
-            logger.debug(f"FRONTEND: Error killing npm dev processes: {e}")
-            
-        # Wait a moment for processes to terminate
-        import time
-        time.sleep(2)
-        
-        return True
-        
+        return _frontend_orchestrator.kill_existing_processes()
     except Exception as e:
-        logger.warning(f"FRONTEND: Error during process cleanup: {e}")
+        logger.error(f"FRONTEND: Error killing frontend processes via FrontendOrchestrator: {e}")
         return False
 
 
 def start_frontend_server(port: int = 5173, backend_port: int = 8000) -> dict:
-    """Start the frontend development server"""
+    """
+    Start the frontend development server.
+    
+    Legacy wrapper that delegates to the extracted FrontendOrchestrator.
+    This function maintains backward compatibility while using the new implementation.
+    """
     try:
-        frontend_dir = Path(__file__).parent.parent / "frontend"
+        result = _frontend_orchestrator.start_frontend_server(port=port, backend_port=backend_port)
         
-        # Check if frontend port is available
-        import socket
-        def check_port_available(port: int, host: str = "0.0.0.0") -> bool:
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.bind((host, port))
-                    return True
-            except OSError:
-                return False
-                
-        if not check_port_available(port):
-            logger.warning(f"FRONTEND: Port {port} is in use, finding alternative...")
-            try:
-                port = find_available_port(port, max_attempts=50)
-                logger.info(f"FRONTEND: Using available port: {port}")
-            except RuntimeError:
-                return {
-                    'success': False,
-                    'error': f'No available ports found starting from {port}',
-                    'port': None,
-                    'process': None
-                }
-        
-        # Set environment variables for the frontend
-        env = os.environ.copy()
-        env['VITE_API_URL'] = f'http://localhost:{backend_port}'
-        env['VITE_API_BASE_URL'] = f'http://localhost:{backend_port}/api'
-        
-        logger.info(f"FRONTEND: Starting development server on port {port}")
-        logger.debug(f"FRONTEND: Backend API will be available at http://localhost:{backend_port}")
-        
-        import subprocess
-        
-        # Start the frontend dev server
-        process = subprocess.Popen(
-            ['npm', 'run', 'dev', '--', '--port', str(port), '--host', '0.0.0.0'],
-            cwd=frontend_dir,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        
-        # Wait a moment and check if process started successfully
-        import time
-        time.sleep(3)
-        
-        if process.poll() is None:
-            # Process is still running, check if port is responding
-            try:
-                import socket
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(2)
-                    result = s.connect_ex(('localhost', port))
-                    if result == 0:
-                        logger.info(f"FRONTEND: Development server started successfully on port {port}")
-                        return {
-                            'success': True,
-                            'port': port,
-                            'process': process,
-                            'url': f'http://localhost:{port}'
-                        }
-                    else:
-                        logger.warning(f"FRONTEND: Process started but port {port} not responding yet")
-                        return {
-                            'success': True,
-                            'port': port,
-                            'process': process,
-                            'url': f'http://localhost:{port}',
-                            'warning': 'Port not immediately responsive'
-                        }
-            except Exception as e:
-                logger.warning(f"FRONTEND: Error checking port responsiveness: {e}")
-                return {
-                    'success': True,
-                    'port': port,
-                    'process': process,
-                    'url': f'http://localhost:{port}',
-                    'warning': 'Could not verify port responsiveness'
-                }
-        else:
-            # Process terminated
-            stdout, stderr = process.communicate(timeout=5)
-            error_msg = f"Frontend server failed to start"
-            if stderr:
-                error_msg += f": {stderr.strip()}"
-            logger.error(f"FRONTEND: {error_msg}")
-            return {
-                'success': False,
-                'error': error_msg,
-                'port': port,
-                'process': None,
-                'stdout': stdout,
-                'stderr': stderr
+        # Convert FrontendOrchestrator result format to legacy format for compatibility
+        if result['success']:
+            legacy_result = {
+                'success': True,
+                'port': result['port'],
+                'process': result['process'],
+                'url': f"http://localhost:{result['port']}"
             }
             
+            # Add optional fields if present
+            if 'pid' in result:
+                legacy_result['pid'] = result['pid']
+            if 'backend_port' in result:
+                legacy_result['backend_port'] = result['backend_port']
+            if 'warning' in result:
+                legacy_result['warning'] = result['warning']
+                
+            return legacy_result
+        else:
+            legacy_result = {
+                'success': False,
+                'error': result.get('error', 'Unknown error'),
+                'port': result.get('port'),
+                'process': result.get('process')
+            }
+            
+            # Add optional error details if present
+            if 'exit_code' in result:
+                legacy_result['exit_code'] = result['exit_code']
+                
+            return legacy_result
+            
     except Exception as e:
-        logger.error(f"FRONTEND: Error starting frontend server: {e}")
+        logger.error(f"FRONTEND: Error starting frontend server via FrontendOrchestrator: {e}")
         return {
             'success': False,
             'error': str(e),
-            'port': None,
+            'port': port,
             'process': None
         }
 
