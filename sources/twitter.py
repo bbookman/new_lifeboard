@@ -3,7 +3,7 @@ import os
 import re
 import shutil
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, AsyncIterator
 
 from config.models import TwitterConfig
@@ -29,7 +29,7 @@ class TwitterSource(BaseSource):
     async def import_from_zip(self, zip_path: str) -> Dict[str, Any]:
         """Import Twitter data from a zip archive, only adding new tweets."""
         if not self.config.is_configured():
-            logger.warning("Twitter source not enabled. Skipping import.")
+            logger.warning("[TWITTER IMPORT] Twitter source not enabled. Skipping import.")
             return {
                 "success": False,
                 "imported_count": 0,
@@ -42,28 +42,28 @@ class TwitterSource(BaseSource):
         os.makedirs(temp_dir)
 
         try:
-            logger.info(f"Starting Twitter import from zip: {zip_path}")
+            logger.info(f"[TWITTER IMPORT] Starting Twitter import from zip: {zip_path}")
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
-                logger.info(f"Extracted zip to: {temp_dir}")
+                logger.info(f"[TWITTER IMPORT] Extracted zip to: {temp_dir}")
 
             # PERMANENT FIX: Robust file discovery that prioritizes tweets.js and never looks for tweet.js
             tweets_js_path = None
             possible_filenames = ['tweets.js']  # Correct filename only - NEVER look for tweet.js
             
             for root, _, files in os.walk(temp_dir):
-                logger.info(f"DEBUG: Files found in {root}: {files}")
+                logger.info(f"[TWITTER IMPORT] DEBUG: Files found in {root}: {files}")
                 for filename in possible_filenames:
                     if filename in files:
                         tweets_js_path = os.path.join(root, filename)
-                        logger.info(f"Found Twitter data file: {filename} at: {tweets_js_path}")
+                        logger.info(f"[TWITTER IMPORT] Found Twitter data file: {filename} at: {tweets_js_path}")
                         break
                 if tweets_js_path:
                     break
             
             if not tweets_js_path:
-                logger.error(f"tweets.js not found in the extracted archive at {temp_dir}")
-                logger.error(f"Searched for files: {possible_filenames}")
+                logger.error(f"[TWITTER IMPORT] tweets.js not found in the extracted archive at {temp_dir}")
+                logger.error(f"[TWITTER IMPORT] Searched for files: {possible_filenames}")
                 return {
                     "success": False,
                     "imported_count": 0,
@@ -82,18 +82,18 @@ class TwitterSource(BaseSource):
                 tweets = json.loads(f'[{content}]')
 
             parsed_tweets = self._parse_tweets(tweets)
-            logger.info(f"Parsed {len(parsed_tweets)} total tweets from the archive.")
+            logger.info(f"[TWITTER IMPORT] Parsed {len(parsed_tweets)} total tweets from the archive.")
 
             # Get existing tweets from data_items table
             existing_tweet_ids = await self._get_existing_tweet_ids()
-            logger.info(f"Found {len(existing_tweet_ids)} existing tweets in database.")
+            logger.info(f"[TWITTER IMPORT] Found {len(existing_tweet_ids)} existing tweets in database.")
 
             # Filter out existing tweets
             new_tweets = [t for t in parsed_tweets if t['tweet_id'] not in existing_tweet_ids]
-            logger.info(f"Found {len(new_tweets)} new tweets to import.")
+            logger.info(f"[TWITTER IMPORT] Found {len(new_tweets)} new tweets to import.")
 
             if not new_tweets:
-                logger.info("No new tweets to import. Skipping database storage.")
+                logger.info("[TWITTER IMPORT] No new tweets to import. Skipping database storage.")
                 return {
                     "success": True,
                     "imported_count": 0,
@@ -107,7 +107,7 @@ class TwitterSource(BaseSource):
                 "message": f"Successfully imported {len(new_tweets)} new tweets."
             }
         except Exception as e:
-            logger.error(f"Error processing Twitter zip import: {e}", exc_info=True)
+            logger.error(f"[TWITTER IMPORT] Error processing Twitter zip import: {e}", exc_info=True)
             return {
                 "success": False, 
                 "imported_count": 0, 
@@ -130,9 +130,10 @@ class TwitterSource(BaseSource):
 
             created_at_str = tweet.get('created_at')
             try:
-                created_at = datetime.strptime(created_at_str, '%a %b %d %H:%M:%S +0000 %Y')
+                created_at_naive = datetime.strptime(created_at_str, '%a %b %d %H:%M:%S +0000 %Y')
+                created_at = created_at_naive.replace(tzinfo=timezone.utc)
             except (ValueError, TypeError):
-                logger.warning(f"Could not parse date for tweet {tweet_id}, skipping.")
+                logger.warning(f"[TWITTER IMPORT] Could not parse date for tweet {tweet_id}, skipping.")
                 continue
 
             media_urls = []
@@ -157,7 +158,7 @@ class TwitterSource(BaseSource):
     async def _ingest_tweets(self, tweets: List[Dict[str, Any]]):
         """Ingest tweets through the ingestion service"""
         if not tweets or not self.ingestion_service:
-            logger.warning("Cannot ingest tweets: missing tweets or ingestion service")
+            logger.warning("[TWITTER IMPORT] Cannot ingest tweets: missing tweets or ingestion service")
             return
 
         # Convert tweet dicts to DataItem objects
@@ -189,26 +190,26 @@ class TwitterSource(BaseSource):
                 data_items.append(processed_item)
 
             except Exception as e:
-                logger.error(f"Error creating DataItem for tweet {tweet.get('tweet_id', 'unknown')}: {e}")
+                logger.error(f"[TWITTER IMPORT] Error creating DataItem for tweet {tweet.get('tweet_id', 'unknown')}: {e}")
                 continue
 
         # Ingest through the ingestion service
-        logger.info(f"Ingesting {len(data_items)} tweets through ingestion service")
+        logger.info(f"[TWITTER IMPORT] Ingesting {len(data_items)} tweets through ingestion service")
         
         # Process items in batches
         result = await self.ingestion_service.ingest_items("twitter", data_items)
         
         if result.errors:
-            logger.warning(f"Some tweets failed to ingest: {result.errors}")
+            logger.warning(f"[TWITTER IMPORT] Some tweets failed to ingest: {result.errors}")
         
-        logger.info(f"Ingestion complete: {result.items_stored} stored, {len(result.errors)} errors")
+        logger.info(f"[TWITTER IMPORT] Ingestion complete: {result.items_stored} stored, {len(result.errors)} errors")
 
-        logger.info(f"Successfully ingested {len(data_items)} tweets")
+        logger.info(f"[TWITTER IMPORT] Successfully ingested {len(data_items)} tweets")
 
     async def fetch_today_tweets(self) -> List[Dict[str, Any]]:
         """Fetch today's tweets from Twitter API"""
         logger.info("Starting fetch_today_tweets...")
-        logger.info(f"Twitter config state: enabled={self.config.enabled}")
+        logger.info(f"[TWITTER IMPORT] Twitter config state: enabled={self.config.enabled}")
         logger.info(f"Bearer token configured: {bool(self.config.bearer_token)}")
         logger.info(f"Username configured: {bool(self.config.username)}")
         logger.info(f"Bearer token: {self.config.bearer_token!r}")
@@ -216,7 +217,7 @@ class TwitterSource(BaseSource):
         logger.info(f"is_api_configured() result: {self.config.is_api_configured()}")
         
         if not self.config.is_api_configured():
-            logger.warning("Twitter API not configured. Skipping real-time tweet fetch.")
+            logger.warning("[TWITTER IMPORT] Twitter API not configured. Skipping real-time tweet fetch.")
             return []
         
         try:
@@ -224,7 +225,7 @@ class TwitterSource(BaseSource):
             async with self.api_service:
                 logger.info("Calling fetch_user_tweets_today...")
                 tweets = await self.api_service.fetch_user_tweets_today()
-                logger.info(f"Fetched {len(tweets)} tweets from Twitter API")
+                logger.info(f"[TWITTER IMPORT] Fetched {len(tweets)} tweets from Twitter API")
                 logger.debug(f"Tweet IDs: {[t.get('tweet_id') for t in tweets]}")
                 return tweets
         except Exception as e:
@@ -249,7 +250,7 @@ class TwitterSource(BaseSource):
                     new_tweets = [t for t in api_tweets if t['tweet_id'] not in existing_tweet_ids]
                     
                     if new_tweets:
-                        logger.info(f"Found {len(new_tweets)} new tweets from API to ingest")
+                        logger.info(f"[TWITTER IMPORT] Found {len(new_tweets)} new tweets from API to ingest")
                         await self._ingest_tweets(new_tweets)
                         
                         # Yield the new tweets as DataItems
@@ -277,10 +278,10 @@ class TwitterSource(BaseSource):
                                 yield processed_item
                                 
                             except Exception as e:
-                                logger.error(f"Error creating DataItem for API tweet {tweet.get('tweet_id', 'unknown')}: {e}")
+                                logger.error(f"[TWITTER IMPORT] Error creating DataItem for API tweet {tweet.get('tweet_id', 'unknown')}: {e}")
                                 continue
             except Exception as e:
-                logger.error(f"Error fetching API tweets: {e}")
+                logger.error(f"[TWITTER IMPORT] Error fetching API tweets: {e}")
         
         # Then get existing Twitter data from the unified data_items table
         items = self.db_service.get_data_items_by_namespace(self.namespace, limit)
@@ -343,10 +344,10 @@ class TwitterSource(BaseSource):
             try:
                 async with self.api_service:
                     user_id = await self.api_service.get_user_id(self.config.username)
-                    logger.info(f"Twitter API connection test successful. User ID: {user_id}")
+                    logger.info(f"[TWITTER IMPORT] Twitter API connection test successful. User ID: {user_id}")
                     return True
             except Exception as e:
-                logger.error(f"Twitter API connection test failed: {e}")
+                logger.error(f"[TWITTER IMPORT] Twitter API connection test failed: {e}")
                 return False
         
         # If only archive import is configured, return True

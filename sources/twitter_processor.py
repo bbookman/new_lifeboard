@@ -85,7 +85,7 @@ class TwitterProcessor(BaseProcessor):
                     'media_urls': media_list
                 }
             except (json.JSONDecodeError, TypeError):
-                logger.warning(f"Failed to parse media URLs for tweet {item.source_id}")
+                logger.warning(f"[TWITTER IMPORT] Failed to parse media URLs for tweet {item.source_id}")
                 enriched_metadata['media'] = {
                     'has_media': False,
                     'media_count': 0,

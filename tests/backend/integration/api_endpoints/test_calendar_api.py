@@ -29,7 +29,7 @@ def test_calendar_api():
         year = current_date.year
         month = current_date.month
         
-        endpoint = f"{base_url}/calendar/api/days-with-data?year={year}&month={month}"
+        endpoint = f"{base_url}/calendar/days-with-data?year={year}&month={month}"
         print(f"\n🔍 Testing calendar endpoint: {endpoint}")
         
         response = requests.get(endpoint, timeout=10)
@@ -66,7 +66,7 @@ def test_calendar_api():
     
     # Test 3: Calendar days-with-data endpoint without parameters
     try:
-        endpoint = f"{base_url}/calendar/api/days-with-data"
+        endpoint = f"{base_url}/calendar/days-with-data"
         print(f"\n🔍 Testing calendar endpoint (no params): {endpoint}")
         
         response = requests.get(endpoint, timeout=10)

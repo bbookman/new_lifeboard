@@ -483,7 +483,9 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
 
     def is_configured(self) -> bool:
         """Check if Twitter source is properly configured (archive or API)"""
-        return self.enabled and self.is_api_configured()
+        # For Twitter, we allow archive imports even without API credentials
+        # API credentials are only needed for live data fetching
+        return self.enabled
 
 
 class DocumentsConfig(BaseModel):

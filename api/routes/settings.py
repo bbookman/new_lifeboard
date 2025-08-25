@@ -159,32 +159,32 @@ async def upload_twitter_archive(
         raise HTTPException(status_code=400, detail="File must be a ZIP archive")
     
     temp_zip_path = f"/tmp/{file.filename}"
-    logger.info(f"Starting Twitter archive upload: {file.filename}")
+    logger.info(f"[TWITTER IMPORT] Starting Twitter archive upload: {file.filename}")
     
     try:
         # Save uploaded file
         with open(temp_zip_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        logger.info(f"Saved uploaded file to: {temp_zip_path}")
+        logger.info(f"[TWITTER IMPORT] Saved uploaded file to: {temp_zip_path}")
 
         # Process the Twitter archive
         result = await twitter_source.import_from_zip(temp_zip_path)
 
         if result["success"]:
-            logger.info(f"Twitter import successful: {result['message']}")
+            logger.info(f"[TWITTER IMPORT] Twitter import successful: {result['message']}")
             return JSONResponse(content={"message": result["message"]})
         else:
-            logger.error(f"Twitter import failed: {result['message']}")
+            logger.error(f"[TWITTER IMPORT] Twitter import failed: {result['message']}")
             return JSONResponse(content={"message": result["message"]}, status_code=500)
             
     except HTTPException:
         # Re-raise HTTP exceptions (like dependency injection failures)
         raise
     except FileNotFoundError as e:
-        logger.error(f"File not found during Twitter upload: {e}")
+        logger.error(f"[TWITTER IMPORT] File not found during Twitter upload: {e}")
         return JSONResponse(content={"message": "Uploaded file could not be found or processed."}, status_code=500)
     except Exception as e:
-        logger.error(f"Error uploading Twitter archive: {e}", exc_info=True)
+        logger.error(f"[TWITTER IMPORT] Error uploading Twitter archive: {e}", exc_info=True)
         # Provide more specific error message based on the exception
         if "ingest_items" in str(e):
             error_msg = "Internal service error: ingestion method not available. Please contact support."

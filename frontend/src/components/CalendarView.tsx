@@ -73,7 +73,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     try {
       setLoading(true);
       
-      const apiUrl = `http://localhost:8000/calendar/api/days-with-data?year=${year}&month=${month + 1}`;
+      const apiUrl = `http://localhost:8000/calendar/days-with-data?year=${year}&month=${month + 1}`;
       const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
@@ -360,7 +360,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
                       <span>
                         {source.status === 'completed' ? '✅' : 
                          source.status === 'in_progress' ? '⏳' : 
-                         source.status === 'failed' ? '❌' : '⭕'}
+                         source.status === 'failed' ? '❌' : 
+                         source.status === 'skipped' ? '⏭️' : '⭕'}
                       </span>
                       <span style={{ textTransform: 'capitalize' }}>
                         {namespace}
@@ -370,7 +371,12 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
                           ({Math.round(source.progress_percentage)}%)
                         </span>
                       )}
-                      {source.error_message && (
+                      {source.status === 'skipped' && source.error_message && (
+                        <span style={{ color: '#ff9800', fontSize: '0.8rem' }}>
+                          Skipped
+                        </span>
+                      )}
+                      {source.status === 'failed' && source.error_message && (
                         <span style={{ color: '#d32f2f', fontSize: '0.8rem' }}>
                           Error
                         </span>
