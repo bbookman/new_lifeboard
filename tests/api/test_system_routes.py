@@ -19,10 +19,12 @@ class TestSystemRoutes:
     """Test system API endpoints"""
     
     @pytest.fixture
-    def app(self):
-        """Create FastAPI test application"""
+    def app(self, mock_startup_service):
+        """Create FastAPI test application with dependency overrides"""
+        from core.dependencies import get_startup_service_dependency
         app = FastAPI()
         app.include_router(router)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
         return app
     
     @pytest.fixture
@@ -78,8 +80,7 @@ class TestSystemRoutes:
             "limit": 20
         }
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json=search_payload)
+        response = client.post("/search", json=search_payload)
         
         assert response.status_code == 200
         data = response.json()
@@ -117,8 +118,7 @@ class TestSystemRoutes:
             "limit": 2
         }
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json=search_payload)
+        response = client.post("/search", json=search_payload)
         
         assert response.status_code == 200
         data = response.json()
@@ -135,8 +135,7 @@ class TestSystemRoutes:
             "limit": 20
         }
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json=search_payload)
+        response = client.post("/search", json=search_payload)
         
         assert response.status_code == 200
         data = response.json()
@@ -153,8 +152,7 @@ class TestSystemRoutes:
             "limit": 20
         }
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json=search_payload)
+        response = client.post("/search", json=search_payload)
         
         assert response.status_code == 200
         data = response.json()
@@ -169,8 +167,7 @@ class TestSystemRoutes:
             "limit": 20
         }
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json=search_payload)
+        response = client.post("/search", json=search_payload)
         
         assert response.status_code == 503
         data = response.json()
@@ -185,8 +182,7 @@ class TestSystemRoutes:
             "limit": 20
         }
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json=search_payload)
+        response = client.post("/search", json=search_payload)
         
         assert response.status_code == 500
         data = response.json()
@@ -202,8 +198,7 @@ class TestSystemRoutes:
             "limit": 1000
         }
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json=search_payload)
+        response = client.post("/search", json=search_payload)
         
         assert response.status_code == 200
         mock_chat_service.search_data.assert_called_once_with("test", limit=1000)
@@ -230,8 +225,7 @@ class TestSystemRoutes:
             "limit": 20
         }
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json=search_payload)
+        response = client.post("/search", json=search_payload)
         
         assert response.status_code == 200
         data = response.json()
@@ -406,8 +400,7 @@ class TestSystemRoutes:
     
     def test_search_invalid_json_payload(self, client, mock_startup_service, mock_chat_service):
         """Test search endpoint with invalid JSON payload"""
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json={"invalid_field": "test"})
+        response = client.post("/search", json={"invalid_field": "test"})
         
         assert response.status_code == 422  # Validation error - missing required 'query' field
     
@@ -415,8 +408,7 @@ class TestSystemRoutes:
         """Test search endpoint includes proper headers"""
         mock_chat_service.search_data.return_value = []
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json={"query": "test"})
+        response = client.post("/search", json={"query": "test"})
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json"
@@ -428,8 +420,7 @@ class TestSystemRoutes:
         import time
         start_time = time.time()
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json={"query": "test"})
+        response = client.post("/search", json={"query": "test"})
         
         end_time = time.time()
         response_time = end_time - start_time
@@ -465,8 +456,7 @@ class TestSystemRoutes:
             "limit": 20
         }
         
-        with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/search", json=search_payload)
+        response = client.post("/search", json=search_payload)
         
         assert response.status_code == 200
         data = response.json()
@@ -486,9 +476,8 @@ class TestSystemRoutes:
         
         def make_search_request(query):
             try:
-                with patch('api.routes.system.get_startup_service_dependency', return_value=mock_startup_service):
-                    response = client.post("/search", json={"query": query})
-                    responses.append(response.status_code)
+                response = client.post("/search", json={"query": query})
+                responses.append(response.status_code)
             except Exception as e:
                 errors.append(e)
         

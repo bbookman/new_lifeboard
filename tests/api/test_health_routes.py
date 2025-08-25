@@ -157,14 +157,19 @@ class TestHealthRoutes:
         assert "Chat service initialization failed" in details["errors"]
         assert "WebSocket manager connection timeout" in details["errors"]
     
-    def test_health_check_service_unavailable(self, client):
+    def test_health_check_service_unavailable(self):
         """Test health check when startup service is unavailable"""
-        def mock_dependency():
+        app = FastAPI()
+        app.include_router(router)
+        
+        def failing_dependency():
             from fastapi import HTTPException
             raise HTTPException(status_code=503, detail="Application not initialized")
         
-        with patch('api.routes.health.get_startup_service_dependency', side_effect=mock_dependency):
-            response = client.get("/health")
+        app.dependency_overrides[get_startup_service_dependency] = failing_dependency
+        
+        client = TestClient(app)
+        response = client.get("/health")
         
         assert response.status_code == 503
         data = response.json()

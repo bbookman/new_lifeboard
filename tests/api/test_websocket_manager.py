@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from fastapi import FastAPI, WebSocket
+from starlette.websockets import WebSocketState
 
 from services.websocket_manager import (
     WebSocketManager, 
@@ -34,15 +35,18 @@ class MockWebSocket:
         self.close_reason = None
         self.connection_exception = None
         self.send_exception = None
+        self.client_state = WebSocketState.CONNECTING
     
     async def accept(self):
         if self.connection_exception:
             raise self.connection_exception
         self.accepted = True
+        self.client_state = WebSocketState.CONNECTED
     
     async def close(self, reason=None):
         self.closed = True
         self.close_reason = reason
+        self.client_state = WebSocketState.DISCONNECTED
     
     async def send_text(self, data: str):
         if self.send_exception:
@@ -547,10 +551,12 @@ class TestWebSocketRoutes:
     """Test WebSocket API routes"""
     
     @pytest.fixture
-    def app(self):
-        """Create FastAPI test application"""
+    def app(self, mock_manager):
+        """Create FastAPI test application with dependency overrides"""
+        from api.routes.websocket import get_websocket_manager
         app = FastAPI()
         app.include_router(router)
+        app.dependency_overrides[get_websocket_manager] = lambda: mock_manager
         return app
     
     @pytest.fixture
@@ -576,17 +582,29 @@ class TestWebSocketRoutes:
         }
         mock_manager.get_connection_stats.return_value = mock_stats
         
-        with patch('api.routes.websocket.get_websocket_manager', return_value=mock_manager):
-            response = client.get("/ws/stats")
+        response = client.get("/ws/stats")
         
         assert response.status_code == 200
         data = response.json()
         assert data == mock_stats
     
-    def test_websocket_stats_manager_unavailable(self, client):
+    def test_websocket_stats_manager_unavailable(self):
         """Test stats when WebSocket manager is unavailable"""
-        with patch('api.routes.websocket.get_websocket_manager', side_effect=Exception("Manager not initialized")):
-            response = client.get("/ws/stats")
+        from api.routes.websocket import get_websocket_manager
+        from fastapi import FastAPI
+        
+        # Create app with dependency that raises HTTPException
+        app = FastAPI()
+        app.include_router(router)
+        
+        def failing_manager():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=503, detail="WebSocket manager not initialized. Server may be starting up.")
+        
+        app.dependency_overrides[get_websocket_manager] = failing_manager
+        
+        client = TestClient(app)
+        response = client.get("/ws/stats")
         
         assert response.status_code == 503
         data = response.json()
@@ -596,8 +614,7 @@ class TestWebSocketRoutes:
         """Test stats when service raises exception"""
         mock_manager.get_connection_stats.side_effect = Exception("Stats error")
         
-        with patch('api.routes.websocket.get_websocket_manager', return_value=mock_manager):
-            response = client.get("/ws/stats")
+        response = client.get("/ws/stats")
         
         assert response.status_code == 500
         data = response.json()
@@ -612,8 +629,7 @@ class TestWebSocketRoutes:
             "data": {"status": "processing", "day": "2024-01-15"}
         }
         
-        with patch('api.routes.websocket.get_websocket_manager', return_value=mock_manager):
-            response = client.post("/ws/broadcast/test-topic", json=message_data)
+        response = client.post("/ws/broadcast/test-topic", json=message_data)
         
         assert response.status_code == 200
         data = response.json()
@@ -633,22 +649,34 @@ class TestWebSocketRoutes:
             "data": {"test": "data"}
         }
         
-        with patch('api.routes.websocket.get_websocket_manager', return_value=mock_manager):
-            response = client.post("/ws/broadcast/test-topic", json=message_data)
+        response = client.post("/ws/broadcast/test-topic", json=message_data)
         
         assert response.status_code == 500
         data = response.json()
         assert "Failed to broadcast message" in data["detail"]
     
-    def test_broadcast_message_manager_unavailable(self, client):
+    def test_broadcast_message_manager_unavailable(self):
         """Test broadcast when WebSocket manager is unavailable"""
+        from api.routes.websocket import get_websocket_manager
+        from fastapi import FastAPI
+        
         message_data = {
             "type": "processing_status",
             "data": {"status": "processing"}
         }
         
-        with patch('api.routes.websocket.get_websocket_manager', side_effect=Exception("Manager not initialized")):
-            response = client.post("/ws/broadcast/test-topic", json=message_data)
+        # Create app with dependency that raises HTTPException
+        app = FastAPI()
+        app.include_router(router)
+        
+        def failing_manager():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=503, detail="WebSocket manager not initialized. Server may be starting up.")
+        
+        app.dependency_overrides[get_websocket_manager] = failing_manager
+        
+        client = TestClient(app)
+        response = client.post("/ws/broadcast/test-topic", json=message_data)
         
         assert response.status_code == 503
         data = response.json()

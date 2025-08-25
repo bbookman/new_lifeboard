@@ -320,6 +320,55 @@ If the context doesn't contain relevant information to answer the question, plea
         
         return history
     
+    async def search_data(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Search data using hybrid approach (vector + SQL search)
+        
+        This method provides a public interface for searching data,
+        used by the system API endpoints.
+        """
+        self.log_service_call("search_data", {
+            "query_length": len(query),
+            "limit": limit
+        })
+        
+        try:
+            # Use existing context retrieval logic
+            context = await self._get_chat_context(query, max_results=limit)
+            
+            # Combine vector and SQL results, removing duplicates
+            all_results = []
+            seen_ids = set()
+            
+            # Add vector results first (higher quality)
+            for result in context.vector_results:
+                if result.get('id') not in seen_ids:
+                    # Add score for vector results (simulate similarity score)
+                    result['score'] = 0.9  # High score for vector matches
+                    all_results.append(result)
+                    seen_ids.add(result.get('id'))
+            
+            # Add SQL results that weren't already included
+            for result in context.sql_results:
+                if result.get('id') not in seen_ids and len(all_results) < limit:
+                    # Add score for SQL results (lower than vector)
+                    result['score'] = 0.7  # Lower score for keyword matches
+                    all_results.append(result)
+                    seen_ids.add(result.get('id'))
+            
+            # Limit final results
+            final_results = all_results[:limit]
+            
+            self.log_service_performance_metric("search_data_results_count", len(final_results), "count")
+            return final_results
+            
+        except Exception as e:
+            self.log_service_error("search_data", e, {
+                "query_length": len(query),
+                "limit": limit
+            })
+            # Return empty list on error to maintain API contract
+            return []
+    
     async def close(self):
         """Close resources"""
         self.log_service_call("close")

@@ -19,10 +19,12 @@ class TestCalendarRoutes:
     """Test calendar API endpoints"""
     
     @pytest.fixture
-    def app(self):
-        """Create FastAPI test application"""
+    def app(self, mock_startup_service):
+        """Create FastAPI test application with dependency overrides"""
+        from core.dependencies import get_startup_service_dependency
         app = FastAPI()
         app.include_router(router)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
         return app
     
     @pytest.fixture
@@ -125,110 +127,123 @@ class TestCalendarRoutes:
         """Test calendar month view endpoint"""
         mock_startup_service.database = mock_database_service
         
-        # Mock the calendar service method that would generate month data
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_month_data', return_value=sample_month_data):
+        # Mock the actual database method used by the month endpoint
+        days_data = {"all": ["2024-01-01", "2024-01-15", "2024-01-28"]}
+        mock_database_service.get_days_with_data.return_value = ["2024-01-01", "2024-01-15", "2024-01-28"]
+        mock_database_service.get_all_namespaces.return_value = ["limitless", "news"]
+        
+        with patch('api.routes.calendar.get_config') as mock_config, \
+             patch('api.routes.calendar.get_sync_status_service') as mock_sync_service:
             
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/month/2024/1")
+            mock_sync_service.return_value = None  # No sync service available
+            response = client.get("/calendar/api/month/2024/1")
         
         assert response.status_code == 200
         data = response.json()
         
-        # Verify response structure
-        assert "month" in data
+        # Verify response structure for actual API
         assert "year" in data
-        assert "days" in data
-        assert "statistics" in data
+        assert "month" in data
+        assert "month_name" in data
+        assert "days_with_data" in data
+        assert "total_days_with_data" in data
         
         # Verify month data
-        assert data["month"] == "January"
+        assert data["month"] == 1
         assert data["year"] == 2024
-        assert len(data["days"]) == 3
-        
-        # Verify statistics
-        stats = data["statistics"]
-        assert stats["total_conversations"] == 15
-        assert stats["total_activities"] == 32
-        assert stats["average_mood"] == 7.2
+        assert data["month_name"] == "January"
     
     def test_calendar_day_view_success(self, client, mock_startup_service, mock_database_service, sample_calendar_data):
         """Test calendar day view endpoint"""
         mock_startup_service.database = mock_database_service
         
-        day_data = sample_calendar_data["2024-01-15"]
+        # Mock the actual methods used by the day endpoint
+        sample_items = [
+            {
+                "id": "limitless:123",
+                "namespace": "limitless", 
+                "content": "Sample content",
+                "metadata": {"title": "Sample conversation"}
+            }
+        ]
+        sample_markdown = "# Sample Day\n\nSample content here."
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_day_data', return_value=day_data):
-            
+        mock_database_service.get_data_items_by_date.return_value = sample_items
+        mock_database_service.get_markdown_by_date.return_value = sample_markdown
+        
+        with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/day/2024-01-15")
+            response = client.get("/calendar/api/day/2024-01-15")
         
         assert response.status_code == 200
         data = response.json()
         
-        # Verify response structure
-        assert "conversations" in data
-        assert "activities" in data
-        assert "weather" in data
-        assert "news" in data
+        # Verify response structure for actual API
+        assert "date" in data
+        assert "formatted_date" in data
+        assert "day_of_week" in data
+        assert "markdown_content" in data
+        assert "item_count" in data
+        assert "has_data" in data
         
-        # Verify conversations
-        conversations = data["conversations"]
-        assert len(conversations) == 1
-        assert conversations[0]["title"] == "Project Planning Discussion"
-        assert conversations[0]["start_time"] == "09:30"
-        
-        # Verify activities
-        activities = data["activities"]
-        assert len(activities) == 1
-        assert activities[0]["title"] == "Morning Walk"
-        assert activities[0]["category"] == "exercise"
-        
-        # Verify weather
-        weather = data["weather"]
-        assert weather["temperature"] == 22
-        assert weather["condition"] == "sunny"
-        
-        # Verify news
-        news = data["news"]
-        assert len(news) == 1
-        assert "AI Breakthrough" in news[0]["title"]
+        # Verify data content
+        assert data["date"] == "2024-01-15"
+        assert data["formatted_date"] == "January 15, 2024"
+        assert data["day_of_week"] == "Monday" 
+        assert data["markdown_content"] == sample_markdown
+        assert data["item_count"] == 1
+        assert data["has_data"] == True
     
     def test_calendar_month_view_invalid_date(self, client, mock_startup_service, mock_database_service):
         """Test calendar month view with invalid date parameters"""
         mock_startup_service.database = mock_database_service
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service):
-            # Invalid month
-            response = client.get("/calendar/month/2024/13")
-            assert response.status_code == 422 or response.status_code == 400
+        with patch('api.routes.calendar.get_config') as mock_config:
+            mock_config.return_value = MagicMock()
             
-            # Invalid year
-            response = client.get("/calendar/month/abc/1")
+            # Invalid month - should get 400 error from validation
+            response = client.get("/calendar/api/month/2024/13")
+            assert response.status_code == 400
+            
+            # Invalid year - should get 422 from FastAPI validation
+            response = client.get("/calendar/api/month/abc/1")
             assert response.status_code == 422
     
     def test_calendar_day_view_invalid_date(self, client, mock_startup_service, mock_database_service):
         """Test calendar day view with invalid date format"""
         mock_startup_service.database = mock_database_service
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service):
-            # Invalid date format
-            response = client.get("/calendar/day/invalid-date")
-            assert response.status_code == 422 or response.status_code == 400
+        with patch('api.routes.calendar.get_config') as mock_config:
+            mock_config.return_value = MagicMock()
             
-            # Non-existent date
-            response = client.get("/calendar/day/2024-02-30")
-            assert response.status_code == 422 or response.status_code == 400
+            # Invalid date format - should get 400 error from date parsing
+            response = client.get("/calendar/api/day/invalid-date")
+            assert response.status_code == 400
+            
+            # Non-existent date - should get 400 error from date parsing
+            response = client.get("/calendar/api/day/2024-02-30")
+            assert response.status_code == 400
     
-    def test_calendar_database_service_unavailable(self, client, mock_startup_service):
+    def test_calendar_database_service_unavailable(self, client):
         """Test calendar endpoints when database service is unavailable"""
-        mock_startup_service.database = None
+        # Create a separate app instance with a startup service that has no database
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
+        from services.startup import StartupService
+        from unittest.mock import MagicMock
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.get("/calendar/month/2024/1")
+        mock_startup_service_no_db = MagicMock(spec=StartupService)
+        mock_startup_service_no_db.database = None
+        
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service_no_db
+        
+        from fastapi.testclient import TestClient
+        client_no_db = TestClient(app)
+        
+        response = client_no_db.get("/calendar/api/month/2024/1")
         
         assert response.status_code == 503
         data = response.json()
@@ -238,12 +253,16 @@ class TestCalendarRoutes:
         """Test calendar endpoints with database error"""
         mock_startup_service.database = mock_database_service
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_month_data', side_effect=Exception("Database connection failed")):
+        # Mock the actual database methods to raise exceptions
+        mock_database_service.get_days_with_data.side_effect = Exception("Database connection failed")
+        mock_database_service.get_all_namespaces.return_value = []
+        
+        with patch('api.routes.calendar.get_config') as mock_config, \
+             patch('api.routes.calendar.get_sync_status_service') as mock_sync_service:
             
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/month/2024/1")
+            mock_sync_service.return_value = None
+            response = client.get("/calendar/api/month/2024/1")
         
         assert response.status_code == 500
     
@@ -251,79 +270,73 @@ class TestCalendarRoutes:
         """Test calendar month navigation endpoints"""
         mock_startup_service.database = mock_database_service
         
-        # Test next month navigation
-        next_month_data = {
-            "month": "February",
-            "year": 2024,
-            "days": [],
-            "statistics": {"total_conversations": 0}
-        }
+        # Mock the actual database methods
+        mock_database_service.get_days_with_data.return_value = ["2024-02-01", "2024-02-15"]
+        mock_database_service.get_all_namespaces.return_value = ["limitless", "news"]
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_month_data', return_value=next_month_data):
+        with patch('api.routes.calendar.get_config') as mock_config, \
+             patch('api.routes.calendar.get_sync_status_service') as mock_sync_service:
             
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/month/2024/2")
+            mock_sync_service.return_value = None
+            response = client.get("/calendar/api/month/2024/2")
         
         assert response.status_code == 200
         data = response.json()
-        assert data["month"] == "February"
+        assert data["month"] == 2
         assert data["year"] == 2024
+        assert data["month_name"] == "February"
     
-    def test_calendar_current_month_endpoint(self, client, mock_startup_service, mock_database_service, sample_month_data):
-        """Test calendar current month endpoint"""
+    def test_calendar_current_month_endpoint(self, client, mock_startup_service, mock_database_service):
+        """Test calendar current month endpoint (via today API)"""
         mock_startup_service.database = mock_database_service
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_month_data', return_value=sample_month_data):
-            
+        with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/current")
+            response = client.get("/calendar/api/today")
         
-        # This endpoint should redirect to current month or return current month data
-        assert response.status_code in [200, 302]
+        assert response.status_code == 200
+        data = response.json()
+        assert "today" in data
+        assert "timezone" in data
     
     def test_calendar_day_detail_with_no_data(self, client, mock_startup_service, mock_database_service):
         """Test calendar day view for date with no data"""
         mock_startup_service.database = mock_database_service
         
-        empty_day_data = {
-            "conversations": [],
-            "activities": [],
-            "weather": None,
-            "news": []
-        }
+        # Mock database methods to return empty data
+        mock_database_service.get_data_items_by_date.return_value = []
+        mock_database_service.get_markdown_by_date.return_value = "# 2024-01-20\n\nNo data available for this date."
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_day_data', return_value=empty_day_data):
-            
+        with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/day/2024-01-20")
+            response = client.get("/calendar/api/day/2024-01-20")
         
         assert response.status_code == 200
         data = response.json()
         
-        assert len(data["conversations"]) == 0
-        assert len(data["activities"]) == 0
-        assert data["weather"] is None
-        assert len(data["news"]) == 0
+        assert data["date"] == "2024-01-20"
+        assert data["item_count"] == 0
+        assert data["has_data"] == False
+        assert "No data available" in data["markdown_content"]
     
-    def test_calendar_performance_timing(self, client, mock_startup_service, mock_database_service, sample_month_data):
+    def test_calendar_performance_timing(self, client, mock_startup_service, mock_database_service):
         """Test calendar endpoint response timing"""
         mock_startup_service.database = mock_database_service
+        
+        # Mock database methods
+        mock_database_service.get_days_with_data.return_value = ["2024-01-01", "2024-01-15"]
+        mock_database_service.get_all_namespaces.return_value = ["limitless"]
         
         import time
         start_time = time.time()
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_month_data', return_value=sample_month_data):
+        with patch('api.routes.calendar.get_config') as mock_config, \
+             patch('api.routes.calendar.get_sync_status_service') as mock_sync_service:
             
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/month/2024/1")
+            mock_sync_service.return_value = None
+            response = client.get("/calendar/api/month/2024/1")
         
         end_time = time.time()
         response_time = end_time - start_time
@@ -336,62 +349,60 @@ class TestCalendarRoutes:
         """Test calendar data filtering capabilities"""
         mock_startup_service.database = mock_database_service
         
-        filtered_data = {
-            "conversations": [
-                {
-                    "id": "limitless:conv1",
-                    "title": "Work Meeting",
-                    "category": "work",
-                    "start_time": "09:00"
-                }
-            ],
-            "activities": [
-                {
-                    "id": "limitless:act1",
-                    "title": "Exercise",
-                    "category": "fitness",
-                    "start_time": "07:00"
-                }
-            ],
-            "weather": {"temperature": 20},
-            "news": []
-        }
+        # Mock database methods for filtered data
+        sample_items = [
+            {
+                "id": "limitless:conv1",
+                "namespace": "limitless",
+                "content": "Work meeting content",
+                "metadata": {"title": "Work Meeting", "category": "work"}
+            }
+        ]
+        mock_database_service.get_data_items_by_date.return_value = sample_items
+        mock_database_service.get_markdown_by_date.return_value = "# Work Meeting\n\nWork meeting content"
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_day_data', return_value=filtered_data):
-            
+        with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/day/2024-01-15?category=work")
+            # Note: Query parameters are not implemented in current API
+            response = client.get("/calendar/api/day/2024-01-15")
         
         assert response.status_code == 200
-        # Note: Actual filtering logic would depend on implementation
+        data = response.json()
+        assert data["item_count"] == 1
+        assert data["has_data"] == True
     
-    def test_calendar_timezone_handling(self, client, mock_startup_service, mock_database_service, sample_calendar_data):
+    def test_calendar_timezone_handling(self, client, mock_startup_service, mock_database_service):
         """Test calendar handles timezone correctly"""
         mock_startup_service.database = mock_database_service
         
-        # Test with timezone parameter
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_day_data', return_value=sample_calendar_data["2024-01-15"]):
-            
+        # Mock database methods
+        mock_database_service.get_data_items_by_date.return_value = []
+        mock_database_service.get_markdown_by_date.return_value = "# 2024-01-15\n\nSample content"
+        
+        with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/day/2024-01-15?timezone=America/New_York")
+            # Note: Timezone parameters not implemented in current API
+            response = client.get("/calendar/api/day/2024-01-15")
         
         assert response.status_code == 200
-        # Timezone handling would be implementation-specific
+        data = response.json()
+        assert data["date"] == "2024-01-15"
+        assert data["formatted_date"] == "January 15, 2024"
     
-    def test_calendar_response_headers(self, client, mock_startup_service, mock_database_service, sample_month_data):
+    def test_calendar_response_headers(self, client, mock_startup_service, mock_database_service):
         """Test calendar endpoints include proper headers"""
         mock_startup_service.database = mock_database_service
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_month_data', return_value=sample_month_data):
+        # Mock database methods
+        mock_database_service.get_days_with_data.return_value = ["2024-01-01"]
+        mock_database_service.get_all_namespaces.return_value = ["limitless"]
+        
+        with patch('api.routes.calendar.get_config') as mock_config, \
+             patch('api.routes.calendar.get_sync_status_service') as mock_sync_service:
             
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/month/2024/1")
+            mock_sync_service.return_value = None
+            response = client.get("/calendar/api/month/2024/1")
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json"
@@ -400,22 +411,20 @@ class TestCalendarRoutes:
         """Test calendar with edge case dates"""
         mock_startup_service.database = mock_database_service
         
-        edge_case_data = {
-            "month": "February", 
-            "year": 2024,  # Leap year
-            "days": [],
-            "statistics": {}
-        }
+        # Mock database methods for leap year February
+        mock_database_service.get_days_with_data.return_value = ["2024-02-29"]  # Leap day
+        mock_database_service.get_all_namespaces.return_value = ["limitless"]
         
-        with patch('api.routes.calendar.get_startup_service_dependency', return_value=mock_startup_service), \
-             patch('api.routes.calendar.get_config') as mock_config, \
-             patch.object(mock_database_service, 'get_calendar_month_data', return_value=edge_case_data):
+        with patch('api.routes.calendar.get_config') as mock_config, \
+             patch('api.routes.calendar.get_sync_status_service') as mock_sync_service:
             
             mock_config.return_value = MagicMock()
+            mock_sync_service.return_value = None
             # Test leap year February
-            response = client.get("/calendar/month/2024/2")
+            response = client.get("/calendar/api/month/2024/2")
         
         assert response.status_code == 200
         data = response.json()
         assert data["year"] == 2024
-        assert data["month"] == "February"
+        assert data["month"] == 2
+        assert data["month_name"] == "February"

@@ -18,10 +18,12 @@ class TestSyncRoutes:
     """Test sync API endpoints"""
     
     @pytest.fixture
-    def app(self):
-        """Create FastAPI test application"""
+    def app(self, mock_startup_service):
+        """Create FastAPI test application with dependency overrides"""
+        from core.dependencies import get_startup_service_dependency
         app = FastAPI()
         app.include_router(router)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
         return app
     
     @pytest.fixture
@@ -52,8 +54,7 @@ class TestSyncRoutes:
     
     def test_trigger_sync_specific_source_success(self, client, mock_startup_service, mock_sync_manager):
         """Test triggering sync for a specific source"""
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/sync/trigger", json={"source": "limitless"})
+        response = client.post("/sync/trigger", json={"source": "limitless"})
         
         assert response.status_code == 200
         data = response.json()
@@ -71,8 +72,7 @@ class TestSyncRoutes:
     
     def test_trigger_sync_all_sources_success(self, client, mock_startup_service, mock_sync_manager):
         """Test triggering sync for all sources"""
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/sync/trigger", json={})
+        response = client.post("/sync/trigger", json={})
         
         assert response.status_code == 200
         data = response.json()
@@ -92,8 +92,7 @@ class TestSyncRoutes:
     
     def test_trigger_sync_nonexistent_source(self, client, mock_startup_service, mock_sync_manager):
         """Test triggering sync for non-existent source"""
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/sync/trigger", json={"source": "nonexistent"})
+        response = client.post("/sync/trigger", json={"source": "nonexistent"})
         
         assert response.status_code == 404
         data = response.json()
@@ -107,8 +106,7 @@ class TestSyncRoutes:
         """Test triggering sync when sync manager is unavailable"""
         mock_startup_service.sync_manager = None
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/sync/trigger", json={"source": "limitless"})
+        response = client.post("/sync/trigger", json={"source": "limitless"})
         
         assert response.status_code == 503
         data = response.json()
@@ -118,18 +116,17 @@ class TestSyncRoutes:
         """Test triggering sync when sync manager raises exception"""
         mock_sync_manager.sync_source.side_effect = Exception("Sync service connection failed")
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/sync/trigger", json={"source": "limitless"})
+        response = client.post("/sync/trigger", json={"source": "limitless"})
         
-        assert response.status_code == 500
+        # Background task should be queued successfully, error occurs during task execution
+        assert response.status_code == 200
         data = response.json()
-        assert "Failed to trigger sync" in data["detail"]
-        assert "Sync service connection failed" in data["detail"]
+        assert data["status"] == "triggered"
+        assert "limitless" in data["message"]
     
     def test_trigger_sync_empty_source_string(self, client, mock_startup_service, mock_sync_manager):
         """Test triggering sync with empty source string"""
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/sync/trigger", json={"source": ""})
+        response = client.post("/sync/trigger", json={"source": ""})
         
         # Empty string should trigger all sources sync
         assert response.status_code == 200
@@ -142,8 +139,7 @@ class TestSyncRoutes:
     
     def test_get_sync_status_success(self, client, mock_startup_service, mock_sync_manager):
         """Test getting sync status successfully"""
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.get("/sync/status")
+        response = client.get("/sync/status")
         
         assert response.status_code == 200
         data = response.json()
@@ -173,8 +169,7 @@ class TestSyncRoutes:
         """Test getting sync status when sync manager is unavailable"""
         mock_startup_service.sync_manager = None
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.get("/sync/status")
+        response = client.get("/sync/status")
         
         assert response.status_code == 503
         data = response.json()
@@ -184,8 +179,7 @@ class TestSyncRoutes:
         """Test getting sync status when ingestion service is unavailable"""
         mock_startup_service.ingestion_service = None
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.get("/sync/status")
+        response = client.get("/sync/status")
         
         assert response.status_code == 200
         data = response.json()
@@ -202,8 +196,7 @@ class TestSyncRoutes:
         # No scheduler attribute
         delattr(mock_startup_service.sync_manager, 'scheduler')
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.get("/sync/status")
+        response = client.get("/sync/status")
         
         assert response.status_code == 200
         data = response.json()
@@ -216,8 +209,7 @@ class TestSyncRoutes:
         # Mock ingestion_service to raise exception when accessing sources
         mock_startup_service.ingestion_service.sources = property(lambda self: exec('raise Exception("Database error")'))
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.get("/sync/status")
+        response = client.get("/sync/status")
         
         assert response.status_code == 500
         data = response.json()
@@ -228,8 +220,7 @@ class TestSyncRoutes:
         # Add twitter to sources
         mock_startup_service.ingestion_service.sources["twitter"] = MagicMock()
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/api/sync/twitter")
+        response = client.post("/api/sync/twitter")
         
         assert response.status_code == 200
         data = response.json()
@@ -247,8 +238,7 @@ class TestSyncRoutes:
             'news': MagicMock()
         }
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/api/sync/twitter")
+        response = client.post("/api/sync/twitter")
         
         assert response.status_code == 404
         data = response.json()
@@ -290,8 +280,7 @@ class TestSyncRoutes:
     
     def test_sync_invalid_json_payload(self, client, mock_startup_service):
         """Test sync endpoint with invalid JSON payload"""
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/sync/trigger", json={"invalid_field": "test"})
+        response = client.post("/sync/trigger", json={"invalid_field": "test"})
         
         # Should still work since SyncTriggerRequest allows additional fields to be ignored
         assert response.status_code == 200
@@ -300,8 +289,7 @@ class TestSyncRoutes:
     
     def test_sync_endpoint_cors_headers(self, client, mock_startup_service, mock_sync_manager):
         """Test sync endpoints include proper headers"""
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/sync/trigger", json={"source": "limitless"})
+        response = client.post("/sync/trigger", json={"source": "limitless"})
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json"
@@ -311,8 +299,7 @@ class TestSyncRoutes:
         import time
         start_time = time.time()
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.post("/sync/trigger", json={"source": "limitless"})
+        response = client.post("/sync/trigger", json={"source": "limitless"})
         
         end_time = time.time()
         response_time = end_time - start_time
@@ -326,8 +313,7 @@ class TestSyncRoutes:
         import time
         start_time = time.time()
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            response = client.get("/sync/status")
+        response = client.get("/sync/status")
         
         end_time = time.time()
         response_time = end_time - start_time
@@ -345,9 +331,8 @@ class TestSyncRoutes:
         
         def trigger_sync(source):
             try:
-                with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-                    response = client.post("/sync/trigger", json={"source": source})
-                    responses.append(response.status_code)
+                response = client.post("/sync/trigger", json={"source": source})
+                responses.append(response.status_code)
             except Exception as e:
                 errors.append(e)
         
@@ -381,9 +366,9 @@ class TestSyncRoutes:
         def mock_add_task(func, *args, **kwargs):
             task_calls.append((func, args, kwargs))
         
-        with patch('api.routes.sync.get_startup_service_dependency', return_value=mock_startup_service):
-            with patch.object(BackgroundTasks, 'add_task', mock_add_task):
-                response = client.post("/sync/trigger", json={"source": "limitless"})
+
+        with patch.object(BackgroundTasks, 'add_task', mock_add_task):
+            response = client.post("/sync/trigger", json={"source": "limitless"})
         
         assert response.status_code == 200
         

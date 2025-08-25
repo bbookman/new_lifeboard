@@ -40,6 +40,8 @@ async def trigger_sync(
                 background_tasks.add_task(sync_manager.sync_source, source)
             return SyncResponse(status="triggered", message=f"Sync triggered for all sources: {available_sources}")
             
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to trigger sync: {str(e)}")
 
@@ -71,6 +73,8 @@ async def get_sync_status(
             "scheduler_running": hasattr(sync_manager, 'scheduler') and sync_manager.scheduler is not None
         }
         
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get sync status: {str(e)}")
 

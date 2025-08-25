@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 
-from api.server import create_app
+from api.server import app
 
 
 class TestEndpointAvailability:
@@ -18,7 +18,6 @@ class TestEndpointAvailability:
     @pytest.fixture
     def client(self):
         """Create test client with mocked dependencies to avoid initialization issues."""
-        app = create_app()
         
         # Mock the startup service dependency to avoid "Application not initialized" 
         from core.dependencies import get_startup_service_dependency

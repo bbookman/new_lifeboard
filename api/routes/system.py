@@ -14,7 +14,7 @@ from typing import List
 
 from config.factory import create_production_config
 from core.exception_handling import handle_api_exceptions
-from services.startup import StartupService
+from services.startup import StartupService, initialize_application, shutdown_application
 from core.dependencies import get_startup_service_dependency
 
 logger = logging.getLogger(__name__)
@@ -40,16 +40,16 @@ class SearchResult(BaseModel):
     date: str
 
 @router.post("/search")
-@handle_api_exceptions("Search failed", 500)
 async def search_data(
     request: SearchRequest,
     startup_service: StartupService = Depends(get_startup_service_dependency)
 ) -> List[SearchResult]:
     """Search through data using embeddings"""
+    from fastapi import HTTPException
+    
     try:
         chat_service = startup_service.chat_service
         if not chat_service:
-            from fastapi import HTTPException
             raise HTTPException(status_code=503, detail="Chat service not available")
         
         # Use the chat service's search functionality
@@ -68,9 +68,11 @@ async def search_data(
         
         return search_results
         
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is (preserve status codes)
+        raise
     except Exception as e:
         logger.error(f"Search error: {e}")
-        from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
@@ -78,8 +80,6 @@ async def search_data(
 @handle_api_exceptions("System initialization failed", 500)
 async def initialize_system():
     """Initialize the application system"""
-    from services.startup import initialize_application
-    
     config = create_production_config()
     result = await initialize_application(config)
     
@@ -94,8 +94,6 @@ async def initialize_system():
 @handle_api_exceptions("System shutdown failed", 500)
 async def shutdown_system():
     """Shutdown the application system gracefully"""
-    from services.startup import shutdown_application
-    
     await shutdown_application()
     
     return SystemResponse(

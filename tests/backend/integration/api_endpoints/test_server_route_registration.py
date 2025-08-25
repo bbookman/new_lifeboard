@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from api.server import create_app
+from api.server import app
 
 
 class TestServerRouteRegistration:
@@ -57,7 +57,7 @@ class TestServerRouteRegistration:
     def test_app_creation_succeeds_with_all_routes(self):
         """Test that FastAPI app can be created successfully with all routes."""
         try:
-            app = create_app()
+            # Use the existing app instance
             assert app is not None, "App creation should succeed"
             assert app.title == "Lifeboard API", "App should have correct title"
         except ImportError as e:
@@ -67,7 +67,7 @@ class TestServerRouteRegistration:
 
     def test_all_expected_routes_are_registered_in_app(self):
         """Test that all expected routes are actually registered in the FastAPI app."""
-        app = create_app()
+        # Use the existing app instance
         
         # Get all registered routes
         route_paths = [route.path for route in app.routes if hasattr(route, 'path')]
@@ -93,8 +93,8 @@ class TestServerRouteRegistration:
             # Import server module - this should not raise ImportError
             import api.server
             
-            # Try to create the app - this triggers all route imports
-            app = api.server.create_app()
+            # Check the existing app - this validates all route imports
+            app_instance = api.server.app
             
             # If we get here, no import errors occurred
             assert True, "Server startup completed without import errors"
@@ -122,6 +122,6 @@ class TestServerRouteRegistration:
         server_content = server_file.read_text()
         
         # Check for key structural elements
-        assert "def create_app" in server_content, "server.py should have create_app function"
+        assert "app = FastAPI" in server_content, "server.py should create FastAPI app instance"
         assert "app.include_router" in server_content, "server.py should register routers"
         assert "FastAPI(" in server_content, "server.py should create FastAPI instance"
