@@ -137,7 +137,7 @@ class TestCalendarRoutes:
             
             mock_config.return_value = MagicMock()
             mock_sync_service.return_value = None  # No sync service available
-            response = client.get("/calendar/api/month/2024/1")
+            response = client.get("/calendar/month/2024/1")
         
         assert response.status_code == 200
         data = response.json()
@@ -174,7 +174,7 @@ class TestCalendarRoutes:
         
         with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/api/day/2024-01-15")
+            response = client.get("/calendar/day/2024-01-15")
         
         assert response.status_code == 200
         data = response.json()
@@ -203,11 +203,11 @@ class TestCalendarRoutes:
             mock_config.return_value = MagicMock()
             
             # Invalid month - should get 400 error from validation
-            response = client.get("/calendar/api/month/2024/13")
+            response = client.get("/calendar/month/2024/13")
             assert response.status_code == 400
             
             # Invalid year - should get 422 from FastAPI validation
-            response = client.get("/calendar/api/month/abc/1")
+            response = client.get("/calendar/month/abc/1")
             assert response.status_code == 422
     
     def test_calendar_day_view_invalid_date(self, client, mock_startup_service, mock_database_service):
@@ -218,11 +218,11 @@ class TestCalendarRoutes:
             mock_config.return_value = MagicMock()
             
             # Invalid date format - should get 400 error from date parsing
-            response = client.get("/calendar/api/day/invalid-date")
+            response = client.get("/calendar/day/invalid-date")
             assert response.status_code == 400
             
             # Non-existent date - should get 400 error from date parsing
-            response = client.get("/calendar/api/day/2024-02-30")
+            response = client.get("/calendar/day/2024-02-30")
             assert response.status_code == 400
     
     def test_calendar_database_service_unavailable(self, client):
@@ -243,7 +243,7 @@ class TestCalendarRoutes:
         from fastapi.testclient import TestClient
         client_no_db = TestClient(app)
         
-        response = client_no_db.get("/calendar/api/month/2024/1")
+        response = client_no_db.get("/calendar/month/2024/1")
         
         assert response.status_code == 503
         data = response.json()
@@ -262,7 +262,7 @@ class TestCalendarRoutes:
             
             mock_config.return_value = MagicMock()
             mock_sync_service.return_value = None
-            response = client.get("/calendar/api/month/2024/1")
+            response = client.get("/calendar/month/2024/1")
         
         assert response.status_code == 500
     
@@ -279,7 +279,7 @@ class TestCalendarRoutes:
             
             mock_config.return_value = MagicMock()
             mock_sync_service.return_value = None
-            response = client.get("/calendar/api/month/2024/2")
+            response = client.get("/calendar/month/2024/2")
         
         assert response.status_code == 200
         data = response.json()
@@ -293,7 +293,7 @@ class TestCalendarRoutes:
         
         with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/api/today")
+            response = client.get("/calendar/today")
         
         assert response.status_code == 200
         data = response.json()
@@ -310,7 +310,7 @@ class TestCalendarRoutes:
         
         with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
-            response = client.get("/calendar/api/day/2024-01-20")
+            response = client.get("/calendar/day/2024-01-20")
         
         assert response.status_code == 200
         data = response.json()
@@ -336,7 +336,7 @@ class TestCalendarRoutes:
             
             mock_config.return_value = MagicMock()
             mock_sync_service.return_value = None
-            response = client.get("/calendar/api/month/2024/1")
+            response = client.get("/calendar/month/2024/1")
         
         end_time = time.time()
         response_time = end_time - start_time
@@ -364,7 +364,7 @@ class TestCalendarRoutes:
         with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
             # Note: Query parameters are not implemented in current API
-            response = client.get("/calendar/api/day/2024-01-15")
+            response = client.get("/calendar/day/2024-01-15")
         
         assert response.status_code == 200
         data = response.json()
@@ -382,7 +382,7 @@ class TestCalendarRoutes:
         with patch('api.routes.calendar.get_config') as mock_config:
             mock_config.return_value = MagicMock()
             # Note: Timezone parameters not implemented in current API
-            response = client.get("/calendar/api/day/2024-01-15")
+            response = client.get("/calendar/day/2024-01-15")
         
         assert response.status_code == 200
         data = response.json()
@@ -402,7 +402,7 @@ class TestCalendarRoutes:
             
             mock_config.return_value = MagicMock()
             mock_sync_service.return_value = None
-            response = client.get("/calendar/api/month/2024/1")
+            response = client.get("/calendar/month/2024/1")
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json"
@@ -421,7 +421,7 @@ class TestCalendarRoutes:
             mock_config.return_value = MagicMock()
             mock_sync_service.return_value = None
             # Test leap year February
-            response = client.get("/calendar/api/month/2024/2")
+            response = client.get("/calendar/month/2024/2")
         
         assert response.status_code == 200
         data = response.json()

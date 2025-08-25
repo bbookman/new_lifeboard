@@ -18,7 +18,7 @@ from core.dependencies import get_startup_service_dependency
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="", tags=["chat"])
+router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 def get_chat_service_for_route(startup_service: StartupService = Depends(get_startup_service_dependency)) -> ChatService:
     """Get the chat service instance for route dependency injection"""
@@ -46,7 +46,7 @@ class ChatHistoryResponse(BaseModel):
 
 
 # JSON API endpoints for React frontend
-@router.post("/api/chat/send")
+@router.post("/send")
 @handle_api_exceptions("Failed to send chat message", 500, include_details=True)
 async def send_chat_message(
     request_data: ChatMessageRequest,
@@ -67,7 +67,7 @@ async def send_chat_message(
         raise HTTPException(status_code=500, detail="Failed to process chat message")
 
 
-@router.get("/api/chat/history")
+@router.get("/history")
 @handle_api_exceptions("Failed to get chat history", 500, include_details=True)
 async def get_chat_history_api(
     limit: int = 20,

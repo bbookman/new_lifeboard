@@ -19,7 +19,7 @@ from core.dependencies import get_startup_service_dependency
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="", tags=["system"])
+router = APIRouter(prefix="/api/system", tags=["system"])
 
 
 class SystemResponse(BaseModel):
@@ -76,7 +76,7 @@ async def search_data(
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
-@router.post("/api/system/startup", response_model=SystemResponse)
+@router.post("/startup", response_model=SystemResponse)
 @handle_api_exceptions("System initialization failed", 500)
 async def initialize_system():
     """Initialize the application system"""
@@ -90,7 +90,7 @@ async def initialize_system():
     )
 
 
-@router.post("/api/system/shutdown", response_model=SystemResponse)
+@router.post("/shutdown", response_model=SystemResponse)
 @handle_api_exceptions("System shutdown failed", 500)
 async def shutdown_system():
     """Shutdown the application system gracefully"""

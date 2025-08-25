@@ -220,7 +220,7 @@ class TestSyncRoutes:
         # Add twitter to sources
         mock_startup_service.ingestion_service.sources["twitter"] = MagicMock()
         
-        response = client.post("/api/sync/twitter")
+        response = client.post("/sync/twitter")
         
         assert response.status_code == 200
         data = response.json()
@@ -238,7 +238,7 @@ class TestSyncRoutes:
             'news': MagicMock()
         }
         
-        response = client.post("/api/sync/twitter")
+        response = client.post("/sync/twitter")
         
         assert response.status_code == 404
         data = response.json()

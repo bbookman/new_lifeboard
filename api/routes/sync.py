@@ -79,7 +79,7 @@ async def get_sync_status(
         raise HTTPException(status_code=500, detail=f"Failed to get sync status: {str(e)}")
 
 
-@router.post("/api/sync/twitter")
+@router.post("/sync/twitter")
 async def sync_twitter(
     background_tasks: BackgroundTasks,
     startup_service: StartupService = Depends(get_startup_service_dependency)
