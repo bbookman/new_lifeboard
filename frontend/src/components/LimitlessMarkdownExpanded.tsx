@@ -1,7 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { useState, useEffect } from "react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
@@ -61,15 +60,7 @@ export const LimitlessMarkdownExpanded = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="sticky top-0 bg-white shadow-sm z-10 p-4 border-b">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <Button
-            variant="ghost"
-            onClick={() => window.close()}
-            className="flex items-center space-x-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Close</span>
-          </Button>
+        <div className="max-w-5xl mx-auto">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-newspaper-headline">
               {data.title}
@@ -79,7 +70,6 @@ export const LimitlessMarkdownExpanded = () => {
               <span className="text-sm text-newspaper-byline">{data.timestamp}</span>
             </div>
           </div>
-          <div className="w-16"></div> {/* Spacer for centering */}
         </div>
       </div>
 

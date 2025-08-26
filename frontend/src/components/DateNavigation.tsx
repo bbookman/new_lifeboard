@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { format, subDays, addDays, isToday } from 'date-fns';
+import { useNavigate } from "react-router-dom";
 import { Button } from "./ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getTodayYYYYMMDD } from "../lib/utils";
 
 interface DateNavigationProps {
   selectedDate?: string;
   onDateChange?: (date: string) => void;
   isDayViewActive: boolean;
+  isExpandedView?: boolean;
 }
 
-export const DateNavigation = ({ selectedDate, onDateChange, isDayViewActive }: DateNavigationProps) => {
+export const DateNavigation = ({ selectedDate, onDateChange, isDayViewActive, isExpandedView }: DateNavigationProps) => {
+  const navigate = useNavigate();
   const [displayDate, setDisplayDate] = useState<string>('');
   const [todayDate, setTodayDate] = useState<string>('');
 
@@ -59,7 +62,29 @@ export const DateNavigation = ({ selectedDate, onDateChange, isDayViewActive }: 
     }
   }, [todayDate, handleDateChange]);
 
+  const handleClose = useCallback(() => {
+    // Try to go back in history first
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      // Fallback to day view if no history
+      navigate('/day');
+    }
+  }, [navigate]);
+
   const isDisplayDateToday = displayDate ? isToday(new Date(displayDate + 'T00:00:00')) : false;
+
+  // If we're in expanded view, show close button
+  if (isExpandedView) {
+    return (
+      <div className="flex justify-center items-center space-x-2">
+        <Button variant="outline" onClick={handleClose} className="flex items-center space-x-2">
+          <X className="h-4 w-4" />
+          <span>Close</span>
+        </Button>
+      </div>
+    );
+  }
 
   if (!isDayViewActive) {
     return null; // Only render if DayView is active

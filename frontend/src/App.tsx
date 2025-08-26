@@ -49,6 +49,9 @@ function MainLayout() {
     return 'day';
   }, [location.pathname]);
 
+  // Check if we're on the expanded limitless view
+  const isExpandedView = location.pathname === '/limitless-expanded';
+
   const [activeView, setActiveView] = useState(getActiveView());
   const [formattedDate, setFormattedDate] = useState('Loading...');
 
@@ -99,6 +102,7 @@ function MainLayout() {
           selectedDate={effectiveDate}
           onDateChange={handleDateChange}
           isDayViewActive={activeView === 'day'}
+          isExpandedView={isExpandedView}
         />
       </div>
       

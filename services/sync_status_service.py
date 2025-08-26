@@ -155,6 +155,24 @@ class SyncStatusService(BaseService):
             self.sources[namespace] = SourceSyncInfo(namespace, source_type)
             logger.info(f"Registered new source for sync tracking: {namespace} ({source_type})")
             
+    def _is_source_enabled(self, namespace: str) -> bool:
+        """Check if a source is enabled and should be included in progress calculations"""
+        try:
+            if namespace == "limitless":
+                return self.config.limitless.is_api_key_configured()
+            elif namespace == "news":
+                return self.config.news.is_fully_configured()
+            elif namespace == "weather":
+                return self.config.weather.is_fully_configured()
+            elif namespace == "twitter":
+                return self.config.twitter.is_configured()
+            else:
+                # Unknown source, assume enabled if registered
+                return True
+        except Exception as e:
+            logger.warning(f"Error checking if source {namespace} is enabled: {e}")
+            return True  # Default to enabled on error
+            
     def start_global_sync(self):
         """Mark the start of global sync process"""
         self.global_sync_started_at = datetime.now(timezone.utc)
@@ -234,11 +252,15 @@ class SyncStatusService(BaseService):
         
     def get_overall_status(self) -> Dict[str, Any]:
         """Get overall sync status including all sources"""
-        completed_sources = sum(1 for s in self.sources.values() 
+        # Filter to only include enabled sources in calculations
+        enabled_sources = {ns: source for ns, source in self.sources.items() 
+                          if self._is_source_enabled(ns)}
+        
+        completed_sources = sum(1 for s in enabled_sources.values() 
                               if s.status in [SyncStatus.COMPLETED, SyncStatus.SKIPPED])
-        failed_sources = sum(1 for s in self.sources.values() if s.status == SyncStatus.FAILED)
-        in_progress_sources = sum(1 for s in self.sources.values() if s.status == SyncStatus.IN_PROGRESS)
-        total_sources = len(self.sources)
+        failed_sources = sum(1 for s in enabled_sources.values() if s.status == SyncStatus.FAILED)
+        in_progress_sources = sum(1 for s in enabled_sources.values() if s.status == SyncStatus.IN_PROGRESS)
+        total_sources = len(enabled_sources)
         
         is_complete = completed_sources + failed_sources == total_sources
         is_in_progress = in_progress_sources > 0
@@ -247,7 +269,7 @@ class SyncStatusService(BaseService):
         if total_sources == 0:
             overall_progress = 100.0
         else:
-            total_progress = sum(s.progress_percentage for s in self.sources.values())
+            total_progress = sum(s.progress_percentage for s in enabled_sources.values())
             overall_progress = total_progress / total_sources
             
         return {
@@ -261,7 +283,7 @@ class SyncStatusService(BaseService):
             "global_started_at": self.global_sync_started_at.isoformat() if self.global_sync_started_at else None,
             "global_completed_at": self.global_sync_completed_at.isoformat() if self.global_sync_completed_at else None,
             "global_duration_seconds": self._calculate_global_duration(),
-            "sources": {namespace: source.to_dict() for namespace, source in self.sources.items()}
+            "sources": {namespace: source.to_dict() for namespace, source in enabled_sources.items()}
         }
         
     def _calculate_global_duration(self) -> Optional[float]:

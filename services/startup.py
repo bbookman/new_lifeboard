@@ -490,9 +490,10 @@ class StartupService:
                         logger.info(f"Background sync completed for {namespace}: {result.items_processed} processed")
                         
                     else:
-                        logger.info(f"Skipping background sync for {namespace} - not due for sync yet")
-                        self.sync_status_service.skip_source_sync(namespace, "Not due for sync")
-                        sync_results[namespace] = {"skipped": True, "reason": "Not due for sync"}
+                        logger.info(f"Background sync not needed for {namespace} - last sync is recent")
+                        # Mark as completed since the last sync was successful and recent
+                        self.sync_status_service.complete_source_sync(namespace, 0, 0)
+                        sync_results[namespace] = {"completed": True, "reason": "Recent sync available, no new sync needed"}
                     
                 except Exception as e:
                     error_msg = f"Background sync failed for {namespace}: {str(e)}"
