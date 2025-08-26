@@ -7,6 +7,7 @@ Provides calendar interface with month view navigation and day detail views.
 import logging
 import os
 import re
+import json
 from datetime import datetime, date, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends
@@ -768,6 +769,7 @@ async def get_data_items_for_date(
         try:
             parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
         except ValueError:
+            logger.error(f"[DATA_ITEMS API DEBUG] Invalid date format: {date}")
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
         # Parse namespaces parameter if provided
@@ -775,31 +777,111 @@ async def get_data_items_for_date(
         if namespaces:
             namespace_list = [ns.strip() for ns in namespaces.split(",")]
         
+        # Enhanced debug logging
+        logger.info(f"[DATA_ITEMS API DEBUG] === REQUEST START ===")
+        logger.info(f"[DATA_ITEMS API DEBUG] Date: {date} (parsed: {parsed_date})")
+        logger.info(f"[DATA_ITEMS API DEBUG] Namespaces param: '{namespaces}'")
+        logger.info(f"[DATA_ITEMS API DEBUG] Namespace list: {namespace_list}")
+        
+        # Check what Twitter data exists in database
+        if namespace_list and 'twitter' in namespace_list:
+            logger.info(f"[DATA_ITEMS API DEBUG] Checking Twitter data in database...")
+            
+            # Get all Twitter data for debugging
+            all_twitter_items = database.get_data_items_by_date(date, ['twitter'])
+            logger.info(f"[DATA_ITEMS API DEBUG] Found {len(all_twitter_items)} Twitter items for {date}")
+            
+            # Check for different Twitter source types
+            if all_twitter_items:
+                source_types = {}
+                for item in all_twitter_items:
+                    metadata = item.get('metadata', {})
+                    if isinstance(metadata, str):
+                        try:
+                            metadata = json.loads(metadata)
+                        except:
+                            metadata = {}
+                    
+                    source_type = metadata.get('source_type', 'unknown')
+                    if source_type not in source_types:
+                        source_types[source_type] = []
+                    source_types[source_type].append(item.get('id'))
+                
+                logger.info(f"[DATA_ITEMS API DEBUG] Twitter source types found:")
+                for source_type, item_ids in source_types.items():
+                    logger.info(f"[DATA_ITEMS API DEBUG]   - {source_type}: {len(item_ids)} items")
+                    logger.info(f"[DATA_ITEMS API DEBUG]     Sample IDs: {item_ids[:3]}")
+        
         # Get data items for the date
-        logger.info(f"[DATA_ITEMS API] Requesting data items for date {date} with namespaces {namespace_list}")
+        logger.info(f"[DATA_ITEMS API DEBUG] Calling database.get_data_items_by_date...")
         data_items = database.get_data_items_by_date(date, namespace_list)
         
-        logger.info(f"[DATA_ITEMS API] Retrieved {len(data_items)} data items for date {date}")
+        logger.info(f"[DATA_ITEMS API DEBUG] Retrieved {len(data_items)} data items for date {date}")
         
-        # Log first item details for debugging
+        # Enhanced item analysis for debugging
         if data_items:
-            first_item = data_items[0]
-            logger.info(f"[DATA_ITEMS API] First item: id={first_item.get('id')}, namespace={first_item.get('namespace')}, has_content={bool(first_item.get('content'))}, has_metadata={bool(first_item.get('metadata'))}")
+            logger.info(f"[DATA_ITEMS API DEBUG] === ITEM ANALYSIS ===")
             
-            metadata = first_item.get('metadata', {})
-            if isinstance(metadata, dict):
-                logger.info(f"[DATA_ITEMS API] First item metadata keys: {list(metadata.keys())}")
-                if 'cleaned_markdown' in metadata:
-                    cleaned_md = metadata['cleaned_markdown']
-                    logger.info(f"[DATA_ITEMS API] First item cleaned_markdown length: {len(cleaned_md)}")
-                    logger.info(f"[DATA_ITEMS API] First item cleaned_markdown preview: {cleaned_md[:200]}...")
-        else:
-            logger.warning(f"[DATA_ITEMS API] No data items found for date {date} with namespaces {namespace_list}")
+            # Analyze first few items
+            for i, item in enumerate(data_items[:3]):
+                logger.info(f"[DATA_ITEMS API DEBUG] Item {i+1}:")
+                logger.info(f"[DATA_ITEMS API DEBUG]   ID: {item.get('id')}")
+                logger.info(f"[DATA_ITEMS API DEBUG]   Namespace: {item.get('namespace')}")
+                logger.info(f"[DATA_ITEMS API DEBUG]   Source ID: {item.get('source_id')}")
+                logger.info(f"[DATA_ITEMS API DEBUG]   Content length: {len(item.get('content', ''))}")
+                logger.info(f"[DATA_ITEMS API DEBUG]   Content preview: {repr(item.get('content', '')[:50])}")
+                logger.info(f"[DATA_ITEMS API DEBUG]   Days date: {item.get('days_date')}")
+                logger.info(f"[DATA_ITEMS API DEBUG]   Created at: {item.get('created_at')}")
+                
+                metadata = item.get('metadata', {})
+                metadata_type = type(metadata).__name__
+                logger.info(f"[DATA_ITEMS API DEBUG]   Metadata type: {metadata_type}")
+                
+                # Parse metadata if it's a string
+                if isinstance(metadata, str):
+                    try:
+                        parsed_metadata = json.loads(metadata)
+                        logger.info(f"[DATA_ITEMS API DEBUG]   Metadata keys: {list(parsed_metadata.keys())}")
+                        logger.info(f"[DATA_ITEMS API DEBUG]   Source type: {parsed_metadata.get('source_type')}")
+                        
+                        # Check for media info
+                        if 'media' in parsed_metadata:
+                            media_info = parsed_metadata['media']
+                            logger.info(f"[DATA_ITEMS API DEBUG]   Media info: {media_info}")
+                        
+                    except Exception as parse_error:
+                        logger.warning(f"[DATA_ITEMS API DEBUG]   Failed to parse metadata: {parse_error}")
+                        logger.info(f"[DATA_ITEMS API DEBUG]   Raw metadata (first 100 chars): {repr(metadata[:100])}")
+                elif isinstance(metadata, dict):
+                    logger.info(f"[DATA_ITEMS API DEBUG]   Metadata keys: {list(metadata.keys())}")
+                    logger.info(f"[DATA_ITEMS API DEBUG]   Source type: {metadata.get('source_type')}")
+                    
+                    # Check for media info
+                    if 'media' in metadata:
+                        media_info = metadata['media']
+                        logger.info(f"[DATA_ITEMS API DEBUG]   Media info: {media_info}")
+                else:
+                    logger.info(f"[DATA_ITEMS API DEBUG]   Metadata: {repr(metadata)}")
         
+        else:
+            logger.warning(f"[DATA_ITEMS API DEBUG] No data items found for date {date} with namespaces {namespace_list}")
+            
+            # Debug: Check if data exists for this date with any namespace
+            all_date_items = database.get_data_items_by_date(date, None)
+            logger.info(f"[DATA_ITEMS API DEBUG] Total items for {date} (all namespaces): {len(all_date_items)}")
+            
+            if all_date_items:
+                namespaces_found = set()
+                for item in all_date_items:
+                    namespaces_found.add(item.get('namespace'))
+                logger.info(f"[DATA_ITEMS API DEBUG] Namespaces available for {date}: {sorted(namespaces_found)}")
+        
+        logger.info(f"[DATA_ITEMS API DEBUG] === REQUEST END ===")
         return data_items
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting data items for {date}: {e}")
+        logger.error(f"[DATA_ITEMS API DEBUG] Error getting data items for {date}: {e}")
+        logger.exception("Full exception details:")
         raise HTTPException(status_code=500, detail="Failed to get data items")

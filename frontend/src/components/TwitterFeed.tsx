@@ -129,18 +129,50 @@ const convertDataItemToContentItem = (dataItem: DataItem): ContentItemData => {
     console.log(`❌ [convertDataItemToContentItem] No media found for ${dataItem.id}`);
   }
 
+  // Handle different data source formats (API vs Archive)
+  const isArchiveData = parsedMetadata.source_type === 'twitter_archive';
+  
+  console.log(`🔍 [convertDataItemToContentItem] Data source type: ${parsedMetadata.source_type || 'unknown'}`);
+  console.log(`🔍 [convertDataItemToContentItem] Is archive data: ${isArchiveData}`);
+  
+  let username, handle, timestamp, likes, retweets, url, verified;
+  
+  if (isArchiveData) {
+    // Twitter Archive format - extract from different locations
+    username = "Twitter User"; // Archive doesn't typically include username
+    handle = "@user"; // Archive doesn't typically include handle
+    timestamp = parsedMetadata.original_created_at || dataItem.created_at;
+    likes = 0; // Archive doesn't include engagement metrics
+    retweets = 0; // Archive doesn't include engagement metrics
+    url = null; // Archive doesn't include URL
+    verified = false; // Archive doesn't include verification status
+    
+    console.log(`🔍 [convertDataItemToContentItem] Archive format - using defaults for missing fields`);
+  } else {
+    // API format - use original field mappings
+    username = parsedMetadata.username || parsedMetadata.author || "Twitter User";
+    handle = parsedMetadata.handle || parsedMetadata.screen_name || "@user";
+    timestamp = parsedMetadata.timestamp || dataItem.created_at;
+    likes = parsedMetadata.likes || parsedMetadata.favorite_count;
+    retweets = parsedMetadata.retweets || parsedMetadata.retweet_count;
+    url = parsedMetadata.url || parsedMetadata.permalink_url;
+    verified = parsedMetadata.verified || false;
+    
+    console.log(`🔍 [convertDataItemToContentItem] API format - using extracted fields`);
+  }
+
   const result = {
     type: "content-item" as const,
     id: dataItem.id,
-    username: parsedMetadata.username || parsedMetadata.author || "Twitter User",
-    handle: parsedMetadata.handle || parsedMetadata.screen_name || "@user",
+    username,
+    handle,
     content: dataItem.content,
-    timestamp: parsedMetadata.timestamp || dataItem.created_at,
-    verified: parsedMetadata.verified || false,
+    timestamp,
+    verified,
     source: "twitter" as const,
-    likes: parsedMetadata.likes || parsedMetadata.favorite_count,
-    retweets: parsedMetadata.retweets || parsedMetadata.retweet_count,
-    url: parsedMetadata.url || parsedMetadata.permalink_url,
+    likes,
+    retweets,
+    url,
     hasMedia,
     mediaUrl
   };
@@ -231,10 +263,12 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
 
   useEffect(() => {
     const fetchTweets = async () => {
-      console.log(`[TwitterFeed] useEffect triggered with selectedDate: ${selectedDate}`);
+      console.log(`[TwitterFeed DEBUG] === FETCH START ===`);
+      console.log(`[TwitterFeed DEBUG] useEffect triggered with selectedDate: ${selectedDate}`);
+      console.log(`[TwitterFeed DEBUG] Current component state - loading: ${loading}, error: ${error}, dataLength: ${twitterData.length}`);
       
       if (!selectedDate) {
-        console.log(`[TwitterFeed] No selectedDate provided, setting loading to false`);
+        console.log(`[TwitterFeed DEBUG] No selectedDate provided, setting loading to false`);
         setLoading(false);
         return;
       }
@@ -243,36 +277,117 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
         setLoading(true);
         setError(null);
         
-        console.log(`[TwitterFeed] Fetching Twitter data items for date: ${selectedDate}`);
+        console.log(`[TwitterFeed DEBUG] Calling fetchTwitterDataItems for date: ${selectedDate}`);
+        console.log(`[TwitterFeed DEBUG] API URL will be: /calendar/data_items/${selectedDate}?namespaces=twitter`);
+        
         const dataItems = await fetchTwitterDataItems(selectedDate);
-        console.log(`[TwitterFeed] Fetched ${dataItems.length} Twitter data items for ${selectedDate}:`, dataItems);
+        
+        console.log(`[TwitterFeed DEBUG] === API RESPONSE ANALYSIS ===`);
+        console.log(`[TwitterFeed DEBUG] Raw API response:`, dataItems);
+        console.log(`[TwitterFeed DEBUG] Response type:`, typeof dataItems);
+        console.log(`[TwitterFeed DEBUG] Is array:`, Array.isArray(dataItems));
+        console.log(`[TwitterFeed DEBUG] Length:`, dataItems?.length || 0);
+        
+        if (!dataItems) {
+          console.error(`[TwitterFeed DEBUG] API returned null/undefined`);
+          setTwitterData([]);
+          return;
+        }
+
+        if (!Array.isArray(dataItems)) {
+          console.error(`[TwitterFeed DEBUG] API returned non-array:`, dataItems);
+          setTwitterData([]);
+          return;
+        }
+        
+        console.log(`[TwitterFeed DEBUG] Successfully fetched ${dataItems.length} Twitter data items for ${selectedDate}`);
+        
+        // Analyze each raw data item
+        if (dataItems.length > 0) {
+          console.log(`[TwitterFeed DEBUG] === RAW DATA ANALYSIS ===`);
+          dataItems.slice(0, 3).forEach((item, index) => {
+            console.log(`[TwitterFeed DEBUG] Raw Item ${index + 1}:`, {
+              id: item.id,
+              namespace: item.namespace,
+              source_id: item.source_id,
+              content: item.content?.substring(0, 50) + (item.content?.length > 50 ? '...' : ''),
+              contentLength: item.content?.length || 0,
+              days_date: item.days_date,
+              metadataType: typeof item.metadata,
+              metadataKeys: typeof item.metadata === 'object' && item.metadata ? Object.keys(item.metadata) : 'n/a'
+            });
+          });
+        }
         
         // Check if we're looking at the right date with media
+        console.log(`[TwitterFeed DEBUG] === MEDIA ANALYSIS ===`);
         const mediaCount = dataItems.filter(item => {
           try {
-            const meta = JSON.parse(item.metadata);
-            return meta.media?.has_media === true;
-          } catch {
+            let meta = item.metadata;
+            if (typeof meta === 'string') {
+              meta = JSON.parse(meta);
+            }
+            const hasMedia = meta.media?.has_media === true;
+            console.log(`[TwitterFeed DEBUG] Item ${item.id} has media:`, hasMedia, 'media obj:', meta.media);
+            return hasMedia;
+          } catch (e) {
+            console.warn(`[TwitterFeed DEBUG] Error parsing metadata for ${item.id}:`, e);
             return false;
           }
         }).length;
-        console.log(`[TwitterFeed] Items with media on ${selectedDate}: ${mediaCount}/${dataItems.length}`);
+        console.log(`[TwitterFeed DEBUG] Items with media on ${selectedDate}: ${mediaCount}/${dataItems.length}`);
         
         // Convert database items to ContentItemData format
-        const contentItems = dataItems.map(convertDataItemToContentItem);
-        console.log(`[TwitterFeed] Converted to ${contentItems.length} content items:`, contentItems);
+        console.log(`[TwitterFeed DEBUG] === CONVERSION PROCESS ===`);
+        console.log(`[TwitterFeed DEBUG] Starting conversion of ${dataItems.length} items...`);
+        
+        const contentItems = dataItems.map((item, index) => {
+          console.log(`[TwitterFeed DEBUG] Converting item ${index + 1}/${dataItems.length}: ${item.id}`);
+          const converted = convertDataItemToContentItem(item);
+          console.log(`[TwitterFeed DEBUG] Converted result:`, {
+            id: converted.id,
+            username: converted.username,
+            content: converted.content?.substring(0, 50) + (converted.content?.length > 50 ? '...' : ''),
+            hasMedia: converted.hasMedia,
+            mediaUrl: converted.mediaUrl,
+            timestamp: converted.timestamp
+          });
+          return converted;
+        });
+        
+        console.log(`[TwitterFeed DEBUG] === CONVERSION RESULTS ===`);
+        console.log(`[TwitterFeed DEBUG] Converted to ${contentItems.length} content items`);
         
         // Log media information for debugging
         const mediaItems = contentItems.filter(item => item.hasMedia);
-        console.log(`[TwitterFeed] Items with media: ${mediaItems.length}/${contentItems.length}`, 
-          mediaItems.map(item => ({ id: item.id, mediaUrl: item.mediaUrl })));
+        console.log(`[TwitterFeed DEBUG] Final items with media: ${mediaItems.length}/${contentItems.length}`);
+        mediaItems.forEach(item => {
+          console.log(`[TwitterFeed DEBUG] Media item:`, {
+            id: item.id,
+            username: item.username,
+            mediaUrl: item.mediaUrl,
+            hasMedia: item.hasMedia
+          });
+        });
         
+        console.log(`[TwitterFeed DEBUG] === SETTING STATE ===`);
+        console.log(`[TwitterFeed DEBUG] About to set twitterData with ${contentItems.length} items`);
         setTwitterData(contentItems);
+        console.log(`[TwitterFeed DEBUG] State set successfully`);
+        
       } catch (err) {
-        console.error('[TwitterFeed] Error fetching Twitter data items:', err);
+        console.error('[TwitterFeed DEBUG] === ERROR IN FETCH ===');
+        console.error('[TwitterFeed DEBUG] Error fetching Twitter data items:', err);
+        console.error('[TwitterFeed DEBUG] Error details:', {
+          name: err?.name,
+          message: err?.message,
+          stack: err?.stack?.split('\n').slice(0, 5)
+        });
         setError('Failed to load tweets');
         setTwitterData([]);
       } finally {
+        console.log(`[TwitterFeed DEBUG] === FETCH COMPLETE ===`);
+        console.log(`[TwitterFeed DEBUG] Setting loading to false`);
         setLoading(false);
       }
     };
@@ -322,6 +437,9 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
     return stopAutoAdvance;
   }, [api, isAutoAdvanceEnabled, isPaused, twitterData.length]);
 
+  // Debug logging for render state
+  console.log(`[TwitterFeed] Render: date=${selectedDate}, loading=${loading}, error=${error}, items=${twitterData.length}`);
+
   // Loading state
   if (loading) {
     return (
@@ -357,6 +475,8 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
       </div>
     );
   }
+
+  console.log(`[TwitterFeed] Rendering carousel with ${twitterData.length} tweets`);
 
   // Render carousel with Twitter data from database
   return (
