@@ -33,7 +33,17 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
         type: "limitless",
         id: `limitless-${selectedDate || 'current'}`,
         title: "Limitless Content",
-        timestamp: new Date().toLocaleString(),
+        timestamp: selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        }) : new Date().toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        }),
         markdownContent: limitlessData.markdownContent
       };
       

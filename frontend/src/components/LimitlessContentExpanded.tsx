@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Clock, ArrowLeft } from "lucide-react";
+import { ChevronDown, Clock } from "lucide-react";
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -180,15 +180,7 @@ export const LimitlessContentExpanded = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="sticky top-0 bg-white shadow-sm z-10 p-4 border-b">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <Button
-            variant="ghost"
-            onClick={() => window.close()}
-            className="flex items-center space-x-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Close</span>
-          </Button>
+        <div className="max-w-4xl mx-auto">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-newspaper-headline">
               {data.title || "Conversation"}
@@ -197,11 +189,11 @@ export const LimitlessContentExpanded = () => {
               <Clock className="w-4 h-4 text-newspaper-byline" />
               <span className="text-sm text-newspaper-byline">{data.timestamp}</span>
             </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Badge variant="secondary">
-              {data.semanticMetadata.clusteredLines} of {data.semanticMetadata.totalLines} lines
-            </Badge>
+            <div className="flex items-center justify-center space-x-2 mt-2">
+              <Badge variant="secondary">
+                {data.semanticMetadata.clusteredLines} of {data.semanticMetadata.totalLines} lines
+              </Badge>
+            </div>
           </div>
         </div>
       </div>

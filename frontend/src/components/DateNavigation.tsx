@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { format, subDays, addDays, isToday } from 'date-fns';
 import { useNavigate } from "react-router-dom";
 import { Button } from "./ui/button";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getTodayYYYYMMDD } from "../lib/utils";
 
 interface DateNavigationProps {
@@ -62,28 +62,12 @@ export const DateNavigation = ({ selectedDate, onDateChange, isDayViewActive, is
     }
   }, [todayDate, handleDateChange]);
 
-  const handleClose = useCallback(() => {
-    // Try to go back in history first
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      // Fallback to day view if no history
-      navigate('/day');
-    }
-  }, [navigate]);
 
   const isDisplayDateToday = displayDate ? isToday(new Date(displayDate + 'T00:00:00')) : false;
 
-  // If we're in expanded view, show close button
+  // If we're in expanded view, don't show any navigation
   if (isExpandedView) {
-    return (
-      <div className="flex justify-center items-center space-x-2">
-        <Button variant="outline" onClick={handleClose} className="flex items-center space-x-2">
-          <X className="h-4 w-4" />
-          <span>Close</span>
-        </Button>
-      </div>
-    );
+    return null;
   }
 
   if (!isDayViewActive) {

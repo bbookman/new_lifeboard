@@ -1,6 +1,5 @@
 import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
-import { Clock } from "lucide-react";
 import { useState, useEffect } from "react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
@@ -58,21 +57,6 @@ export const LimitlessMarkdownExpanded = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="sticky top-0 bg-white shadow-sm z-10 p-4 border-b">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-newspaper-headline">
-              {data.title}
-            </h1>
-            <div className="flex items-center justify-center space-x-2 mt-1">
-              <Clock className="w-4 h-4 text-newspaper-byline" />
-              <span className="text-sm text-newspaper-byline">{data.timestamp}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Content */}
       <div className="max-w-5xl mx-auto p-8">
         <Card className="p-8">

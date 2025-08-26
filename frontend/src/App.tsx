@@ -51,6 +51,7 @@ function MainLayout() {
 
   // Check if we're on the expanded limitless view
   const isExpandedView = location.pathname === '/limitless-expanded';
+  const isLimitlessContentView = location.pathname.startsWith('/limitless-content/');
 
   const [activeView, setActiveView] = useState(getActiveView());
   const [formattedDate, setFormattedDate] = useState('Loading...');
@@ -60,14 +61,54 @@ function MainLayout() {
     setActiveView(getActiveView());
   }, [location.pathname, getActiveView]);
 
-  // Clear formatted date when not in day view
+  // Handle formatted date for different views
   useEffect(() => {
     console.log('[App] Active view changed:', activeView);
-    if (activeView !== 'day') {
+    
+    if (isExpandedView || isLimitlessContentView) {
+      // Handle expanded limitless views
+      const searchParams = new URLSearchParams(location.search);
+      
+      if (isExpandedView) {
+        // For /limitless-expanded, try to get data from sessionStorage
+        const keyParam = searchParams.get('key');
+        if (keyParam) {
+          try {
+            const storedData = sessionStorage.getItem(keyParam);
+            if (storedData) {
+              const parsedData = JSON.parse(storedData);
+              if (parsedData.timestamp) {
+                setFormattedDate(parsedData.timestamp);
+                return;
+              }
+            }
+          } catch (error) {
+            console.error('Failed to parse stored content data for date:', error);
+          }
+        }
+        
+        // Fallback to data parameter
+        const dataParam = searchParams.get('data');
+        if (dataParam) {
+          try {
+            const parsedData = JSON.parse(decodeURIComponent(dataParam));
+            if (parsedData.timestamp) {
+              setFormattedDate(parsedData.timestamp);
+              return;
+            }
+          } catch (error) {
+            console.error('Failed to parse URL content data for date:', error);
+          }
+        }
+      }
+      
+      // If we couldn't get the date from the data, keep current date
+      setFormattedDate('Expanded View');
+    } else if (activeView !== 'day') {
       console.log('[App] Clearing date (not day view)');
       setFormattedDate('');
     }
-  }, [activeView]);
+  }, [activeView, isExpandedView, isLimitlessContentView, location.search]);
 
   const handleNavigation = (item: NavigationItem) => {
     // Force documents view to list mode when navigating to it
