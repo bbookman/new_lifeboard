@@ -1,4 +1,6 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 import { useLimitlessData } from "../hooks/useLimitlessData";
 import { useAutoFetch } from "../hooks/useAutoFetch";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -24,15 +26,47 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
   const limitlessData = useLimitlessData();
   useAutoFetch(selectedDate, limitlessData);
 
+  const handleExpandContent = () => {
+    if (limitlessData.markdownContent) {
+      // Create a simplified data structure for the expanded view
+      const expandedData = {
+        type: "limitless",
+        id: `limitless-${selectedDate || 'current'}`,
+        title: "Limitless Content",
+        timestamp: new Date().toLocaleString(),
+        markdownContent: limitlessData.markdownContent
+      };
+      
+      // Store data in sessionStorage to avoid URL length limits
+      const storageKey = `limitless-expanded-${expandedData.id}`;
+      sessionStorage.setItem(storageKey, JSON.stringify(expandedData));
+      
+      // Open with just the key
+      window.open(`/limitless-expanded?key=${storageKey}`, '_blank');
+    }
+  };
 
   return (
     <>
       {/* Header - Fixed (no outer Card, as parent NewsSection already provides Card) */}
       <div className="p-1 border-b border-gray-200">
-        <div className="flex items-center space-x-2 mb-3">
-          <Badge variant="outline" className="text-xs">
-            Limitless
-          </Badge>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            <Badge variant="outline" className="text-xs">
+              Limitless
+            </Badge>
+          </div>
+          {limitlessData.markdownContent && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExpandContent}
+              className="p-2 bg-white hover:bg-gray-50 border-gray-200"
+              title="Open in new page"
+            >
+              <ExternalLink className="w-4 h-4 text-gray-600" />
+            </Button>
+          )}
         </div>
 
       </div>

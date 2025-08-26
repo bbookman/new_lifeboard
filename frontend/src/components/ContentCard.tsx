@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Clock } from "lucide-react";
+import { ChevronDown, Clock, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -271,6 +271,11 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
     setExpandedClusters(newExpanded);
   };
 
+  const handleExpandContent = () => {
+    const contentData = encodeURIComponent(JSON.stringify(data));
+    window.open(`/limitless-content/${data.id}?data=${contentData}`, '_blank');
+  };
+
   return (
     <div className="space-y-4">
       {/* Header with title and controls */}
@@ -294,6 +299,15 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
             onClick={() => setViewMode(viewMode === 'condensed' ? 'full' : 'condensed')}
           >
             {viewMode === 'condensed' ? 'Show Full' : 'Show Condensed'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExpandContent}
+            className="p-2 bg-white hover:bg-gray-50 border-gray-200"
+            title="Open in new page"
+          >
+            <ExternalLink className="w-4 h-4 text-gray-600" />
           </Button>
         </div>
       </div>

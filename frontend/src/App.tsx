@@ -8,6 +8,8 @@ import { ChatView } from './components/ChatView'
 import { SettingsView } from './components/SettingsView'
 import { DocumentsView } from './components/DocumentsView'
 import { DateNavigation } from './components/DateNavigation'
+import { LimitlessContentExpanded } from './components/LimitlessContentExpanded'
+import { LimitlessMarkdownExpanded } from './components/LimitlessMarkdownExpanded'
 
 const navigationItems = [
   { id: 'day', label: 'Day', icon: '📅', path: '/day' },
@@ -110,6 +112,8 @@ function MainLayout() {
           <Route path="/documents" element={<DocumentsView />} />
           <Route path="/chat" element={<ChatView />} />
           <Route path="/settings" element={<SettingsView />} />
+          <Route path="/limitless-content/:id" element={<LimitlessContentExpanded />} />
+          <Route path="/limitless-expanded" element={<LimitlessMarkdownExpanded />} />
         </Routes>
       </div>
     </div>
