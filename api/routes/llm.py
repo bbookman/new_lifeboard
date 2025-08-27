@@ -24,6 +24,11 @@ def get_llm_service_for_route(startup_service: StartupService = Depends(get_star
     """Get the LLM service instance for route dependency injection"""
     if not startup_service.llm_service:
         raise HTTPException(status_code=503, detail="LLM service not available")
+    
+    # Check if the LLM provider is actually available
+    if not hasattr(startup_service.llm_service, 'llm_provider') or not startup_service.llm_service.llm_provider:
+        raise HTTPException(status_code=503, detail="LLM service not available")
+    
     return startup_service.llm_service
 
 

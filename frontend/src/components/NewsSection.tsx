@@ -2,7 +2,9 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import newsImage from "@/assets/news-placeholder.jpg";
 import { ExtendedNewsCard } from "./ExtendedNewsCard";
+import { ContentCard, DailySummaryData } from "./ContentCard";
 import { useState, useEffect } from "react";
+import { apiClient, LLMSummaryResponse } from "@/lib/api";
 
 interface NewsArticle {
   id: string;
@@ -17,12 +19,6 @@ interface NewsArticle {
 
 interface NewsSectionProps {
   selectedDate?: string;
-}
-
-interface LLMSummary {
-  content: string | null;
-  days_date: string;
-  cached: boolean;
 }
 
 interface DayData {
@@ -60,25 +56,72 @@ const sampleNews: NewsArticle[] = [
 export const NewsSection = ({ selectedDate }: NewsSectionProps) => {
   console.log(`[NewsSection] Received selectedDate: ${selectedDate}`);
   
-  const [llmSummary, setLlmSummary] = useState<LLMSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  // Daily Summary state management
+  const [dailySummary, setDailySummary] = useState<DailySummaryData | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [llmUnavailable, setLlmUnavailable] = useState(false);
   const [hasDataAvailable, setHasDataAvailable] = useState<boolean>(false);
-  const [isCheckingData, setIsCheckingData] = useState(false);
+  const [hasPromptConfigured, setHasPromptConfigured] = useState<boolean>(true);
 
-  // Fetch LLM summary and check data availability when selectedDate changes
+  /**
+   * Convert LLM API response to DailySummaryData format for ContentCard
+   */
+  const convertToSummaryData = (response: LLMSummaryResponse, date: string): DailySummaryData => {
+    const content = response.content || "";
+    const highlights: string[] = [];
+    const keyThemes: string[] = [];
+    
+    // Simple parsing to extract bullet points as highlights
+    const bulletPoints = content.match(/[-*•]\s+([^\n]+)/g);
+    if (bulletPoints) {
+      highlights.push(...bulletPoints.slice(0, 4).map(bp => bp.replace(/^[-*•]\s+/, '')));
+    }
+    
+    // Extract themes from headers or key sections
+    const headers = content.match(/\*\*([^*]+)\*\*/g);
+    if (headers) {
+      keyThemes.push(...headers.slice(0, 5).map(h => h.replace(/\*\*/g, '')));
+    }
+    
+    // If no structured content found, use fallback
+    if (highlights.length === 0) {
+      highlights.push("Generated comprehensive daily summary");
+      highlights.push("Integrated data from multiple sources");
+      highlights.push("Provided insights and key themes");
+    }
+    
+    if (keyThemes.length === 0) {
+      keyThemes.push("Technology", "Productivity", "Daily Activities");
+    }
+    
+    return {
+      type: "daily-summary",
+      date,
+      totalItems: 0,
+      highlights,
+      keyThemes,
+      moodScore: 7,
+      weatherSummary: "Weather information included in summary",
+      generatedContent: content,
+      generationTime: response.generation_time,
+      modelInfo: response.model_info,
+      cached: response.cached
+    };
+  };
+
+  // Load summary and check data availability when selectedDate changes
   useEffect(() => {
     if (selectedDate) {
-      fetchLLMSummary(selectedDate);
+      loadDailySummary(selectedDate);
       checkDataAvailability(selectedDate);
+      checkPromptConfiguration();
     }
   }, [selectedDate]);
 
   const checkDataAvailability = async (date: string) => {
-    setIsCheckingData(true);
     try {
-      const response = await fetch(`/api/calendar/day/${date}/enhanced`);
+      const response = await fetch(`/calendar/day/${date}/enhanced`);
       if (response.ok) {
         const data: DayData = await response.json();
         setHasDataAvailable(data.summary.has_any_data);
@@ -89,142 +132,124 @@ export const NewsSection = ({ selectedDate }: NewsSectionProps) => {
     } catch (err) {
       console.error('Error checking data availability:', err);
       setHasDataAvailable(false);
-    } finally {
-      setIsCheckingData(false);
     }
   };
 
-  const fetchLLMSummary = async (date: string) => {
-    setIsLoading(true);
-    setError(null);
-    
+  const checkPromptConfiguration = async () => {
     try {
-      const response = await fetch(`/api/llm/summary/${date}`);
-      if (response.ok) {
-        const data: LLMSummary = await response.json();
-        setLlmSummary(data);
-      } else {
-        setError(null);
-      }
-    } catch (err) {
-      setError('Network error while fetching summary');
-      console.error('Error fetching LLM summary:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const generateSummary = async () => {
-    if (!selectedDate) return;
-    
-    setIsGenerating(true);
-    setError(null);
-    
-    try {
-      const response = await fetch('/api/llm/generate-summary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          days_date: selectedDate,
-          force_regenerate: true
-        }),
-      });
-
+      const response = await fetch('/api/settings/prompt-selection');
       if (response.ok) {
         const data = await response.json();
-        if (data.success) {
-          setLlmSummary({
-            content: data.content,
-            days_date: data.days_date,
-            cached: false
-          });
-        } else {
-          setError(data.error_message || 'Generation failed');
-        }
+        setHasPromptConfigured(!!data.prompt_document_id);
       } else {
-        setError(null);
+        console.error('Failed to check prompt configuration');
+        setHasPromptConfigured(false);
       }
     } catch (err) {
-      setError('Network error while generating summary');
-      console.error('Error generating LLM summary:', err);
+      console.error('Error checking prompt configuration:', err);
+      setHasPromptConfigured(false);
+    }
+  };
+
+  /**
+   * Load daily summary from LLM API
+   */
+  const loadDailySummary = async (date: string) => {
+    if (!date) return;
+    
+    console.log(`[NewsSection] Loading daily summary for date: ${date}`);
+    setSummaryLoading(true);
+    setSummaryError(null);
+    setLlmUnavailable(false);
+    
+    try {
+      // First check for cached summary
+      const cachedResponse = await apiClient.getDailySummary(date);
+      
+      if (cachedResponse.success && cachedResponse.data?.content) {
+        console.log(`[NewsSection] Found cached summary`);
+        const summaryData = convertToSummaryData(cachedResponse.data, date);
+        setDailySummary(summaryData);
+        setSummaryLoading(false);
+        return;
+      }
+      
+      // No cached content, generate new summary
+      console.log(`[NewsSection] No cached summary found, generating new summary...`);
+      const generateResponse = await apiClient.generateDailySummary(date, false);
+      
+      if (generateResponse.success && generateResponse.data?.success && generateResponse.data?.content) {
+        console.log(`[NewsSection] Successfully generated new summary`);
+        const summaryData = convertToSummaryData(generateResponse.data, date);
+        setDailySummary(summaryData);
+      } else {
+        // Check if LLM is unavailable
+        const isLLMUnavailable = !generateResponse.success || 
+                                generateResponse.data?.llm_unavailable || 
+                                (generateResponse.data?.error_message?.includes('LLM service not available')) ||
+                                (generateResponse.data?.error_message?.includes('No LLM provider'));
+        
+        if (isLLMUnavailable) {
+          console.log(`[NewsSection] LLM service unavailable`);
+          setLlmUnavailable(true);
+          setDailySummary(null);
+        } else {
+          const errorMsg = generateResponse.data?.error_message || generateResponse.error || 'Failed to generate summary';
+          console.error(`[NewsSection] Failed to generate summary:`, errorMsg);
+          setSummaryError(errorMsg);
+          setDailySummary(null);
+        }
+      }
+    } catch (error) {
+      console.error('[NewsSection] Error loading daily summary:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      if (errorMessage.includes('LLM service not available') || errorMessage.includes('503')) {
+        setLlmUnavailable(true);
+      } else {
+        setSummaryError(errorMessage);
+      }
+      setDailySummary(null);
     } finally {
-      setIsGenerating(false);
+      setSummaryLoading(false);
     }
   };
 
-  const renderLLMContent = () => {
-    if (isLoading) {
-      return (
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-news-accent"></div>
-          <span className="ml-3 text-newspaper-byline">Loading summary...</span>
-        </div>
-      );
+  /**
+   * Force regeneration of daily summary
+   */
+  const forceRegenerateSummary = async () => {
+    if (!selectedDate) return;
+    
+    console.log(`[NewsSection] Force regenerating summary for date: ${selectedDate}`);
+    setSummaryLoading(true);
+    setSummaryError(null);
+    
+    try {
+      const generateResponse = await apiClient.generateDailySummary(selectedDate, true);
+      
+      if (generateResponse.success && generateResponse.data?.success && generateResponse.data?.content) {
+        console.log(`[NewsSection] Successfully force regenerated summary`);
+        const summaryData = convertToSummaryData(generateResponse.data, selectedDate);
+        setDailySummary(summaryData);
+      } else {
+        const errorMsg = generateResponse.data?.error_message || generateResponse.error || 'Failed to regenerate summary';
+        console.error(`[NewsSection] Failed to regenerate summary:`, errorMsg);
+        setSummaryError(errorMsg);
+      }
+    } catch (error) {
+      console.error('[NewsSection] Error force regenerating summary:', error);
+      setSummaryError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setSummaryLoading(false);
     }
-
-    if (error) {
-      return (
-        <div className="text-center py-8">
-          <p className="text-red-500 mb-4">{error}</p>
-          {hasDataAvailable && (
-            <button
-              onClick={generateSummary}
-              disabled={isGenerating}
-              className="px-4 py-2 bg-news-accent text-white rounded hover:bg-opacity-80 disabled:opacity-50"
-            >
-              {isGenerating ? 'Generating...' : 'Generate Summary'}
-            </button>
-          )}
-        </div>
-      );
-    }
-
-    if (!llmSummary?.content) {
-      return (
-        <div className="text-center py-8">
-          <p className="text-newspaper-byline mb-4">
-            {hasDataAvailable ? 'No summary available for this date.' : 'No data available for this date to summarize.'}
-          </p>
-          {hasDataAvailable && (
-            <button
-              onClick={generateSummary}
-              disabled={isGenerating}
-              className="px-4 py-2 bg-news-accent text-white rounded hover:bg-opacity-80 disabled:opacity-50"
-            >
-              {isGenerating ? 'Generating...' : 'Generate Summary'}
-            </button>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <div className="prose prose-sm max-w-none">
-        <div className="whitespace-pre-wrap text-newspaper-body leading-relaxed">
-          {llmSummary.content}
-        </div>
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-          <span className="text-xs text-newspaper-byline">
-            {llmSummary.cached ? 'Cached summary' : 'Generated summary'}
-          </span>
-          <button
-            onClick={generateSummary}
-            disabled={isGenerating}
-            className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded transition-colors disabled:opacity-50"
-          >
-            {isGenerating ? 'Regenerating...' : 'Regenerate'}
-          </button>
-        </div>
-      </div>
-    );
   };
+
 
   return (
     <div className="space-y-6">
       <div className="space-y-6">
-        {/* LLM Summary Card */}
+        {/* Main image with AI SUMMARY badge */}
         <Card className="overflow-hidden hover:shadow-lg transition-shadow border-l-4 border-l-news-accent">
           <div className="aspect-[16/9] relative overflow-hidden">
             <img
@@ -238,13 +263,68 @@ export const NewsSection = ({ selectedDate }: NewsSectionProps) => {
               </Badge>
             </div>
           </div>
-          
-          <div className="p-6">
-            
-            
-            {renderLLMContent()}
-          </div>
         </Card>
+
+        {/* Daily Summary Card - appears below the main image */}
+        {selectedDate && (
+          <>
+            {summaryLoading && (
+              <div className="card p-6">
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-news-accent"></div>
+                  <span className="ml-3 text-newspaper-byline">Generating daily summary...</span>
+                </div>
+              </div>
+            )}
+            
+            {llmUnavailable && (
+              <div className="card p-6">
+                <div className="text-center">
+                  <h3 className="font-headline text-lg font-semibold text-newspaper-headline mb-2">
+                    Daily Summary
+                  </h3>
+                  <div className="text-newspaper-byline mb-4">
+                    No LLM available to process summary
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    Configure an LLM provider to enable AI-generated daily summaries
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {summaryError && !llmUnavailable && (
+              <div className="card p-6">
+                <div className="text-center">
+                  <h3 className="font-headline text-lg font-semibold text-newspaper-headline mb-2">
+                    Daily Summary
+                  </h3>
+                  <div className="text-red-600 mb-4">Error: {summaryError}</div>
+                  <button 
+                    onClick={() => loadDailySummary(selectedDate)}
+                    className="button button-outline"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {dailySummary && !summaryLoading && (
+              <div className="relative">
+                <ContentCard data={dailySummary} />
+                {/* Refresh button for regenerating summary */}
+                <button
+                  onClick={forceRegenerateSummary}
+                  className="absolute top-4 right-4 button button-outline button-sm"
+                  title="Regenerate summary"
+                >
+                  ↻
+                </button>
+              </div>
+            )}
+          </>
+        )}
 
         {/* Extended News Card */}
         {sampleNews.slice(1).map((article, index) => (

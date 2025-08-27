@@ -16,6 +16,11 @@ export interface DailySummaryData {
   keyThemes: string[];
   moodScore: number;
   weatherSummary: string;
+  // Optional properties for LLM-generated content
+  generatedContent?: string;
+  generationTime?: number;
+  modelInfo?: Record<string, any>;
+  cached?: boolean;
 }
 
 export interface ContentItemData {
@@ -84,12 +89,65 @@ interface ContentCardProps {
 }
 
 const DailySummaryContent = ({ data }: { data: DailySummaryData }) => {
+  const [showFullContent, setShowFullContent] = useState(false);
+
+  // If we have generated content, show it instead of the structured format
+  if (data.generatedContent) {
+    return (
+      <div className="space-y-4">
+        {/* Header with AI badge and metadata */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
+              🤖 AI Summary
+            </Badge>
+            {data.cached && (
+              <Badge variant="outline" className="text-xs">
+                Cached
+              </Badge>
+            )}
+          </div>
+          {data.generationTime && (
+            <div className="text-xs text-gray-500">
+              Generated in {data.generationTime.toFixed(1)}s
+            </div>
+          )}
+        </div>
+
+        {/* Full generated content */}
+        <div className="prose prose-sm max-w-none text-newspaper-headline
+          prose-headings:text-newspaper-headline
+          prose-p:text-newspaper-headline
+          prose-p:leading-relaxed
+          prose-ul:list-disc
+          prose-ul:pl-6
+          prose-li:mb-1
+          prose-strong:text-newspaper-headline
+          prose-strong:font-semibold">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {data.generatedContent}
+          </ReactMarkdown>
+        </div>
+
+        {/* Model information */}
+        {data.modelInfo && (
+          <div className="flex items-center justify-between pt-3 border-t border-gray-200 text-xs text-gray-500">
+            <span>
+              Model: {data.modelInfo.model || 'Unknown'} 
+              ({data.modelInfo.provider || 'Unknown'})
+            </span>
+            <span>
+              Date: {data.date}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Fallback to structured format for backward compatibility
   return (
     <div className="space-y-4">
-      
-
-      
-
       {/* Weather Summary */}
       <div>
         <h3 className="font-body font-semibold text-newspaper-headline mb-2">Weather</h3>
