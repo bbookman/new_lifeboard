@@ -1,5 +1,5 @@
 import { NewspaperMasthead } from "@/components/NewspaperMasthead";
-import { NewsSection } from "@/components/NewsSection";
+import { SummarySection } from "@/components/SummarySection";
 import { TwitterFeed } from "@/components/TwitterFeed";
 import { MusicHistory } from "@/components/MusicHistory";
 import { PhotoGallery } from "@/components/PhotoGallery";
@@ -14,7 +14,7 @@ const Index = () => {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Left column - News (main content) */}
           <div className="lg:col-span-3 lg:border-r lg:border-newspaper-divider lg:pr-8">
-            <NewsSection />
+            <SummarySection />
           </div>
           
           {/* Right column - Social feed only */}

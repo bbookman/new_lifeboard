@@ -1,4 +1,4 @@
-import { NewsSection } from "./NewsSection";
+import { SummarySection } from "./SummarySection";
 import { NewsFeed } from "./NewsFeed";
 import { TwitterFeed } from "./TwitterFeed";
 import { MusicHistory } from "./MusicHistory";
@@ -98,7 +98,7 @@ export const DayView = ({ selectedDate, onDateChange, setFormattedDate }: DayVie
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left column - News (main content) */}
         <div className="lg:col-span-2 lg:border-r lg:border-newspaper-divider lg:pr-8">
-          <NewsSection selectedDate={effectiveDate} key={`news-${effectiveDate}-${dataRefreshTrigger}`} />
+          <SummarySection selectedDate={effectiveDate} key={`summary-${effectiveDate}-${dataRefreshTrigger}`} />
         </div>
         
         {/* Right column - News feed, Twitter, and Music */}

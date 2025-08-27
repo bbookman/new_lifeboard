@@ -19,7 +19,7 @@ interface ExtendedNewsCardProps {
 /**
  * ExtendedNewsCard component - Optimized version
  * Displays limitless markdown content using custom hooks for better separation of concerns
- * This component is used within a Card wrapper in NewsSection, so no outer Card needed
+ * This component is used within a Card wrapper in SummarySection, so no outer Card needed
  */
 export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, 'selectedDate'>) => {
   // Use custom hooks for data management and auto-fetch logic
@@ -58,7 +58,7 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
 
   return (
     <>
-      {/* Header - Fixed (no outer Card, as parent NewsSection already provides Card) */}
+      {/* Header - Fixed (no outer Card, as parent SummarySection already provides Card) */}
       <div className="p-1 border-b border-gray-200">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
