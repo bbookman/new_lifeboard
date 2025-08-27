@@ -78,7 +78,7 @@ class LLMService(BaseService, ServiceDebugMixin):
             "has_database": database is not None,
             "has_document_service": document_service is not None,
             "debug_db_available": self.debug_db is not None,
-            "llm_provider_config": config.llm_provider.provider_type.value if config.llm_provider else "none"
+            "llm_provider_config": config.llm_provider.provider if config.llm_provider else "none"
         })
     
     async def _initialize_service(self) -> bool:
@@ -242,10 +242,10 @@ class LLMService(BaseService, ServiceDebugMixin):
             
             # Log external API call
             self.log_external_api_call(
-                service="llm_provider",
-                endpoint="/generate_response",
-                status_code=0,  # Will update after response
-                duration=0      # Will update after response
+                "llm_provider",
+                "/generate_response",
+                0,  # Will update after response
+                0   # Will update after response
             )
             
             llm_response = await self.llm_provider.generate_response(
@@ -260,10 +260,10 @@ class LLMService(BaseService, ServiceDebugMixin):
             
             # Log successful LLM API call
             self.log_external_api_call(
-                service="llm_provider", 
-                endpoint="/generate_response",
-                status_code=200,
-                duration=llm_request_duration
+                "llm_provider", 
+                "/generate_response",
+                200,
+                llm_request_duration
             )
             
             self.log_service_performance_metric("llm_request_duration", llm_request_duration, "ms")

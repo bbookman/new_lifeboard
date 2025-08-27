@@ -82,7 +82,7 @@ class ChatService(ServiceDebugMixin):
                 
         except Exception as e:
             self.log_service_error("initialize", e, {
-                "llm_provider_config": self.config.llm_provider.provider_type.value if self.config.llm_provider else None
+                "llm_provider_config": self.config.llm_provider.provider if self.config.llm_provider else None
             })
             logger.error(f"Failed to initialize services: {e}")
             raise
@@ -270,7 +270,7 @@ If the context doesn't contain relevant information to answer the question, plea
         
         self.log_external_api_call(
             "llm_provider",
-            f"/{self.config.llm_provider.provider_type.value if self.config.llm_provider else 'unknown'}",
+            f"/{self.config.llm_provider.provider if self.config.llm_provider else 'unknown'}",
             200,  # Assume success if no exception
             llm_duration
         )
