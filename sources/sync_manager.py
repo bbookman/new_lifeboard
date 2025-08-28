@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 import logging
 
 from sources.base import BaseSource, DataItem
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from config.models import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class SyncResult:
 class SyncManager:
     """Manages synchronization for all data sources"""
     
-    def __init__(self, database: DatabaseService, app_config: AppConfig):
+    def __init__(self, database: AsyncDatabaseService, app_config: AppConfig):
         self.database = database
         self.app_config = app_config
         self.sources: Dict[str, BaseSource] = {}
@@ -65,7 +65,7 @@ class SyncManager:
 
     async def get_last_sync_time(self, namespace: str) -> Optional[datetime]:
         key = f"{namespace}_last_sync_timestamp"
-        timestamp_str = self.database.get_setting(key)
+        timestamp_str = await self.database.get_setting(key)
         if timestamp_str:
             try:
                 # Log the raw value we received for debugging
@@ -93,15 +93,15 @@ class SyncManager:
 
     async def set_last_sync_time(self, namespace: str, timestamp: datetime):
         key = f"{namespace}_last_sync_timestamp"
-        self.database.set_setting(key, timestamp.isoformat())
+        await self.database.set_setting(key, timestamp.isoformat())
 
     async def get_last_sync_result(self, namespace: str) -> Optional[Dict[str, Any]]:
         key = f"{namespace}_last_sync_result"
-        return self.database.get_setting(key)
+        return await self.database.get_setting(key)
 
     async def store_sync_result(self, result: SyncResult):
         key = f"{result.namespace}_last_sync_result"
-        self.database.set_setting(key, result.to_dict())
+        await self.database.set_setting(key, result.to_dict())
 
     async def sync_source(self, namespace: str, force_full_sync: bool = False, limit: int = 1000) -> AsyncIterator[DataItem]:
         if namespace not in self.sources:
@@ -130,7 +130,7 @@ class SyncManager:
                         yield item
                         continue
 
-                    existing_items = self.database.get_data_items_by_ids([f"{namespace}:{item.source_id}"])
+                    existing_items = await self.database.get_data_items_by_ids([f"{namespace}:{item.source_id}"])
                     if not existing_items:
                         result.items_new += 1
                         yield item

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from .base import BaseSource, DataItem
 from config.models import NewsConfig
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.retry_utils import (
     RetryExecutor,
     create_api_retry_config,
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class NewsSource(BaseHTTPSource, BaseSource):
     """Real-time News Data API source for news articles"""
     
-    def __init__(self, config: NewsConfig, db_service: DatabaseService = None):
+    def __init__(self, config: NewsConfig, db_service: AsyncDatabaseService = None):
         """
         Initialize NewsSource with configuration.
         
@@ -88,12 +88,12 @@ class NewsSource(BaseHTTPSource, BaseSource):
         
         return await super().test_connection()
 
-    def _has_news_data_for_date(self, date: str) -> bool:
+    async def _has_news_data_for_date(self, date: str) -> bool:
         """Check if news data already exists for the given date"""
         if not self.db_service:
             return False
         
-        count = self.get_news_count_by_date(self.db_service, date)
+        count = await self.get_news_count_by_date(self.db_service, date)
         return count > 0
     
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
@@ -116,7 +116,7 @@ class NewsSource(BaseHTTPSource, BaseSource):
 
         # Check if we already have news data for today
         today = datetime.now().strftime("%Y-%m-%d")
-        if self._has_news_data_for_date(today):
+        if await self._has_news_data_for_date(today):
             logger.info(f"News data already exists for {today}. Skipping API call.")
             # Simply return without yielding any items - no need for dummy data
             return
@@ -315,10 +315,10 @@ class NewsSource(BaseHTTPSource, BaseSource):
             logger.error(f"Request failed after all retries: {e}")
             return None
     
-    def get_news_by_date(self, db_service, date: str) -> List[Dict[str, Any]]:
+    async def get_news_by_date(self, db_service, date: str) -> List[Dict[str, Any]]:
         """Get news articles for a specific date (YYYY-MM-DD format)"""
-        with db_service.get_connection() as conn:
-            cursor = conn.execute("""
+        async with db_service.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT id, source_id, content, metadata, created_at, days_date
                 FROM data_items 
                 WHERE namespace = 'news' AND days_date = ?
@@ -327,7 +327,8 @@ class NewsSource(BaseHTTPSource, BaseSource):
             """, (date, self.config.unique_items_per_day))
             
             news_items = []
-            for row in cursor.fetchall():
+            rows = await cursor.fetchall()
+            for row in rows:
                 # Parse metadata to extract title and other fields
                 from core.json_utils import JSONMetadataParser
                 metadata = JSONMetadataParser.parse_metadata(row["metadata"]) or {}
@@ -345,10 +346,10 @@ class NewsSource(BaseHTTPSource, BaseSource):
             
             return news_items
 
-    def get_latest_news(self, db_service, limit: int = 10) -> List[Dict[str, Any]]:
+    async def get_latest_news(self, db_service, limit: int = 10) -> List[Dict[str, Any]]:
         """Get the most recent news articles"""
-        with db_service.get_connection() as conn:
-            cursor = conn.execute("""
+        async with db_service.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT id, source_id, content, metadata, created_at, days_date
                 FROM data_items 
                 WHERE namespace = 'news'
@@ -357,7 +358,8 @@ class NewsSource(BaseHTTPSource, BaseSource):
             """, (limit,))
             
             news_items = []
-            for row in cursor.fetchall():
+            rows = await cursor.fetchall()
+            for row in rows:
                 # Parse metadata to extract title and other fields
                 from core.json_utils import JSONMetadataParser
                 metadata = JSONMetadataParser.parse_metadata(row["metadata"]) or {}
@@ -375,15 +377,16 @@ class NewsSource(BaseHTTPSource, BaseSource):
             
             return news_items
 
-    def get_news_count_by_date(self, db_service, date: str) -> int:
+    async def get_news_count_by_date(self, db_service, date: str) -> int:
         """Get count of news articles for a specific date"""
-        with db_service.get_connection() as conn:
-            cursor = conn.execute("""
+        async with db_service.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT COUNT(*) as count FROM data_items 
                 WHERE namespace = 'news' AND days_date = ?
             """, (date,))
             
-            return cursor.fetchone()["count"]
+            row = await cursor.fetchone()
+            return row["count"]
 
     async def get_sync_metadata(self) -> Dict[str, Any]:
         """
