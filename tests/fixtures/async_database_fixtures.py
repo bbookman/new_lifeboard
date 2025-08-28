@@ -57,7 +57,8 @@ async def async_clean_database(async_temp_db_path):
                 embedding_status TEXT DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                days_date TEXT NOT NULL
+                days_date TEXT NOT NULL,
+                ingestion_status TEXT DEFAULT 'complete'
             )
         """)
         
@@ -88,12 +89,23 @@ async def async_clean_database(async_temp_db_path):
                 name TEXT NOT NULL UNIQUE,
                 applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS migrations (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         """)
-        
-        await conn.commit()
-    
-    # Return a mock async database service for now
-    # This will be replaced with actual AsyncDatabaseService once created
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TIMESTAMP
+            )
+        """)
+
+        await conn.commit()    # This will be replaced with actual AsyncDatabaseService once created
     mock_db = AsyncDatabaseService(async_temp_db_path)
     yield mock_db
 

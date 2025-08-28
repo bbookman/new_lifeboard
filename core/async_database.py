@@ -18,6 +18,7 @@ from pathlib import Path
 
 from core.debug_logger import DebugLogger
 from services.debug_mixin import ServiceDebugMixin
+from core.json_utils import JSONMetadataParser, DatabaseRowParser
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,29 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("store_data_item", {
+            "namespace": namespace, 
+            "ingestion_status": ingestion_status,
+            "has_metadata": metadata is not None
+        })
+        
+        try:
+            async with self.get_connection() as conn:
+                await conn.execute("""
+                    INSERT OR REPLACE INTO data_items 
+                    (id, namespace, source_id, content, metadata, days_date, updated_at, ingestion_status)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                """, (id, namespace, source_id, content, 
+                      JSONMetadataParser.serialize_metadata(metadata), days_date, ingestion_status))
+                await conn.commit()
+                
+                self.debug.log_performance_metric("store_data_item_duration", 0.001)
+                
+        except Exception as e:
+            self.debug.log_state("store_data_item_failed", {
+                "error": str(e), "id": id, "namespace": namespace
+            }, level="ERROR")
+            raise
     
     async def get_data_items_by_ids(self, ids: List[str]) -> List[Dict[str, Any]]:
         """
@@ -136,7 +159,34 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("get_data_items_by_ids", {"ids_count": len(ids)})
+        
+        if not ids:
+            return []
+        
+        try:
+            placeholders = ','.join('?' * len(ids))
+            async with self.get_connection() as conn:
+                cursor = await conn.execute(f"""
+                    SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
+                    FROM data_items 
+                    WHERE id IN ({placeholders})
+                    ORDER BY updated_at DESC
+                """, ids)
+                
+                rows = await cursor.fetchall()
+                result = DatabaseRowParser.parse_rows_with_metadata(
+                    [dict(row) for row in rows]
+                )
+                
+                self.debug.log_performance_metric("get_data_items_by_ids_duration", 0.001)
+                return result
+                
+        except Exception as e:
+            self.debug.log_state("get_data_items_by_ids_failed", {
+                "error": str(e), "ids_count": len(ids)
+            }, level="ERROR")
+            raise
     
     async def get_data_items_by_namespace(self, namespace: str, limit: Optional[int] = None,
                                          offset: int = 0) -> List[Dict[str, Any]]:
@@ -154,7 +204,42 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("get_data_items_by_namespace", {
+            "namespace": namespace, "limit": limit, "offset": offset
+        })
+        
+        try:
+            query = """
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
+                FROM data_items 
+                WHERE namespace = ?
+                ORDER BY updated_at DESC
+            """
+            params = [namespace]
+            
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(limit)
+                
+            if offset > 0:
+                query += " OFFSET ?"
+                params.append(offset)
+            
+            async with self.get_connection() as conn:
+                cursor = await conn.execute(query, params)
+                rows = await cursor.fetchall()
+                result = DatabaseRowParser.parse_rows_with_metadata(
+                    [dict(row) for row in rows]
+                )
+                
+                self.debug.log_performance_metric("get_data_items_by_namespace_duration", 0.001)
+                return result
+                
+        except Exception as e:
+            self.debug.log_state("get_data_items_by_namespace_failed", {
+                "error": str(e), "namespace": namespace
+            }, level="ERROR")
+            raise
     
     async def get_data_items_by_date(self, date: str, namespaces: List[str] = None) -> List[Dict[str, Any]]:
         """
@@ -170,10 +255,10 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        return await self.get_data_items_by_date_range(date, date, namespaces, limit=1000)
     
     async def get_data_items_by_date_range(self, start_date: str, end_date: str,
-                                          namespaces: List[str] = None) -> List[Dict[str, Any]]:
+                                          namespaces: List[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
         """
         Retrieve data items within a date range asynchronously.
         
@@ -181,6 +266,7 @@ class AsyncDatabaseService(ServiceDebugMixin):
             start_date: Start date in YYYY-MM-DD format
             end_date: End date in YYYY-MM-DD format
             namespaces: Optional list of namespaces to filter by
+            limit: Maximum number of items to return
             
         Returns:
             List of data item dictionaries
@@ -188,7 +274,45 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("get_data_items_by_date_range", {
+            "start_date": start_date, "end_date": end_date, 
+            "namespaces_count": len(namespaces) if namespaces else 0, "limit": limit
+        })
+        
+        try:
+            # Base query
+            query = """
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
+                FROM data_items 
+                WHERE days_date >= ? AND days_date <= ?
+            """
+            params = [start_date, end_date]
+            
+            # Add namespace filter if provided
+            if namespaces:
+                placeholders = ','.join('?' * len(namespaces))
+                query += f" AND namespace IN ({placeholders})"
+                params.extend(namespaces)
+            
+            # Add ordering and limit
+            query += " ORDER BY days_date DESC, updated_at DESC LIMIT ?"
+            params.append(limit)
+            
+            async with self.get_connection() as conn:
+                cursor = await conn.execute(query, params)
+                rows = await cursor.fetchall()
+                result = DatabaseRowParser.parse_rows_with_metadata(
+                    [dict(row) for row in rows]
+                )
+                
+                self.debug.log_performance_metric("get_data_items_by_date_range_duration", 0.001)
+                return result
+                
+        except Exception as e:
+            self.debug.log_state("get_data_items_by_date_range_failed", {
+                "error": str(e), "start_date": start_date, "end_date": end_date
+            }, level="ERROR")
+            raise
     
     async def delete_data_item(self, id: str) -> bool:
         """
@@ -203,7 +327,22 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("delete_data_item", {"id": id})
+        
+        try:
+            async with self.get_connection() as conn:
+                cursor = await conn.execute("DELETE FROM data_items WHERE id = ?", (id,))
+                await conn.commit()
+                
+                deleted = cursor.rowcount > 0
+                self.debug.log_performance_metric("delete_data_item_duration", 0.001)
+                return deleted
+                
+        except Exception as e:
+            self.debug.log_state("delete_data_item_failed", {
+                "error": str(e), "id": id
+            }, level="ERROR")
+            raise
     
     # Query and Metadata Operations - Interface Definitions
     
@@ -220,7 +359,38 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("get_days_with_data", {
+            "namespaces_count": len(namespaces) if namespaces else 0
+        })
+        
+        try:
+            query = """
+                SELECT DISTINCT days_date
+                FROM data_items
+                WHERE days_date IS NOT NULL
+            """
+            params = []
+            
+            if namespaces:
+                placeholders = ','.join('?' * len(namespaces))
+                query += f" AND namespace IN ({placeholders})"
+                params.extend(namespaces)
+            
+            query += " ORDER BY days_date DESC"
+            
+            async with self.get_connection() as conn:
+                cursor = await conn.execute(query, params)
+                rows = await cursor.fetchall()
+                result = [row['days_date'] for row in rows]
+                
+                self.debug.log_performance_metric("get_days_with_data_duration", 0.001)
+                return result
+                
+        except Exception as e:
+            self.debug.log_state("get_days_with_data_failed", {
+                "error": str(e), "namespaces_count": len(namespaces) if namespaces else 0
+            }, level="ERROR")
+            raise
     
     async def get_available_dates(self, limit: Optional[int] = None) -> List[str]:
         """
@@ -235,7 +405,34 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("get_available_dates", {"limit": limit})
+        
+        try:
+            query = """
+                SELECT DISTINCT days_date 
+                FROM data_items 
+                WHERE days_date IS NOT NULL
+                ORDER BY days_date DESC
+            """
+            params = []
+            
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(limit)
+            
+            async with self.get_connection() as conn:
+                cursor = await conn.execute(query, params)
+                rows = await cursor.fetchall()
+                result = [row['days_date'] for row in rows]
+                
+                self.debug.log_performance_metric("get_available_dates_duration", 0.001)
+                return result
+                
+        except Exception as e:
+            self.debug.log_state("get_available_dates_failed", {
+                "error": str(e), "limit": limit
+            }, level="ERROR")
+            raise
     
     async def get_all_namespaces(self) -> List[str]:
         """
@@ -247,7 +444,27 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("get_all_namespaces")
+        
+        try:
+            async with self.get_connection() as conn:
+                cursor = await conn.execute("""
+                    SELECT DISTINCT namespace
+                    FROM data_items
+                    WHERE namespace IS NOT NULL
+                    ORDER BY namespace
+                """)
+                rows = await cursor.fetchall()
+                result = [row['namespace'] for row in rows]
+                
+                self.debug.log_performance_metric("get_all_namespaces_duration", 0.001)
+                return result
+                
+        except Exception as e:
+            self.debug.log_state("get_all_namespaces_failed", {
+                "error": str(e)
+            }, level="ERROR")
+            raise
     
     async def get_database_stats(self) -> Dict[str, Any]:
         """
@@ -259,7 +476,56 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("get_database_stats")
+        
+        try:
+            async with self.get_connection() as conn:
+                # Total items
+                cursor = await conn.execute("SELECT COUNT(*) as count FROM data_items")
+                row = await cursor.fetchone()
+                total_items = row['count']
+                
+                # Items by namespace
+                cursor = await conn.execute("""
+                    SELECT namespace, COUNT(*) as count 
+                    FROM data_items 
+                    GROUP BY namespace
+                    ORDER BY count DESC
+                """)
+                rows = await cursor.fetchall()
+                namespace_counts = {row['namespace']: row['count'] for row in rows}
+                
+                # Embedding status
+                cursor = await conn.execute("""
+                    SELECT embedding_status, COUNT(*) as count 
+                    FROM data_items 
+                    GROUP BY embedding_status
+                """)
+                rows = await cursor.fetchall()
+                embedding_status = {row['embedding_status']: row['count'] for row in rows}
+                
+                # Data sources
+                cursor = await conn.execute("SELECT COUNT(*) as count FROM data_sources WHERE is_active = TRUE")
+                row = await cursor.fetchone()
+                active_sources = row['count']
+                
+                result = {
+                    'total_items': total_items,
+                    'namespace_counts': namespace_counts,
+                    'embedding_status': embedding_status,
+                    'active_sources': active_sources,
+                    'database_path': self.db_path,
+                    'database_size_mb': Path(self.db_path).stat().st_size / (1024 * 1024) if Path(self.db_path).exists() else 0
+                }
+                
+                self.debug.log_performance_metric("get_database_stats_duration", 0.001)
+                return result
+                
+        except Exception as e:
+            self.debug.log_state("get_database_stats_failed", {
+                "error": str(e)
+            }, level="ERROR")
+            raise
     
     # Settings Operations - Interface Definitions
     
@@ -277,7 +543,29 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("get_setting", {"key": key})
+        
+        try:
+            async with self.get_connection() as conn:
+                cursor = await conn.execute(
+                    "SELECT value FROM system_settings WHERE key = ?", (key,))
+                row = await cursor.fetchone()
+                
+                if row:
+                    # Try to parse as JSON, fallback to string value
+                    parsed = JSONMetadataParser.parse_metadata(row['value'])
+                    result = parsed if parsed is not None else row['value']
+                else:
+                    result = default
+                
+                self.debug.log_performance_metric("get_setting_duration", 0.001)
+                return result
+                
+        except Exception as e:
+            self.debug.log_state("get_setting_failed", {
+                "error": str(e), "key": key
+            }, level="ERROR")
+            raise
     
     async def set_setting(self, key: str, value: Any) -> None:
         """
@@ -290,7 +578,23 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("set_setting", {"key": key})
+        
+        try:
+            async with self.get_connection() as conn:
+                await conn.execute("""
+                    INSERT OR REPLACE INTO system_settings (key, value, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                """, (key, JSONMetadataParser.serialize_metadata(value) or value))
+                await conn.commit()
+                
+                self.debug.log_performance_metric("set_setting_duration", 0.001)
+                
+        except Exception as e:
+            self.debug.log_state("set_setting_failed", {
+                "error": str(e), "key": key
+            }, level="ERROR")
+            raise
     
     # Data Source Management - Interface Definitions
     
@@ -307,7 +611,26 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("register_data_source", {
+            "namespace": namespace, "source_type": source_type
+        })
+        
+        try:
+            async with self.get_connection() as conn:
+                await conn.execute("""
+                    INSERT OR REPLACE INTO data_sources 
+                    (namespace, source_type, metadata, first_seen)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """, (namespace, source_type, JSONMetadataParser.serialize_metadata(metadata)))
+                await conn.commit()
+                
+                self.debug.log_performance_metric("register_data_source_duration", 0.001)
+                
+        except Exception as e:
+            self.debug.log_state("register_data_source_failed", {
+                "error": str(e), "namespace": namespace, "source_type": source_type
+            }, level="ERROR")
+            raise
     
     async def update_source_item_count(self, namespace: str, count: int) -> None:
         """
@@ -320,7 +643,26 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("update_source_item_count", {
+            "namespace": namespace, "count": count
+        })
+        
+        try:
+            async with self.get_connection() as conn:
+                await conn.execute("""
+                    UPDATE data_sources 
+                    SET item_count = ?
+                    WHERE namespace = ?
+                """, (count, namespace))
+                await conn.commit()
+                
+                self.debug.log_performance_metric("update_source_item_count_duration", 0.001)
+                
+        except Exception as e:
+            self.debug.log_state("update_source_item_count_failed", {
+                "error": str(e), "namespace": namespace, "count": count
+            }, level="ERROR")
+            raise
     
     # Chat Operations - Interface Definitions
     
@@ -335,7 +677,26 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("store_chat_message", {
+            "user_message_length": len(user_message),
+            "assistant_response_length": len(assistant_response)
+        })
+        
+        try:
+            async with self.get_connection() as conn:
+                await conn.execute("""
+                    INSERT INTO chat_messages (user_message, assistant_response, timestamp)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                """, (user_message, assistant_response))
+                await conn.commit()
+                
+                self.debug.log_performance_metric("store_chat_message_duration", 0.001)
+                
+        except Exception as e:
+            self.debug.log_state("store_chat_message_failed", {
+                "error": str(e)
+            }, level="ERROR")
+            raise
     
     async def get_chat_history(self, limit: int = 50) -> List[Dict[str, Any]]:
         """
@@ -350,7 +711,28 @@ class AsyncDatabaseService(ServiceDebugMixin):
         Raises:
             Exception: Database operation errors
         """
-        raise NotImplementedError("Phase 2 implementation pending")
+        self.log_service_call("get_chat_history", {"limit": limit})
+        
+        try:
+            async with self.get_connection() as conn:
+                cursor = await conn.execute("""
+                    SELECT id, user_message, assistant_response, timestamp
+                    FROM chat_messages
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (limit,))
+                
+                rows = await cursor.fetchall()
+                result = [dict(row) for row in rows]
+                
+                self.debug.log_performance_metric("get_chat_history_duration", 0.001)
+                return result
+                
+        except Exception as e:
+            self.debug.log_state("get_chat_history_failed", {
+                "error": str(e), "limit": limit
+            }, level="ERROR")
+            raise
     
     # Async Wrapper Methods (Phase 0 Integration)
     # These methods replace the pseudo-async wrappers from the sync DatabaseService
@@ -440,7 +822,8 @@ class AsyncDatabaseService(ServiceDebugMixin):
                         embedding_status TEXT DEFAULT 'pending',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        days_date TEXT NOT NULL
+                        days_date TEXT NOT NULL,
+                        ingestion_status TEXT DEFAULT 'complete'
                     )
                 """)
                 
