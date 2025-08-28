@@ -14,7 +14,7 @@ from sources.limitless import LimitlessSource
 from sources.news import NewsSource
 from sources.weather import WeatherSource
 from sources.twitter import TwitterSource
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from core.logging_config import setup_application_logging
@@ -28,7 +28,7 @@ class StartupService:
     
     def __init__(self, config: AppConfig):
         self.config = config
-        self.database: Optional[DatabaseService] = None
+        self.database: Optional[AsyncDatabaseService] = None
         self.vector_store: Optional[VectorStoreService] = None
         self.embedding_service: Optional[EmbeddingService] = None
         self.ingestion_service: Optional[IngestionService] = None
@@ -148,7 +148,7 @@ class StartupService:
         try:
             # Database service
             logger.info("Initializing database service...")
-            self.database = DatabaseService(self.config.database.path)
+            self.database = AsyncDatabaseService(self.config.database.path)
             startup_result["services_initialized"].append("database")
             
             # Embedding service
@@ -531,7 +531,7 @@ class StartupService:
         try:
             # Check database
             if self.database:
-                db_stats = self.database.get_database_stats()
+                db_stats = await self.database.get_database_stats()
                 health_status["database_healthy"] = db_stats is not None
             
             # Check vector store

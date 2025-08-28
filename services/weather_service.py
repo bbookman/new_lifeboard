@@ -3,13 +3,13 @@ import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from config.models import AppConfig
 from services.debug_mixin import ServiceDebugMixin
 from core.database_debug import DebugDatabaseConnection
 
 class WeatherService(ServiceDebugMixin):
-    def __init__(self, db_service: DatabaseService, config: AppConfig):
+    def __init__(self, db_service: AsyncDatabaseService, config: AppConfig):
         super().__init__("weather_service")
         self.db_service = db_service
         self.config = config
@@ -26,22 +26,20 @@ class WeatherService(ServiceDebugMixin):
             "debug_db_available": self.debug_db is not None
         })
 
-    def get_latest_weather(self) -> Optional[Dict[str, Any]]:
+    async def get_latest_weather(self) -> Optional[Dict[str, Any]]:
         """Get the most recent weather data"""
         self.log_service_call("get_latest_weather")
         
         db_start = time.time()
         try:
-            connection_context = self.debug_db.get_connection() if self.debug_db else self.db_service.get_connection()
-            
-            with connection_context as conn:
-                cursor = conn.execute("""
+            async with self.db_service.get_connection() as conn:
+                cursor = await conn.execute("""
                     SELECT response_json 
                     FROM weather 
                     ORDER BY days_date DESC 
                     LIMIT 1
                 """)
-                row = cursor.fetchone()
+                row = await cursor.fetchone()
                 
                 db_duration = (time.time() - db_start) * 1000
                 self.log_database_operation("SELECT", "weather", db_duration)
@@ -63,17 +61,15 @@ class WeatherService(ServiceDebugMixin):
             self.log_service_error("get_latest_weather", e, {})
             raise
 
-    def get_weather_by_date(self, date: str) -> Optional[Dict[str, Any]]:
+    async def get_weather_by_date(self, date: str) -> Optional[Dict[str, Any]]:
         """Get weather data for a specific date (YYYY-MM-DD format)"""
         self.log_service_call("get_weather_by_date", {"date": date})
         
         db_start = time.time()
         try:
-            connection_context = self.debug_db.get_connection() if self.debug_db else self.db_service.get_connection()
-            
-            with connection_context as conn:
+            async with self.db_service.get_connection() as conn:
                 # First try to find weather data for the exact date
-                cursor = conn.execute("""
+                cursor = await conn.execute("""
                     SELECT response_json 
                     FROM weather 
                     WHERE days_date = ?
@@ -81,7 +77,7 @@ class WeatherService(ServiceDebugMixin):
                     LIMIT 1
                 """, (date,))
                 
-                row = cursor.fetchone()
+                row = await cursor.fetchone()
                 exact_match_duration = (time.time() - db_start) * 1000
                 self.log_database_operation("SELECT", "weather", exact_match_duration)
                 
@@ -97,14 +93,14 @@ class WeatherService(ServiceDebugMixin):
                 
                 # If no exact match, get the most recent weather data as fallback
                 fallback_start = time.time()
-                cursor = conn.execute("""
+                cursor = await conn.execute("""
                     SELECT response_json 
                     FROM weather 
                     ORDER BY days_date DESC, created_at DESC
                     LIMIT 1
                 """)
                 
-                row = cursor.fetchone()
+                row = await cursor.fetchone()
                 fallback_duration = (time.time() - fallback_start) * 1000
                 self.log_database_operation("SELECT", "weather", fallback_duration)
                 
@@ -125,7 +121,7 @@ class WeatherService(ServiceDebugMixin):
             self.log_service_error("get_weather_by_date", e, {"date": date})
             raise
 
-    def get_weather_for_specific_date(self, target_date: str) -> Optional[Dict[str, Any]]:
+    async def get_weather_for_specific_date(self, target_date: str) -> Optional[Dict[str, Any]]:
         """Get weather data specifically for the target date only"""
         self.log_service_call("get_weather_for_specific_date", {"target_date": target_date})
         
@@ -140,10 +136,8 @@ class WeatherService(ServiceDebugMixin):
         forecast_days_checked = 0
         
         try:
-            connection_context = self.debug_db.get_connection() if self.debug_db else self.db_service.get_connection()
-            
-            with connection_context as conn:
-                cursor = conn.execute("""
+            async with self.db_service.get_connection() as conn:
+                cursor = await conn.execute("""
                     SELECT response_json, days_date, created_at
                     FROM weather 
                     ORDER BY days_date DESC, created_at DESC
@@ -154,7 +148,8 @@ class WeatherService(ServiceDebugMixin):
                 
                 processing_start = time.time()
                 
-                for row in cursor.fetchall():
+                rows = await cursor.fetchall()
+                for row in rows:
                     rows_processed += 1
                     
                     try:
@@ -206,7 +201,7 @@ class WeatherService(ServiceDebugMixin):
             self.log_service_error("get_weather_for_specific_date", e, {"target_date": target_date})
             raise
 
-    def get_weather_for_date_range(self, start_date: str, days: int = 5) -> List[Dict[str, Any]]:
+    async def get_weather_for_date_range(self, start_date: str, days: int = 5) -> List[Dict[str, Any]]:
         """Get weather data for a date range - only returns data for dates that actually exist in forecasts"""
         self.log_service_call("get_weather_for_date_range", {
             "start_date": start_date,
@@ -233,7 +228,7 @@ class WeatherService(ServiceDebugMixin):
                 current_date = start_datetime + timedelta(days=i)
                 current_date_str = current_date.strftime("%Y-%m-%d")
                 
-                day_weather = self.get_weather_for_specific_date(current_date_str)
+                day_weather = await self.get_weather_for_specific_date(current_date_str)
                 if day_weather:
                     forecast_days.append(day_weather)
                     dates_found += 1

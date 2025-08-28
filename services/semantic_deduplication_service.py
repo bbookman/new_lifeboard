@@ -10,7 +10,7 @@ from sources.semantic_deduplication_processor import (
     SemanticCluster, 
     ProcessingResult
 )
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class SemanticDeduplicationService:
     Note: Queue management and orchestration is handled by CleanUpCrewService
     """
     
-    def __init__(self, database_service: DatabaseService, embedding_service: EmbeddingService):
+    def __init__(self, database_service: AsyncDatabaseService, embedding_service: EmbeddingService):
         self.database = database_service
         self.embedding_service = embedding_service
         self.processor = SemanticDeduplicationProcessor(embedding_service=embedding_service)

@@ -89,12 +89,6 @@ async def async_clean_database(async_temp_db_path):
                 name TEXT NOT NULL UNIQUE,
                 applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS migrations (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
         """)
 
         await conn.execute("""
@@ -105,7 +99,7 @@ async def async_clean_database(async_temp_db_path):
             )
         """)
 
-        await conn.commit()    # This will be replaced with actual AsyncDatabaseService once created
+        await conn.commit()
     mock_db = AsyncDatabaseService(async_temp_db_path)
     yield mock_db
 

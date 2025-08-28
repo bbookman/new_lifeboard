@@ -10,7 +10,7 @@ import time
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from services.debug_mixin import ServiceDebugMixin
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
@@ -33,7 +33,7 @@ class ChatContext:
 class ChatService(ServiceDebugMixin):
     """Service for handling chat interactions with hybrid data access"""
     
-    def __init__(self, config: AppConfig, database: DatabaseService, 
+    def __init__(self, config: AppConfig, database: AsyncDatabaseService, 
                  vector_store: VectorStoreService, embeddings: EmbeddingService):
         super().__init__("chat_service")
         self.config = config
@@ -115,7 +115,7 @@ class ChatService(ServiceDebugMixin):
             
             # Step 3: Store chat exchange
             db_start = time.time()
-            self.database.store_chat_message(user_message, response.content)
+            await self.database.store_chat_message(user_message, response.content)
             db_duration = (time.time() - db_start) * 1000
             self.log_database_operation("INSERT", "chat_messages", db_duration)
             
@@ -136,7 +136,7 @@ class ChatService(ServiceDebugMixin):
         """Store error message for debugging (fallback action)"""
         error_msg = "I'm sorry, I encountered an error processing your message. Please try again."
         with safe_operation("store_error_message", log_errors=False):
-            self.database.store_chat_message(user_message, error_msg)
+            await self.database.store_chat_message(user_message, error_msg)
     
     async def _get_chat_context(self, query: str, max_results: int = 10) -> ChatContext:
         """Get relevant context using hybrid approach (vector + SQL)"""
@@ -196,7 +196,7 @@ class ChatService(ServiceDebugMixin):
         # Get full data items from database
         if similar_ids:
             ids = [item_id for item_id, _ in similar_ids]
-            return self.database.get_data_items_by_ids(ids)
+            return await self.database.get_data_items_by_ids(ids)
         
         return []
     
@@ -213,8 +213,8 @@ class ChatService(ServiceDebugMixin):
         
         # Simple keyword search in content
         db_start = time.time()
-        with self.database.get_connection() as conn:
-            cursor = conn.execute("""
+        async with self.database.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT id, namespace, source_id, content, metadata, created_at, updated_at
                 FROM data_items 
                 WHERE content LIKE ? 
@@ -222,7 +222,7 @@ class ChatService(ServiceDebugMixin):
                 LIMIT ?
             """, (f"%{query}%", max_results))
             
-            results = cursor.fetchall()
+            results = await cursor.fetchall()
             db_duration = (time.time() - db_start) * 1000
             self.log_database_operation("SELECT", "data_items", db_duration)
             
@@ -307,12 +307,12 @@ If the context doesn't contain relevant information to answer the question, plea
         
         return "\n\n".join(context_parts)
     
-    def get_chat_history(self, limit: int = 20) -> List[Dict[str, Any]]:
+    async def get_chat_history(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recent chat history"""
         self.log_service_call("get_chat_history", {"limit": limit})
         
         db_start = time.time()
-        history = self.database.get_chat_history(limit)
+        history = await self.database.get_chat_history(limit)
         db_duration = (time.time() - db_start) * 1000
         
         self.log_database_operation("SELECT", "chat_messages", db_duration)

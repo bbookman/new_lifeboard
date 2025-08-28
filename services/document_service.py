@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import re
 
 from core.base_service import BaseService
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from core.ids import NamespacedIDManager
@@ -43,7 +43,7 @@ class DocumentService(BaseService):
     """Service for managing user documents"""
     
     def __init__(self,
-                 database: DatabaseService,
+                 database: AsyncDatabaseService,
                  vector_store: VectorStoreService,
                  embedding_service: EmbeddingService,
                  config: AppConfig):
@@ -111,7 +111,7 @@ class DocumentService(BaseService):
         )
         
         # Store in database
-        self._store_document(document)
+        await self._store_document(document)
         
         # Create vector embeddings if content is not empty
         if content_md.strip():
@@ -132,7 +132,7 @@ class DocumentService(BaseService):
         logger.info(f"[DEBUG] update_document called with: doc_id={doc_id}, title={title}, document_type={document_type}")
         
         # Get existing document
-        document = self.get_document(doc_id)
+        document = await self.get_document(doc_id)
         if not document:
             raise ValueError(f"Document {doc_id} not found")
         
@@ -173,7 +173,7 @@ class DocumentService(BaseService):
         logger.info(f"[DEBUG] Document before storing: type={document.document_type}, title={document.title}")
         
         # Update in database
-        self._store_document(document)
+        await self._store_document(document)
         
         # Update vector embeddings if content changed
         if content_delta is not None:
@@ -182,18 +182,18 @@ class DocumentService(BaseService):
         logger.info(f"Updated document: {doc_id} - {document.title} (type: {document.document_type})")
         return document
     
-    def get_document(self, doc_id: str) -> Optional[Document]:
+    async def get_document(self, doc_id: str) -> Optional[Document]:
         """Get a document by ID"""
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_connection() as conn:
+                cursor = await conn.execute("""
                     SELECT id, title, document_type, content_delta, content_md,
                            path, is_folder, url, created_at, updated_at
                     FROM user_documents 
                     WHERE id = ?
                 """, (doc_id,))
                 
-                row = cursor.fetchone()
+                row = await cursor.fetchone()
                 if not row:
                     return None
                 
@@ -553,11 +553,11 @@ class DocumentService(BaseService):
             logger.error(f"Error checking title existence '{title}': {e}")
             return False
     
-    def _store_document(self, document: Document):
+    async def _store_document(self, document: Document):
         """Store document in database"""
         try:
-            with self.database.get_connection() as conn:
-                conn.execute("""
+            async with self.database.get_connection() as conn:
+                await conn.execute("""
                     INSERT OR REPLACE INTO user_documents 
                     (id, title, document_type, content_delta, content_md, path, is_folder, url, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -573,7 +573,7 @@ class DocumentService(BaseService):
                     document.created_at.isoformat(),
                     document.updated_at.isoformat()
                 ))
-                conn.commit()
+                await conn.commit()
             
         except Exception as e:
             logger.error(f"Error storing document {document.id}: {e}")

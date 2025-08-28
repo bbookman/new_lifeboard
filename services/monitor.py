@@ -6,7 +6,7 @@ from enum import Enum
 
 from services.sync_manager_service import SyncManagerService
 from services.ingestion import IngestionService
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class HealthMonitor:
     def __init__(self,
                  sync_manager: SyncManagerService,
                  ingestion_service: IngestionService,
-                 database: DatabaseService):
+                 database: AsyncDatabaseService):
         self.sync_manager = sync_manager
         self.ingestion_service = ingestion_service
         self.database = database

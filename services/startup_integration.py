@@ -13,7 +13,7 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional, List
 
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.embeddings import EmbeddingService
 from services.scheduler import AsyncScheduler
 from services.semantic_deduplication_service import SemanticDeduplicationService
@@ -42,7 +42,7 @@ class CleanUpCrewBootstrap:
         self.initialization_errors: List[str] = []
     
     async def initialize(self, 
-                        database_service: DatabaseService,
+                        database_service: AsyncDatabaseService,
                         embedding_service: EmbeddingService,
                         scheduler_service: AsyncScheduler) -> bool:
         """
@@ -161,7 +161,7 @@ class CleanUpCrewBootstrap:
         
         return health
     
-    async def _run_migrations(self, database_service: DatabaseService):
+    async def _run_migrations(self, database_service: AsyncDatabaseService):
         """Run necessary database migrations"""
         logger.info("Running Clean Up Crew database migrations...")
         
@@ -186,7 +186,7 @@ class CleanUpCrewBootstrap:
             raise
     
     async def _initialize_semantic_service(self, 
-                                         database_service: DatabaseService,
+                                         database_service: AsyncDatabaseService,
                                          embedding_service: EmbeddingService) -> SemanticDeduplicationService:
         """Initialize the semantic deduplication service"""
         logger.info("Initializing semantic deduplication service...")
@@ -210,7 +210,7 @@ class CleanUpCrewBootstrap:
         return manager
     
     async def _initialize_crew_service(self,
-                                     database_service: DatabaseService,
+                                     database_service: AsyncDatabaseService,
                                      scheduler_service: AsyncScheduler,
                                      semantic_service: SemanticDeduplicationService,
                                      websocket_manager: WebSocketManager) -> CleanUpCrewService:
@@ -244,7 +244,7 @@ class CleanUpCrewBootstrap:
 _bootstrap_instance: Optional[CleanUpCrewBootstrap] = None
 
 
-async def initialize_clean_up_crew(database_service: DatabaseService,
+async def initialize_clean_up_crew(database_service: AsyncDatabaseService,
                                  embedding_service: EmbeddingService,
                                  scheduler_service: AsyncScheduler) -> CleanUpCrewBootstrap:
     """

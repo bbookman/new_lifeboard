@@ -8,7 +8,7 @@ status information for UI display.
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class TwitterRateLimitService:
     """Service to manage Twitter API rate limiting and status reporting"""
     
-    def __init__(self, db_service: DatabaseService):
+    def __init__(self, db_service: AsyncDatabaseService):
         self.db_service = db_service
         self.rate_limit_minutes = 15
         self.twitter_namespace = "twitter"
@@ -126,16 +126,17 @@ class TwitterRateLimitService:
     async def _get_last_fetch_time(self) -> Optional[datetime]:
         """Get the last successful Twitter fetch time from database"""
         try:
-            query = """
-                SELECT last_synced 
-                FROM data_sources 
-                WHERE namespace = ? AND last_synced IS NOT NULL
-            """
-            result = await self.db_service.fetch_one(query, (self.twitter_namespace,))
-            
-            if result and result['last_synced']:
-                return datetime.fromisoformat(result['last_synced'])
-            return None
+            async with self.db_service.get_connection() as conn:
+                cursor = await conn.execute("""
+                    SELECT last_synced 
+                    FROM data_sources 
+                    WHERE namespace = ? AND last_synced IS NOT NULL
+                """, (self.twitter_namespace,))
+                
+                result = await cursor.fetchone()
+                if result and result['last_synced']:
+                    return datetime.fromisoformat(result['last_synced'])
+                return None
             
         except Exception as e:
             logger.error(f"[TwitterRateLimit] Error getting last fetch time: {e}")
@@ -144,15 +145,14 @@ class TwitterRateLimitService:
     async def _update_last_fetch_time(self, fetch_time: datetime) -> None:
         """Update the last successful Twitter fetch time in database"""
         try:
-            query = """
-                UPDATE data_sources 
-                SET last_synced = ? 
-                WHERE namespace = ?
-            """
-            await self.db_service.execute_query(
-                query, 
-                (fetch_time.isoformat(), self.twitter_namespace)
-            )
+            async with self.db_service.get_connection() as conn:
+                await conn.execute("""
+                    UPDATE data_sources 
+                    SET last_synced = ? 
+                    WHERE namespace = ?
+                """, (fetch_time.isoformat(), self.twitter_namespace))
+                
+                await conn.commit()
             
         except Exception as e:
             logger.error(f"[TwitterRateLimit] Error updating last fetch time: {e}")

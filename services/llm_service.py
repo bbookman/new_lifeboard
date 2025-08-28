@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 
 from core.base_service import BaseService
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from services.document_service import DocumentService
 from services.template_processor import TemplateProcessor
 from llm.factory import LLMProviderFactory
@@ -41,7 +41,7 @@ class LLMService(BaseService, ServiceDebugMixin):
     """Service for LLM-powered content generation"""
     
     def __init__(self,
-                 database: DatabaseService,
+                 database: AsyncDatabaseService,
                  document_service: DocumentService,
                  config: AppConfig):
         BaseService.__init__(self, service_name="LLMService", config=config)
@@ -340,10 +340,8 @@ class LLMService(BaseService, ServiceDebugMixin):
         
         db_start = time.time()
         try:
-            connection_context = self.debug_db.get_connection() if self.debug_db else self.database.get_connection()
-            
-            with connection_context as conn:
-                cursor = conn.execute("""
+            async with self.database.get_connection() as conn:
+                cursor = await conn.execute("""
                     SELECT content
                     FROM generated_summaries 
                     WHERE days_date = ? AND is_active = TRUE
@@ -351,7 +349,7 @@ class LLMService(BaseService, ServiceDebugMixin):
                     LIMIT 1
                 """, (days_date,))
                 
-                row = cursor.fetchone()
+                row = await cursor.fetchone()
                 
                 db_duration = (time.time() - db_start) * 1000
                 self.log_database_operation("SELECT", "generated_summaries", db_duration)
@@ -375,8 +373,8 @@ class LLMService(BaseService, ServiceDebugMixin):
         """Get the currently selected prompt for daily summaries with template resolution"""
         self.logger.info("Retrieving selected prompt for daily summary.")
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_connection() as conn:
+                cursor = await conn.execute("""
                     SELECT ps.prompt_document_id
                     FROM prompt_settings ps
                     WHERE ps.setting_key = 'daily_summary_prompt' 
@@ -385,7 +383,7 @@ class LLMService(BaseService, ServiceDebugMixin):
                     LIMIT 1
                 """)
                 
-                row = cursor.fetchone()
+                row = await cursor.fetchone()
                 if not row or not row['prompt_document_id']:
                     self.logger.warning("No 'daily_summary_prompt' setting found in database.")
                     return None
@@ -394,7 +392,7 @@ class LLMService(BaseService, ServiceDebugMixin):
                 self.logger.debug(f"Found prompt setting, document_id: {prompt_id}")
 
                 # Get the prompt document
-                document = self.document_service.get_document(prompt_id)
+                document = await self.document_service.get_document(prompt_id)
                 if not document or document.document_type != 'prompt':
                     self.logger.warning(f"Selected prompt document not found or invalid: {prompt_id}")
                     return None
@@ -403,7 +401,7 @@ class LLMService(BaseService, ServiceDebugMixin):
                 
                 # Process template variables in the prompt
                 self.logger.debug("Processing template variables in prompt...")
-                resolved_template = self.template_processor.resolve_template(
+                resolved_template = await self.template_processor.resolve_template(
                     content=document.content_md,
                     target_date=target_date
                 )
@@ -436,19 +434,18 @@ class LLMService(BaseService, ServiceDebugMixin):
             
             # Get daily data from various sources
             db_start = time.time()
-            connection_context = self.debug_db.get_connection() if self.debug_db else self.database.get_connection()
             
-            with connection_context as conn:
+            async with self.database.get_connection() as conn:
                 # Get news headlines
                 news_query_start = time.time()
                 self.logger.debug(f"Fetching news data for context.")
-                cursor = conn.execute("""
+                cursor = await conn.execute("""
                     SELECT title, snippet FROM news 
                     WHERE days_date = ? 
                     ORDER BY created_at DESC 
                     LIMIT 5
                 """, (days_date,))
-                news_items = cursor.fetchall()
+                news_items = await cursor.fetchall()
                 news_query_duration = (time.time() - news_query_start) * 1000
                 
                 news_items_count = len(news_items)
@@ -467,13 +464,13 @@ class LLMService(BaseService, ServiceDebugMixin):
                 # Get weather data
                 weather_query_start = time.time()
                 self.logger.debug(f"Fetching weather data for context.")
-                cursor = conn.execute("""
+                cursor = await conn.execute("""
                     SELECT response_json FROM weather 
                     WHERE days_date = ? 
                     ORDER BY created_at DESC 
                     LIMIT 1
                 """, (days_date,))
-                weather_row = cursor.fetchone()
+                weather_row = await cursor.fetchone()
                 weather_query_duration = (time.time() - weather_query_start) * 1000
                 
                 self.log_database_operation("SELECT", "weather", weather_query_duration)
@@ -498,13 +495,13 @@ class LLMService(BaseService, ServiceDebugMixin):
                 # Get limitless/activity data
                 activity_query_start = time.time()
                 self.logger.debug(f"Fetching limitless data for context.")
-                cursor = conn.execute("""
+                cursor = await conn.execute("""
                     SELECT processed_content FROM limitless 
                     WHERE days_date = ? 
                     ORDER BY created_at DESC 
                     LIMIT 3
                 """, (days_date,))
-                activity_items = cursor.fetchall()
+                activity_items = await cursor.fetchall()
                 activity_query_duration = (time.time() - activity_query_start) * 1000
                 
                 activity_items_count = len(activity_items)
@@ -553,13 +550,11 @@ class LLMService(BaseService, ServiceDebugMixin):
         
         storage_start = time.time()
         try:
-            connection_context = self.debug_db.get_connection() if self.debug_db else self.database.get_connection()
-            
-            with connection_context as conn:
+            async with self.database.get_connection() as conn:
                 # Deactivate any existing summaries for this date
                 self.logger.debug(f"Deactivating existing summaries for {days_date}.")
                 deactivate_start = time.time()
-                conn.execute("""
+                await conn.execute("""
                     UPDATE generated_summaries 
                     SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
                     WHERE days_date = ?
@@ -571,7 +566,7 @@ class LLMService(BaseService, ServiceDebugMixin):
                 # Insert new summary
                 self.logger.debug(f"Inserting new summary for {days_date}.")
                 insert_start = time.time()
-                conn.execute("""
+                await conn.execute("""
                     INSERT INTO generated_summaries 
                     (days_date, content, prompt_used, is_active, created_at, updated_at)
                     VALUES (?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -580,7 +575,7 @@ class LLMService(BaseService, ServiceDebugMixin):
                 
                 self.log_database_operation("INSERT", "generated_summaries", insert_duration)
                 
-                conn.commit()
+                await conn.commit()
                 
                 total_storage_duration = (time.time() - storage_start) * 1000
                 

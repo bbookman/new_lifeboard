@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 import json
 
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from services.scheduler import AsyncScheduler
 from services.semantic_deduplication_service import SemanticDeduplicationService
 
@@ -56,7 +56,7 @@ class CleanUpCrewService:
     """
     
     def __init__(self, 
-                 database_service: DatabaseService,
+                 database_service: AsyncDatabaseService,
                  scheduler_service: AsyncScheduler,
                  semantic_service: SemanticDeduplicationService,
                  websocket_manager: Optional[Any] = None):

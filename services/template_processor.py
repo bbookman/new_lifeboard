@@ -17,7 +17,7 @@ from dataclasses import dataclass
 import pytz
 
 from core.base_service import BaseService
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from config.models import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ class TemplateProcessor(BaseService):
     TIME_RANGES = ['DAY', 'WEEK', 'MONTH']
     
     def __init__(self, 
-                 database: DatabaseService,
+                 database: AsyncDatabaseService,
                  config: AppConfig,
                  timezone: str = 'America/New_York',
                  cache_enabled: bool = True,
@@ -84,19 +84,19 @@ class TemplateProcessor(BaseService):
         cache_key = f"{content}|{target_date}"
         return hashlib.md5(cache_key.encode()).hexdigest()
     
-    def _get_cached_result(self, template_hash: str) -> Optional[str]:
+    async def _get_cached_result(self, template_hash: str) -> Optional[str]:
         """Get cached template result if available and not expired"""
         if not self.cache_enabled:
             return None
             
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_connection() as conn:
+                cursor = await conn.execute("""
                     SELECT resolved_content FROM template_cache 
                     WHERE template_hash = ? AND expires_at > CURRENT_TIMESTAMP
                 """, (template_hash,))
                 
-                row = cursor.fetchone()
+                row = await cursor.fetchone()
                 if row:
                     logger.debug(f"Cache hit for template hash: {template_hash}")
                     return row['resolved_content']
@@ -106,8 +106,8 @@ class TemplateProcessor(BaseService):
             
         return None
     
-    def _cache_result(self, template_hash: str, content: str, target_date: str, 
-                     resolved_content: str, variables_resolved: int) -> None:
+    async def _cache_result(self, template_hash: str, content: str, target_date: str, 
+                           resolved_content: str, variables_resolved: int) -> None:
         """Cache template result"""
         if not self.cache_enabled:
             return
@@ -119,8 +119,8 @@ class TemplateProcessor(BaseService):
             # Generate content hash for additional validation
             content_hash = hashlib.md5(content.encode()).hexdigest()
             
-            with self.database.get_connection() as conn:
-                conn.execute("""
+            async with self.database.get_connection() as conn:
+                await conn.execute("""
                     INSERT OR REPLACE INTO template_cache 
                     (id, template_hash, content_hash, target_date, resolved_content, 
                      variables_resolved, created_at, expires_at)
@@ -134,18 +134,18 @@ class TemplateProcessor(BaseService):
                     variables_resolved,
                     expires_at.isoformat()
                 ))
-                conn.commit()
+                await conn.commit()
                 
             logger.debug(f"Cached template result: {template_hash}")
             
         except Exception as e:
             logger.warning(f"Error caching template result: {e}")
     
-    def _cleanup_expired_cache(self) -> None:
+    async def _cleanup_expired_cache(self) -> None:
         """Remove expired cache entries"""
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_connection() as conn:
+                cursor = await conn.execute("""
                     DELETE FROM template_cache 
                     WHERE expires_at <= CURRENT_TIMESTAMP
                 """)
@@ -154,7 +154,7 @@ class TemplateProcessor(BaseService):
                 if deleted_count > 0:
                     logger.debug(f"Cleaned up {deleted_count} expired cache entries")
                     
-                conn.commit()
+                await conn.commit()
                 
         except Exception as e:
             logger.warning(f"Error cleaning up template cache: {e}")
@@ -196,7 +196,7 @@ class TemplateProcessor(BaseService):
             
         return variables
     
-    def resolve_template(self, content: str, target_date: Optional[str] = None) -> ResolvedTemplate:
+    async def resolve_template(self, content: str, target_date: Optional[str] = None) -> ResolvedTemplate:
         """
         Resolve all template variables in content
         
@@ -212,7 +212,7 @@ class TemplateProcessor(BaseService):
             
         # Check cache first
         template_hash = self._generate_template_hash(content, target_date)
-        cached_result = self._get_cached_result(template_hash)
+        cached_result = await self._get_cached_result(template_hash)
         
         if cached_result:
             # Return cached result
@@ -226,7 +226,7 @@ class TemplateProcessor(BaseService):
         
         # Clean up expired cache entries periodically (10% chance)
         if self.cache_enabled and hash(template_hash) % 10 == 0:
-            self._cleanup_expired_cache()
+            await self._cleanup_expired_cache()
             
         variables = self.parse_template_variables(content)
         resolved_content = content
@@ -235,7 +235,7 @@ class TemplateProcessor(BaseService):
         
         for var in variables:
             try:
-                resolved_data = self._resolve_variable(var, target_date)
+                resolved_data = await self._resolve_variable(var, target_date)
                 resolved_content = resolved_content.replace(var.full_match, resolved_data)
                 variables_resolved += 1
                 logger.debug(f"Resolved template variable: {var.full_match}")
@@ -251,7 +251,7 @@ class TemplateProcessor(BaseService):
         
         # Cache the result if no errors occurred
         if not errors and variables_resolved > 0:
-            self._cache_result(template_hash, content, target_date, resolved_content, variables_resolved)
+            await self._cache_result(template_hash, content, target_date, resolved_content, variables_resolved)
         
         return ResolvedTemplate(
             original_content=content,
@@ -260,7 +260,7 @@ class TemplateProcessor(BaseService):
             errors=errors
         )
     
-    def _resolve_variable(self, variable: TemplateVariable, target_date: str) -> str:
+    async def _resolve_variable(self, variable: TemplateVariable, target_date: str) -> str:
         """
         Resolve a single template variable to its data
         
@@ -278,13 +278,13 @@ class TemplateProcessor(BaseService):
         date_range = self._calculate_date_range(variable.time_range, target_date)
         
         if variable.time_range == 'DAY':
-            data_items = self.database.get_data_items_by_date(
+            data_items = await self.database.get_data_items_by_date(
                 target_date, 
                 namespaces=[namespace]
             )
         else:
             start_date, end_date = date_range
-            data_items = self.database.get_data_items_by_date_range(
+            data_items = await self.database.get_data_items_by_date_range(
                 start_date,
                 end_date,
                 namespaces=[namespace]
