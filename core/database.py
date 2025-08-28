@@ -552,4 +552,33 @@ class DatabaseService:
         
         return '\n'.join(filtered_lines)
 
+    async def fetch_one(self, query: str, params: tuple = None) -> Optional[Dict[str, Any]]:
+        """
+        Async wrapper for fetching one row from database.
+        Added for compatibility with TwitterRateLimitService.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.execute(query, params or ())
+                row = cursor.fetchone()
+                if row:
+                    return dict(row)
+                return None
+        except Exception as e:
+            logger.error(f"Error in fetch_one: {e}")
+            raise
+
+    async def execute_query(self, query: str, params: tuple = None) -> None:
+        """
+        Async wrapper for executing a query (INSERT, UPDATE, DELETE).
+        Added for compatibility with TwitterRateLimitService.
+        """
+        try:
+            with self.get_connection() as conn:
+                conn.execute(query, params or ())
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error in execute_query: {e}")
+            raise
+
     

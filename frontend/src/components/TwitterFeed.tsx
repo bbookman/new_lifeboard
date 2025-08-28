@@ -7,6 +7,8 @@ import {
 } from "@/components/ui/carousel";
 import { ContentCard, ContentItemData } from "./ContentCard";
 import { fetchTwitterDataItems, DataItem } from "@/lib/api";
+import { useTwitterData } from "../hooks/useTwitterData";
+import { TwitterStatus } from "./TwitterStatus";
 
 interface TwitterFeedProps {
   selectedDate?: string;
@@ -193,10 +195,21 @@ const convertDataItemToContentItem = (dataItem: DataItem): ContentItemData => {
  */
 const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   const [twitterData, setTwitterData] = useState<ContentItemData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
+  
+  // Use Twitter data hook for auto-fetching
+  const { 
+    loading: autoFetchLoading, 
+    autoFetching, 
+    fetchError, 
+    checkAndFetchData, 
+    resetState 
+  } = useTwitterData();
+  
+  // Local loading state for data fetching
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Auto-advance state
   const [isAutoAdvanceEnabled, setIsAutoAdvanceEnabled] = useState(true);
@@ -277,8 +290,13 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
         setLoading(true);
         setError(null);
         
-        console.log(`[TwitterFeed DEBUG] Calling fetchTwitterDataItems for date: ${selectedDate}`);
-        console.log(`[TwitterFeed DEBUG] API URL will be: /calendar/data_items/${selectedDate}?namespaces=twitter`);
+        // First, check and potentially auto-fetch data if none exists
+        console.log(`[TwitterFeed] Checking for existing data and potentially auto-fetching for ${selectedDate}`);
+        await checkAndFetchData(selectedDate);
+        
+        // Then fetch the data (either existing or newly fetched)
+        console.log(`[TwitterFeed] Calling fetchTwitterDataItems for date: ${selectedDate}`);
+        console.log(`[TwitterFeed] API URL will be: /calendar/data_items/${selectedDate}?namespaces=twitter`);
         
         const dataItems = await fetchTwitterDataItems(selectedDate);
         
@@ -393,7 +411,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
     };
 
     fetchTweets();
-  }, [selectedDate]);
+  }, [selectedDate, checkAndFetchData]);
 
   useEffect(() => {
     if (!api) {
@@ -438,27 +456,36 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   }, [api, isAutoAdvanceEnabled, isPaused, twitterData.length]);
 
   // Debug logging for render state
-  console.log(`[TwitterFeed] Render: date=${selectedDate}, loading=${loading}, error=${error}, items=${twitterData.length}`);
+  console.log(`[TwitterFeed] Render: date=${selectedDate}, loading=${loading}, autoFetching=${autoFetching}, error=${error}, fetchError=${fetchError}, items=${twitterData.length}`);
 
-  // Loading state
-  if (loading) {
+  // Loading state (either local loading or auto-fetching)
+  if (loading || autoFetching) {
+    // With rate limiting and background fetching, we don't do immediate fetches anymore
+    const loadingMessage = 'Loading tweets...';
     return (
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
+        <div>
+          <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
+          <TwitterStatus selectedDate={selectedDate || ''} />
+        </div>
         <div className="flex items-center justify-center p-8 min-h-[200px] border border-newspaper-divider rounded-lg">
-          <div className="text-newspaper-byline">Loading tweets...</div>
+          <div className="text-newspaper-byline">{loadingMessage}</div>
         </div>
       </div>
     );
   }
 
-  // Error state  
-  if (error) {
+  // Error state (either local error or fetch error)
+  const displayError = error || fetchError;
+  if (displayError) {
     return (
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
+        <div>
+          <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
+          <TwitterStatus selectedDate={selectedDate || ''} />
+        </div>
         <div className="flex items-center justify-center p-8 min-h-[200px] border border-newspaper-divider rounded-lg">
-          <div className="text-red-600">Error: {error}</div>
+          <div className="text-red-600">Error: {displayError}</div>
         </div>
       </div>
     );
@@ -468,7 +495,10 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   if (twitterData.length === 0) {
     return (
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
+        <div>
+          <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
+          <TwitterStatus selectedDate={selectedDate || ''} />
+        </div>
         <div className="flex items-center justify-center p-8 min-h-[200px] border border-newspaper-divider rounded-lg">
           <div className="text-newspaper-byline">No tweets available</div>
         </div>
@@ -481,7 +511,10 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   // Render carousel with Twitter data from database
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
+      <div>
+        <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
+        <TwitterStatus selectedDate={selectedDate || ''} />
+      </div>
       
       {twitterData.length === 1 ? (
         // Single tweet - use same fixed size

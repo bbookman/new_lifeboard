@@ -11,6 +11,7 @@ from core.database import DatabaseService
 from sources.base import BaseSource, DataItem
 from sources.twitter_processor import TwitterProcessor
 from services.twitter_api_service import TwitterAPIService
+from services.twitter_rate_limit_service import TwitterRateLimitService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ class TwitterSource(BaseSource):
         self.ingestion_service = ingestion_service
         self.processor = TwitterProcessor()
         self.api_service = TwitterAPIService(config)
+        self.rate_limit_service = TwitterRateLimitService(db_service)
 
     async def import_from_zip(self, zip_path: str) -> Dict[str, Any]:
         """Import Twitter data from a zip archive, only adding new tweets."""
@@ -207,7 +209,7 @@ class TwitterSource(BaseSource):
         logger.info(f"[TWITTER IMPORT] Successfully ingested {len(data_items)} tweets")
 
     async def fetch_today_tweets(self) -> List[Dict[str, Any]]:
-        """Fetch today's tweets from Twitter API"""
+        """Fetch today's tweets from Twitter API with rate limiting"""
         logger.info("Starting fetch_today_tweets...")
         logger.info(f"[TWITTER IMPORT] Twitter config state: enabled={self.config.enabled}")
         logger.info(f"Bearer token configured: {bool(self.config.bearer_token)}")
@@ -220,6 +222,12 @@ class TwitterSource(BaseSource):
             logger.warning("[TWITTER IMPORT] Twitter API not configured. Skipping real-time tweet fetch.")
             return []
         
+        # Check rate limiting before attempting fetch
+        can_fetch, minutes_until = await self.rate_limit_service.can_fetch_now()
+        if not can_fetch:
+            logger.info(f"[TWITTER IMPORT] Rate limited. Next fetch available in {minutes_until} minutes. Returning cached data.")
+            return []
+        
         try:
             logger.info("Opening API service context...")
             async with self.api_service:
@@ -227,21 +235,33 @@ class TwitterSource(BaseSource):
                 tweets = await self.api_service.fetch_user_tweets_today()
                 logger.info(f"[TWITTER IMPORT] Fetched {len(tweets)} tweets from Twitter API")
                 logger.debug(f"Tweet IDs: {[t.get('tweet_id') for t in tweets]}")
+                
+                # Record successful fetch for rate limiting
+                await self.rate_limit_service.record_fetch_attempt(success=True)
+                
                 return tweets
         except Exception as e:
             logger.error(f"Error fetching tweets from API: {e}", exc_info=True)
+            # Record failed fetch (doesn't count against rate limit)
+            await self.rate_limit_service.record_fetch_attempt(success=False)
             return []
 
     async def get_data_for_date(self, date: str) -> List[Dict[str, Any]]:
         """Get tweets for a specific date"""
         return self.db_service.get_data_items_by_date(date, [self.namespace])
+    
+    async def get_status_for_day(self, days_date: str) -> Optional[Dict[str, str]]:
+        """Get Twitter fetch status for a specific day for UI display"""
+        if not self.config.is_api_configured():
+            return None
+        return await self.rate_limit_service.get_status_for_day(days_date)
 
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """Fetch data items from the Twitter source"""
-        # First, try to fetch new tweets from API if configured
+        # First, try to fetch new tweets from API if configured and rate limits allow
         if self.config.is_api_configured():
             try:
-                api_tweets = await self.fetch_today_tweets()
+                api_tweets = await self.fetch_today_tweets()  # This now handles rate limiting internally
                 if api_tweets:
                     # Get existing tweet IDs to avoid duplicates
                     existing_tweet_ids = await self._get_existing_tweet_ids()
@@ -267,8 +287,6 @@ class TwitterSource(BaseSource):
                                         'original_created_at': tweet.get('created_at'),
                                         'days_date': tweet.get('days_date'),
                                         'source_type': 'twitter_api',
-                                        'public_metrics': tweet.get('public_metrics', {}),
-                                        'context_annotations': tweet.get('context_annotations', [])
                                     },
                                     created_at=created_at,
                                     updated_at=datetime.now()

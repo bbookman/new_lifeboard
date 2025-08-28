@@ -59,8 +59,6 @@ def sample_api_tweets():
             "days_date": "2024-01-15",
             "text": "This is a test tweet from API",
             "media_urls": "[]",
-            "public_metrics": {"like_count": 5, "retweet_count": 2},
-            "context_annotations": []
         },
         {
             "tweet_id": "9876543210987654321",
@@ -68,8 +66,6 @@ def sample_api_tweets():
             "days_date": "2024-01-15",
             "text": "Another test tweet from API",
             "media_urls": "[]",
-            "public_metrics": {"like_count": 10, "retweet_count": 1},
-            "context_annotations": []
         }
     ]
 
@@ -372,8 +368,6 @@ class TestTwitterSourceAPIIntegration:
             "days_date": "2024-01-15",
             "text": "Test tweet with metrics",
             "media_urls": "[]",
-            "public_metrics": {"like_count": 5},
-            "context_annotations": [{"entity": {"name": "Technology"}}]
         }]
         
         mock_database_service.get_data_items_by_namespace.side_effect = [[], []]  # No existing tweets
@@ -391,6 +385,4 @@ class TestTwitterSourceAPIIntegration:
             assert item.source_id == "123456789"
             assert item.content == "Test tweet with metrics"
             assert item.metadata["source_type"] == "twitter_api"
-            assert item.metadata["public_metrics"] == {"like_count": 5}
-            assert item.metadata["context_annotations"] == [{"entity": {"name": "Technology"}}]
             assert item.metadata["days_date"] == "2024-01-15"

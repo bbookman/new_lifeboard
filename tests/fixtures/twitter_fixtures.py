@@ -50,12 +50,6 @@ def sample_twitter_api_user_response():
             "name": "Test User",
             "username": "testuser123",
             "verified": False,
-            "public_metrics": {
-                "followers_count": 100,
-                "following_count": 50,
-                "tweet_count": 200,
-                "listed_count": 5
-            }
         }
     }
 
@@ -68,26 +62,6 @@ def sample_twitter_api_tweets_response():
                 "id": "1750123456789012345",
                 "text": "Just deployed a new feature to production! 🚀 #coding #tech",
                 "created_at": "2024-01-15T10:30:00.000Z",
-                "public_metrics": {
-                    "retweet_count": 5,
-                    "like_count": 25,
-                    "reply_count": 3,
-                    "quote_count": 2
-                },
-                "context_annotations": [
-                    {
-                        "domain": {
-                            "id": "66",
-                            "name": "Twitter Platform",
-                            "description": "A prominent social media platform"
-                        },
-                        "entity": {
-                            "id": "781974596752842752",
-                            "name": "Services",
-                            "description": "Entity representing a commercial service"
-                        }
-                    }
-                ],
                 "entities": {
                     "hashtags": [
                         {"start": 50, "end": 57, "tag": "coding"},
@@ -99,37 +73,11 @@ def sample_twitter_api_tweets_response():
                 "id": "1750123456789012346",
                 "text": "Working on some interesting AI/ML projects. The future is exciting! 🤖",
                 "created_at": "2024-01-15T14:45:30.000Z",
-                "public_metrics": {
-                    "retweet_count": 12,
-                    "like_count": 48,
-                    "reply_count": 7,
-                    "quote_count": 4
-                },
-                "context_annotations": [
-                    {
-                        "domain": {
-                            "id": "65",
-                            "name": "Interests and Hobbies Vertical",
-                            "description": "A vertical for interests and hobbies"
-                        },
-                        "entity": {
-                            "id": "1255885797584535552",
-                            "name": "Machine learning",
-                            "description": "Machine learning and artificial intelligence"
-                        }
-                    }
-                ]
             },
             {
                 "id": "1750123456789012347",
                 "text": "Beautiful sunset today 🌅",
                 "created_at": "2024-01-15T19:20:15.000Z",
-                "public_metrics": {
-                    "retweet_count": 2,
-                    "like_count": 15,
-                    "reply_count": 1,
-                    "quote_count": 0
-                }
             }
         ],
         "meta": {
@@ -158,26 +106,6 @@ def sample_transformed_api_tweets():
             "days_date": "2024-01-15",
             "text": "Just deployed a new feature to production! 🚀 #coding #tech",
             "media_urls": "[]",
-            "public_metrics": {
-                "retweet_count": 5,
-                "like_count": 25,
-                "reply_count": 3,
-                "quote_count": 2
-            },
-            "context_annotations": [
-                {
-                    "domain": {
-                        "id": "66",
-                        "name": "Twitter Platform",
-                        "description": "A prominent social media platform"
-                    },
-                    "entity": {
-                        "id": "781974596752842752",
-                        "name": "Services",
-                        "description": "Entity representing a commercial service"
-                    }
-                }
-            ]
         },
         {
             "tweet_id": "1750123456789012346",
@@ -185,26 +113,6 @@ def sample_transformed_api_tweets():
             "days_date": "2024-01-15",
             "text": "Working on some interesting AI/ML projects. The future is exciting! 🤖",
             "media_urls": "[]",
-            "public_metrics": {
-                "retweet_count": 12,
-                "like_count": 48,
-                "reply_count": 7,
-                "quote_count": 4
-            },
-            "context_annotations": [
-                {
-                    "domain": {
-                        "id": "65",
-                        "name": "Interests and Hobbies Vertical",
-                        "description": "A vertical for interests and hobbies"
-                    },
-                    "entity": {
-                        "id": "1255885797584535552",
-                        "name": "Machine learning",
-                        "description": "Machine learning and artificial intelligence"
-                    }
-                }
-            ]
         },
         {
             "tweet_id": "1750123456789012347",
@@ -212,13 +120,6 @@ def sample_transformed_api_tweets():
             "days_date": "2024-01-15",
             "text": "Beautiful sunset today 🌅",
             "media_urls": "[]",
-            "public_metrics": {
-                "retweet_count": 2,
-                "like_count": 15,
-                "reply_count": 1,
-                "quote_count": 0
-            },
-            "context_annotations": []
         }
     ]
 

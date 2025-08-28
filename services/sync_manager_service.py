@@ -12,6 +12,7 @@ from sources.base import BaseSource
 from sources.limitless import LimitlessSource
 from sources.news import NewsSource
 from sources.weather import WeatherSource
+from sources.twitter import TwitterSource
 from config.models import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -63,15 +64,21 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         # Determine sync interval
         if isinstance(source, LimitlessSource):
             interval_hours = self.config.limitless.sync_interval_hours
+            interval_seconds = interval_hours * 3600
         elif isinstance(source, NewsSource):
             interval_hours = self.config.news.sync_interval_hours
+            interval_seconds = interval_hours * 3600
         elif isinstance(source, WeatherSource):
             interval_hours = self.config.weather.sync_interval_hours
+            interval_seconds = interval_hours * 3600
+        elif isinstance(source, TwitterSource):
+            # Twitter Basic plan rate limit: 1 request per 15 minutes
+            interval_seconds = 15 * 60  # 15 minutes in seconds
+            logger.info(f"Twitter source configured for 15-minute sync interval due to API rate limits")
         else:
             # Default sync interval for other sources
             interval_hours = 24
-        
-        interval_seconds = interval_hours * 3600
+            interval_seconds = interval_hours * 3600
         
         # Create sync function
         async def sync_function():

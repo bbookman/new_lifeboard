@@ -22,6 +22,8 @@ from core.database import DatabaseService
 from core.dependencies import get_startup_service_dependency
 from config.factory import get_config
 from sources.limitless import LimitlessSource
+from sources.twitter import TwitterSource
+from core.dependencies import get_dependency_registry
 
 logger = logging.getLogger(__name__)
 
@@ -610,6 +612,202 @@ async def fetch_limitless_for_date(
         raise
     except Exception as e:
         logger.error(f"[OnDemandFetch] Critical error in fetch endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+def get_twitter_source() -> TwitterSource:
+    """Get Twitter source instance"""
+    registry = get_dependency_registry()
+    startup_service = registry.get_startup_service()
+    if not startup_service:
+        logger.error("Startup service not available in dependency registry")
+        raise HTTPException(status_code=503, detail="Application not properly initialized")
+    
+    if not startup_service.ingestion_service:
+        logger.error("Ingestion service not available in startup service")
+        raise HTTPException(status_code=503, detail="Ingestion service not available")
+    
+    twitter_source = startup_service.ingestion_service.sources.get("twitter")
+    if not twitter_source:
+        available_sources = list(startup_service.ingestion_service.sources.keys())
+        logger.error(f"Twitter source not found. Available sources: {available_sources}")
+        raise HTTPException(status_code=404, detail="Twitter source not found or not configured")
+    
+    if not isinstance(twitter_source, TwitterSource):
+        logger.error(f"Twitter source is wrong type: {type(twitter_source)}")
+        raise HTTPException(status_code=404, detail="Twitter source not properly configured")
+    
+    return twitter_source
+
+
+@router.post("/twitter/fetch/{date}")
+async def fetch_twitter_for_date(
+    date: str,
+    database: DatabaseService = Depends(get_database_service),
+    ingestion_service: IngestionService = Depends(get_ingestion_service),
+    twitter_source: TwitterSource = Depends(get_twitter_source)
+) -> Dict[str, Any]:
+    """
+    Fetch Twitter data for a specific date on-demand.
+    This endpoint automatically fetches data from the Twitter API for the specified date,
+    processes it through the existing pipeline, and stores it in the database.
+    """
+    try:
+        logger.info(f"[TwitterOnDemandFetch] Starting on-demand fetch for date: {date}")
+        
+        # Validate date format
+        try:
+            parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
+            logger.debug(f"[TwitterOnDemandFetch] Parsed date: {parsed_date}")
+        except ValueError:
+            logger.error(f"[TwitterOnDemandFetch] Invalid date format: {date}")
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Check if data already exists (optional optimization)
+        existing_items = database.get_data_items_by_date(date, namespaces=['twitter'])
+        if existing_items:
+            logger.info(f"[TwitterOnDemandFetch] Data already exists for {date}: {len(existing_items)} items")
+            return {
+                "success": True,
+                "message": f"Data already exists for {date}",
+                "items_processed": 0,
+                "items_existing": len(existing_items),
+                "date": date
+            }
+        
+        logger.debug(f"[TwitterOnDemandFetch] No existing data found for {date}, proceeding with fetch")
+        
+        # Check if Twitter API is configured
+        config = get_config()
+        if not config.twitter.is_api_configured():
+            logger.error("[TwitterOnDemandFetch] Twitter API not configured")
+            raise HTTPException(status_code=503, detail="Twitter API not configured")
+        
+        # Fetch tweets for today (Twitter API typically only returns recent tweets)
+        logger.info(f"[TwitterOnDemandFetch] Fetching tweets from Twitter API")
+        tweets = await twitter_source.fetch_today_tweets()
+        
+        if not tweets:
+            logger.info(f"[TwitterOnDemandFetch] No tweets found for {date}")
+            return {
+                "success": True,
+                "message": f"No tweets found for {date}",
+                "items_processed": 0,
+                "items_existing": 0,
+                "date": date
+            }
+        
+        logger.info(f"[TwitterOnDemandFetch] Fetched {len(tweets)} tweets from Twitter API")
+        
+        # Filter tweets that match the target date
+        target_tweets = []
+        for tweet in tweets:
+            tweet_date = tweet.get('days_date')
+            if tweet_date == date:
+                target_tweets.append(tweet)
+                logger.debug(f"[TwitterOnDemandFetch] Tweet {tweet['tweet_id']} matches date {date}")
+        
+        if not target_tweets:
+            logger.info(f"[TwitterOnDemandFetch] No tweets found matching date {date}")
+            return {
+                "success": True,
+                "message": f"No tweets found matching date {date}",
+                "items_processed": 0,
+                "items_existing": 0,
+                "date": date
+            }
+        
+        logger.info(f"[TwitterOnDemandFetch] Found {len(target_tweets)} tweets matching date {date}")
+        
+        # Process tweets through the existing ingestion pipeline
+        logger.info(f"[TwitterOnDemandFetch] Processing {len(target_tweets)} tweets through ingestion pipeline")
+        
+        # Import IngestionResult for proper result tracking
+        from services.ingestion import IngestionResult
+        result = IngestionResult()
+        result.start_time = datetime.now(timezone.utc)
+        
+        try:
+            # Get existing tweet IDs to avoid duplicates
+            existing_tweet_ids = await twitter_source._get_existing_tweet_ids()
+            
+            # Convert tweets to DataItems and process them
+            for tweet in target_tweets:
+                if tweet['tweet_id'] in existing_tweet_ids:
+                    logger.debug(f"[TwitterOnDemandFetch] Tweet {tweet['tweet_id']} already exists, skipping")
+                    continue
+                
+                try:
+                    # Parse timestamp
+                    created_at = datetime.fromisoformat(tweet['created_at']) if tweet.get('created_at') else None
+                    
+                    # Create DataItem
+                    from sources.base import DataItem
+                    data_item = DataItem(
+                        namespace=twitter_source.namespace,
+                        source_id=tweet['tweet_id'],
+                        content=tweet['text'] or "",
+                        metadata={
+                            'media_urls': tweet.get('media_urls', '[]'),
+                            'original_created_at': tweet.get('created_at'),
+                            'days_date': tweet.get('days_date'),
+                            'source_type': 'twitter_api'
+                        },
+                        created_at=created_at,
+                        updated_at=datetime.now()
+                    )
+                    
+                    # Process through the processor
+                    processed_item = twitter_source.processor.process(data_item)
+                    
+                    # Store through ingestion service
+                    logger.debug(f"[TwitterOnDemandFetch] Processing tweet: {tweet['tweet_id']}")
+                    await ingestion_service._process_and_store_item(processed_item, result)
+                    result.items_processed += 1
+                    logger.debug(f"[TwitterOnDemandFetch] Successfully processed tweet: {tweet['tweet_id']}")
+                    
+                except Exception as e:
+                    logger.error(f"[TwitterOnDemandFetch] Error processing tweet {tweet.get('tweet_id', 'unknown')}: {e}")
+                    result.errors.append(f"Error processing tweet {tweet.get('tweet_id', 'unknown')}: {str(e)}")
+            
+            result.end_time = datetime.now(timezone.utc)
+            processed_count = result.items_processed
+            stored_count = result.items_stored 
+            errors = result.errors
+            
+            logger.info(f"[TwitterOnDemandFetch] Processing completed: {processed_count} processed, {stored_count} stored, {len(errors)} errors")
+            
+        except Exception as e:
+            logger.error(f"[TwitterOnDemandFetch] Critical error during processing: {e}")
+            raise HTTPException(status_code=500, detail=f"Error processing data: {str(e)}")
+        
+        # Process embeddings for the newly stored items
+        logger.info(f"[TwitterOnDemandFetch] Processing embeddings for newly stored items")
+        try:
+            embedding_result = await ingestion_service.process_pending_embeddings(batch_size=32)
+            logger.debug(f"[TwitterOnDemandFetch] Embedding processing result: {embedding_result}")
+        except Exception as e:
+            logger.warning(f"[TwitterOnDemandFetch] Error processing embeddings (non-critical): {e}")
+        
+        # Verify final result
+        final_items = database.get_data_items_by_date(date, namespaces=['twitter'])
+        
+        logger.info(f"[TwitterOnDemandFetch] On-demand fetch completed for {date}: processed={processed_count}, stored={stored_count}, final_count={len(final_items)}")
+        
+        return {
+            "success": True,
+            "message": f"Successfully fetched and processed Twitter data for {date}",
+            "items_processed": processed_count,
+            "items_stored": stored_count,
+            "items_final": len(final_items),
+            "errors": errors,
+            "date": date
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[TwitterOnDemandFetch] Critical error in fetch endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 

@@ -442,8 +442,9 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
     max_retries: int = 3
     retry_delay: float = 1.0
     request_timeout: float = 30.0
-    # Rate limiting improvements
-    rate_limit_max_retries: int = 10
+    # Error handling configuration
+    # Note: No rate_limit_max_retries - Twitter Basic plan has 15-minute intervals,
+    # so rate limit retries are handled by TwitterRateLimitService, not here
     other_error_max_retries: int = 3
     inter_call_delay: float = 3.0
     
@@ -460,7 +461,7 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
             return StringValidator.validate_non_empty_string(v, "Twitter Username")
         return v
     
-    @field_validator('max_retries', 'sync_interval_hours', 'rate_limit_max_retries', 'other_error_max_retries')
+    @field_validator('max_retries', 'sync_interval_hours', 'other_error_max_retries')
     @classmethod
     def validate_positive_ints(cls, v, info):
         field_name = info.field_name.replace('_', ' ').title()
