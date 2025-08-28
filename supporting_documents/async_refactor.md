@@ -1,10 +1,19 @@
 # DatabaseService Async Refactoring Plan
 
+## Documentation Guidelines
+
+**IMPORTANT: This document serves as the single source of truth for the async refactoring process. All findings, progress updates, and implementation notes should be recorded directly in this document.**
+
+**Do NOT create additional documentation files unless explicitly requested by the user. When instructions mention "document" or "record", this means updating this existing document, not creating new files.**
+
+**Follow CLAUDE.md guidelines: "NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User."**
+
 ## Progress Tracking
 The following will be updated after each phase
 
-**Phase 0:** PENDING
-**Phase 1:** PENDING
+**Phase 0:** ✅ COMPLETED (Current State Integration - Existing async wrappers audited and migration plan created)
+**Phase 1:** ✅ COMPLETED (Foundation & Test Infrastructure - aiosqlite added, async fixtures created, interface defined, 32 tests passing)
+**Documentation Guidelines:** ✅ CLARIFIED (Added explicit guidelines to prevent over-interpretation and unnecessary file creation)
 **Phase 2:** PENDING
 **Phase 3:** PENDING
 **Phase 4:** PENDING
@@ -80,7 +89,7 @@ async def execute_query(self, query: str, params: tuple = None) -> None:
 **Integration Tasks:**
 1. **Audit existing usage** of fetch_one/execute_query (TwitterRateLimitService)
 2. **Plan migration path** from wrappers to native async methods
-3. **Document wrapper removal** as part of Phase 2 implementation
+3. **Record wrapper removal plan** as part of Phase 2 implementation (note findings in this document only - do not create separate documentation files)
 
 ### Phase 1: Foundation & Test Infrastructure (Days 1-2)
 

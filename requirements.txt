@@ -7,6 +7,7 @@ pytz>=2023.3
 
 # Database
 # sqlite3 (built-in)
+aiosqlite>=0.19.0
 
 # Vector Search and Embeddings
 faiss-cpu>=1.7.0
@@ -35,5 +36,5 @@ pytest-asyncio>=0.21.0
 faker
 
 # Debug Logging Infrastructure
-python-json-loggerpythonj
+python-json-logger
 psutil>=5.9.0

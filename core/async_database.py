@@ -1,0 +1,531 @@
+"""
+AsyncDatabaseService - Asynchronous Database Operations
+
+This module provides the async implementation of database operations using aiosqlite
+to align with the application's async architecture and improve performance.
+
+This is Phase 1 implementation - interface definition and basic structure.
+Full implementation will be completed in Phase 2.
+"""
+
+import logging
+import aiosqlite
+import json
+from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime, timezone
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from core.debug_logger import DebugLogger
+from services.debug_mixin import ServiceDebugMixin
+
+logger = logging.getLogger(__name__)
+
+
+class AsyncDatabaseService(ServiceDebugMixin):
+    """
+    Asynchronous database service for non-blocking I/O operations.
+    
+    This service provides async/await compatible database operations using aiosqlite,
+    replacing the synchronous sqlite3 operations for improved performance in async contexts.
+    
+    Phase 1: Interface definition and basic structure
+    Phase 2: Full method implementation with TDD approach
+    """
+    
+    def __init__(self, db_path: str = "lifeboard.db"):
+        """
+        Initialize AsyncDatabaseService with database path.
+        
+        Args:
+            db_path: Path to SQLite database file or ":memory:" for in-memory database
+        """
+        super().__init__("async_database")
+        self.db_path = db_path
+        self.debug = DebugLogger("AsyncDatabaseService")
+        self._connection_pool = None
+        
+        # Log initialization
+        self.debug.log_state("initialization", {
+            "db_path": db_path,
+            "memory_db": db_path == ":memory:"
+        })
+    
+    async def initialize(self) -> None:
+        """
+        Async initialization of database schema and setup.
+        
+        This method should be called during application startup to ensure
+        the database is properly initialized before use.
+        """
+        self.log_service_call("initialize")
+        
+        try:
+            await self._init_database()
+            self.log_service_call("initialize", {"status": "completed"})
+        except Exception as e:
+            self.debug.log_state("initialization_failed", {"error": str(e)}, level="ERROR")
+            raise
+    
+    async def close(self) -> None:
+        """
+        Close database connections and cleanup resources.
+        
+        This method should be called during application shutdown to ensure
+        proper cleanup of database connections and resources.
+        """
+        self.log_service_call("close")
+        
+        try:
+            # Connection pool cleanup will be implemented in Phase 2
+            if self._connection_pool:
+                await self._connection_pool.close_all()
+            self.log_service_call("close", {"status": "completed"})
+        except Exception as e:
+            self.debug.log_state("close_failed", {"error": str(e)}, level="ERROR")
+            raise
+    
+    @asynccontextmanager
+    async def get_connection(self):
+        """
+        Async context manager for database connections.
+        
+        Provides a database connection with proper async context management.
+        In Phase 2, this will integrate with connection pooling for better performance.
+        
+        Yields:
+            aiosqlite.Connection: Async database connection
+        """
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            yield conn
+    
+    # Core CRUD Operations - Interface Definitions
+    # Full implementations will be added in Phase 2 with TDD approach
+    
+    async def store_data_item(self, id: str, namespace: str, source_id: str, 
+                             content: str, metadata: Dict = None, days_date: str = None,
+                             ingestion_status: str = 'complete') -> None:
+        """
+        Store a data item asynchronously.
+        
+        Args:
+            id: Unique identifier for the data item
+            namespace: Namespace for data isolation  
+            source_id: Source-specific identifier
+            content: Text content of the item
+            metadata: Optional metadata dictionary
+            days_date: Date string in YYYY-MM-DD format
+            ingestion_status: Status of ingestion process
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def get_data_items_by_ids(self, ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Retrieve multiple data items by their IDs asynchronously.
+        
+        Args:
+            ids: List of data item IDs to retrieve
+            
+        Returns:
+            List of data item dictionaries
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def get_data_items_by_namespace(self, namespace: str, limit: Optional[int] = None,
+                                         offset: int = 0) -> List[Dict[str, Any]]:
+        """
+        Retrieve data items by namespace asynchronously.
+        
+        Args:
+            namespace: Namespace to filter by
+            limit: Maximum number of items to return
+            offset: Number of items to skip
+            
+        Returns:
+            List of data item dictionaries
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def get_data_items_by_date(self, date: str, namespaces: List[str] = None) -> List[Dict[str, Any]]:
+        """
+        Retrieve data items by date asynchronously.
+        
+        Args:
+            date: Date string in YYYY-MM-DD format
+            namespaces: Optional list of namespaces to filter by
+            
+        Returns:
+            List of data item dictionaries
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def get_data_items_by_date_range(self, start_date: str, end_date: str,
+                                          namespaces: List[str] = None) -> List[Dict[str, Any]]:
+        """
+        Retrieve data items within a date range asynchronously.
+        
+        Args:
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            namespaces: Optional list of namespaces to filter by
+            
+        Returns:
+            List of data item dictionaries
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def delete_data_item(self, id: str) -> bool:
+        """
+        Delete a data item asynchronously.
+        
+        Args:
+            id: ID of the data item to delete
+            
+        Returns:
+            True if item was deleted, False if not found
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    # Query and Metadata Operations - Interface Definitions
+    
+    async def get_days_with_data(self, namespaces: List[str] = None) -> List[str]:
+        """
+        Get list of dates that have data asynchronously.
+        
+        Args:
+            namespaces: Optional list of namespaces to filter by
+            
+        Returns:
+            List of date strings in YYYY-MM-DD format
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def get_available_dates(self, limit: Optional[int] = None) -> List[str]:
+        """
+        Get available dates with data asynchronously.
+        
+        Args:
+            limit: Maximum number of dates to return
+            
+        Returns:
+            List of date strings in YYYY-MM-DD format
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def get_all_namespaces(self) -> List[str]:
+        """
+        Get all unique namespaces asynchronously.
+        
+        Returns:
+            List of namespace strings
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def get_database_stats(self) -> Dict[str, Any]:
+        """
+        Get database statistics asynchronously.
+        
+        Returns:
+            Dictionary containing database statistics
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    # Settings Operations - Interface Definitions
+    
+    async def get_setting(self, key: str, default: Any = None) -> Any:
+        """
+        Get a setting value asynchronously.
+        
+        Args:
+            key: Setting key
+            default: Default value if setting not found
+            
+        Returns:
+            Setting value or default
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def set_setting(self, key: str, value: Any) -> None:
+        """
+        Set a setting value asynchronously.
+        
+        Args:
+            key: Setting key
+            value: Setting value
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    # Data Source Management - Interface Definitions
+    
+    async def register_data_source(self, namespace: str, source_type: str, 
+                                  metadata: Dict = None) -> None:
+        """
+        Register a data source asynchronously.
+        
+        Args:
+            namespace: Unique namespace for the data source
+            source_type: Type of data source
+            metadata: Optional metadata dictionary
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def update_source_item_count(self, namespace: str, count: int) -> None:
+        """
+        Update item count for a data source asynchronously.
+        
+        Args:
+            namespace: Data source namespace
+            count: New item count
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    # Chat Operations - Interface Definitions
+    
+    async def store_chat_message(self, user_message: str, assistant_response: str) -> None:
+        """
+        Store a chat message pair asynchronously.
+        
+        Args:
+            user_message: User's message
+            assistant_response: Assistant's response
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    async def get_chat_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Retrieve chat history asynchronously.
+        
+        Args:
+            limit: Maximum number of messages to return
+            
+        Returns:
+            List of chat message dictionaries
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        raise NotImplementedError("Phase 2 implementation pending")
+    
+    # Async Wrapper Methods (Phase 0 Integration)
+    # These methods replace the pseudo-async wrappers from the sync DatabaseService
+    
+    async def fetch_one(self, query: str, params: tuple = None) -> Optional[Dict[str, Any]]:
+        """
+        Fetch one row from database asynchronously.
+        
+        This method provides proper async implementation to replace the 
+        blocking wrapper method from Phase 0 integration.
+        
+        Args:
+            query: SQL query string
+            params: Query parameters tuple
+            
+        Returns:
+            Row dictionary or None if not found
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        self.log_service_call("fetch_one", {"query_type": query.split()[0].upper()})
+        
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute(query, params or ()) as cursor:
+                    row = await cursor.fetchone()
+                    result = dict(row) if row else None
+                    
+                    self.debug.log_performance_metric("fetch_one_duration", 0.001)  # Placeholder
+                    return result
+                    
+        except Exception as e:
+            self.debug.log_state("fetch_one_failed", {"error": str(e), "query": query}, level="ERROR")
+            raise
+    
+    async def execute_query(self, query: str, params: tuple = None) -> None:
+        """
+        Execute a query (INSERT, UPDATE, DELETE) asynchronously.
+        
+        This method provides proper async implementation to replace the 
+        blocking wrapper method from Phase 0 integration.
+        
+        Args:
+            query: SQL query string
+            params: Query parameters tuple
+            
+        Raises:
+            Exception: Database operation errors
+        """
+        self.log_service_call("execute_query", {"query_type": query.split()[0].upper()})
+        
+        try:
+            async with self.get_connection() as conn:
+                await conn.execute(query, params or ())
+                await conn.commit()
+                
+                self.debug.log_performance_metric("execute_query_duration", 0.001)  # Placeholder
+                
+        except Exception as e:
+            self.debug.log_state("execute_query_failed", {"error": str(e), "query": query}, level="ERROR")
+            raise
+    
+    # Private Methods - Implementation Helpers
+    
+    async def _init_database(self) -> None:
+        """
+        Initialize database schema and run migrations.
+        
+        This method sets up the database structure and ensures all
+        necessary tables and indexes are created.
+        """
+        self.debug.log_state("database_init", {"status": "started"})
+        
+        try:
+            async with self.get_connection() as conn:
+                # Basic schema creation for Phase 1
+                # Full migration system will be integrated in Phase 2
+                
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS data_items (
+                        id TEXT PRIMARY KEY,
+                        namespace TEXT NOT NULL,
+                        source_id TEXT NOT NULL,
+                        content TEXT,
+                        metadata TEXT,
+                        embedding_status TEXT DEFAULT 'pending',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        days_date TEXT NOT NULL
+                    )
+                """)
+                
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS data_sources (
+                        namespace TEXT PRIMARY KEY,
+                        source_type TEXT NOT NULL,
+                        metadata TEXT,
+                        item_count INTEGER DEFAULT 0,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        last_synced TIMESTAMP,
+                        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS chat_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_message TEXT NOT NULL,
+                        assistant_response TEXT NOT NULL,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS system_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT,
+                        updated_at TIMESTAMP
+                    )
+                """)
+                
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS migrations (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL UNIQUE,
+                        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                await conn.commit()
+                
+                self.debug.log_state("database_init", {"status": "completed"})
+                
+        except Exception as e:
+            self.debug.log_state("database_init_failed", {"error": str(e)}, level="ERROR")
+            raise
+
+
+# Migration utilities for Phase 2 integration
+class AsyncMigrationRunner(ServiceDebugMixin):
+    """
+    Async migration runner for database schema updates.
+    
+    This class will be fully implemented in Phase 2 to handle
+    database migrations in an async-compatible way.
+    """
+    
+    def __init__(self, db_path: str):
+        super().__init__("async_migration_runner")
+        self.db_path = db_path
+    
+    async def run_migrations(self) -> Dict[str, Any]:
+        """
+        Run pending database migrations asynchronously.
+        
+        Returns:
+            Dictionary with migration results
+            
+        Raises:
+            Exception: Migration errors
+        """
+        self.log_service_call("run_migrations")
+        
+        # Phase 2 implementation will include:
+        # - Migration discovery
+        # - Dependency resolution  
+        # - Transactional execution
+        # - Rollback support
+        
+        raise NotImplementedError("Phase 2 implementation pending")
+
+
+# Export main classes
+__all__ = [
+    "AsyncDatabaseService",
+    "AsyncMigrationRunner"
+]
