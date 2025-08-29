@@ -51,17 +51,20 @@ def mock_startup_service(mock_document_service):
 
 
 @pytest.fixture
-def client(mock_startup_service):
-    """Test client with mocked dependencies"""
+def app(mock_startup_service):
+    """Create FastAPI test application with dependency overrides"""
     from fastapi import FastAPI
+    from core.dependencies import get_startup_service_dependency
     
     app = FastAPI()
     app.include_router(router)
-    
-    # Override dependency
-    with patch('api.routes.documents.get_startup_service_dependency', return_value=mock_startup_service):
-        with TestClient(app) as test_client:
-            yield test_client
+    app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+    return app
+
+@pytest.fixture
+def client(app):
+    """Create test client"""
+    return TestClient(app)
 
 
 def create_sample_document(doc_type="note", title="Test Document", doc_id="test-123"):
@@ -751,14 +754,22 @@ class TestHealthEndpoint:
 class TestErrorHandling:
     """Test error handling scenarios"""
     
-    def test_service_unavailable(self, client):
+    def test_service_unavailable(self):
         """Test handling when document service is unavailable"""
+        # Create a fresh app without dependency overrides for this test
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
+        
         # Override dependency to return startup service without document service
         mock_startup = MagicMock(spec=StartupService)
         mock_startup.document_service = None
         
-        with patch('api.routes.documents.get_startup_service_dependency', return_value=mock_startup):
-            response = client.get("/api/documents")
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup
+        
+        with TestClient(app) as test_client:
+            response = test_client.get("/api/documents")
             
             assert response.status_code == 503
             assert "Document service not available" in response.json()["detail"]

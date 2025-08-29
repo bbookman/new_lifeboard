@@ -150,7 +150,6 @@ class ValidateTemplateResponse(BaseModel):
 
 # API Endpoints
 @router.post("", response_model=DocumentResponse)
-@handle_api_exceptions("Failed to create document", 500, include_details=True)
 async def create_document(
     request: CreateDocumentRequest,
     document_service: DocumentService = Depends(get_document_service_for_route)
@@ -185,7 +184,6 @@ async def create_document(
 
 
 @router.get("/validate-title", response_model=Dict[str, bool])
-@handle_api_exceptions("Failed to validate title", 500, include_details=True)
 async def validate_document_title(
     title: str = Query(..., min_length=1, description="Title to validate"),
     document_type: str = Query(..., pattern="^(note|prompt|folder|link)$", description="Document type"),
@@ -203,7 +201,6 @@ async def validate_document_title(
 
 
 @router.get("", response_model=DocumentListResponse)
-@handle_api_exceptions("Failed to list documents", 500, include_details=True)
 async def list_documents(
     document_type: Optional[str] = Query(None, pattern="^(note|prompt|folder|link)$"),
     folder_path: Optional[str] = Query(None, description="Filter by folder path"),
@@ -251,7 +248,6 @@ async def list_documents(
 
 
 @router.get("/search", response_model=DocumentSearchResponse)
-@handle_api_exceptions("Failed to search documents", 500, include_details=True)
 async def search_documents(
     q: str = Query(..., min_length=1, description="Search query"),
     document_type: Optional[str] = Query(None, pattern="^(note|prompt|link)$"),
@@ -286,7 +282,6 @@ async def search_documents(
 
 # Folder operations
 @router.post("/folders", response_model=DocumentResponse)
-@handle_api_exceptions("Failed to create folder", 500, include_details=True)
 async def create_folder(
     request: CreateFolderRequest,
     document_service: DocumentService = Depends(get_document_service_for_route)
@@ -308,7 +303,6 @@ async def create_folder(
 
 
 @router.get("/folders/contents", response_model=DocumentListResponse)
-@handle_api_exceptions("Failed to list folder contents", 500, include_details=True)
 async def list_folder_contents(
     folder_path: str = Query("/", description="Folder path to list"),
     include_folders: bool = Query(True, description="Include folders in results"),
@@ -339,7 +333,6 @@ async def list_folder_contents(
 
 
 @router.put("/{item_id}/move", response_model=Dict[str, str])
-@handle_api_exceptions("Failed to move item", 500, include_details=True)
 async def move_item(
     item_id: str,
     request: MoveItemRequest,
@@ -367,7 +360,6 @@ async def move_item(
 
 
 @router.delete("/folders", response_model=Dict[str, str])
-@handle_api_exceptions("Failed to delete folder", 500, include_details=True)
 async def delete_folder(
     folder_path: str = Query(..., description="Folder path to delete"),
     recursive: bool = Query(False, description="Delete folder and all contents"),
@@ -396,7 +388,6 @@ async def delete_folder(
 
 # Fast count endpoint for performance optimization
 @router.get("/count", response_model=Dict[str, int])
-@handle_api_exceptions("Failed to count documents", 500, include_details=True) 
 async def count_documents(
     document_type: Optional[str] = Query(None, pattern="^(note|prompt|folder|link)$"),
     folder_path: Optional[str] = Query(None, description="Count documents in specific folder"),
@@ -417,7 +408,6 @@ async def count_documents(
 
 # Health endpoint
 @router.get("/health", response_model=Dict[str, Any])
-@handle_api_exceptions("Failed to get document service health", 500, include_details=True)
 async def get_document_service_health(
     document_service: DocumentService = Depends(get_document_service_for_route)
 ) -> Dict[str, Any]:
@@ -433,7 +423,6 @@ async def get_document_service_health(
 
 # Template Processing Routes
 @router.post("/process-template", response_model=ProcessTemplateResponse)
-@handle_api_exceptions("Failed to process template", 500, include_details=True)
 async def process_template(
     request: ProcessTemplateRequest,
     document_service: DocumentService = Depends(get_document_service_for_route)
@@ -464,7 +453,6 @@ async def process_template(
 
 
 @router.post("/validate-template", response_model=ValidateTemplateResponse)  
-@handle_api_exceptions("Failed to validate template", 500, include_details=True)
 async def validate_template(
     request: ProcessTemplateRequest,
     document_service: DocumentService = Depends(get_document_service_for_route)
@@ -489,7 +477,6 @@ async def validate_template(
 
 
 @router.post("/{document_id}/process-template", response_model=ProcessTemplateResponse)
-@handle_api_exceptions("Failed to process document template", 500, include_details=True)
 async def process_document_template(
     document_id: str,
     target_date: Optional[str] = None,
@@ -530,7 +517,6 @@ async def process_document_template(
 
 # Document ID routes - MUST BE LAST to avoid conflicts with named routes
 @router.get("/{document_id}", response_model=DocumentResponse)
-@handle_api_exceptions("Failed to get document", 500, include_details=True)
 async def get_document(
     document_id: str,
     document_service: DocumentService = Depends(get_document_service_for_route)
@@ -551,7 +537,6 @@ async def get_document(
 
 
 @router.put("/{document_id}", response_model=DocumentResponse)
-@handle_api_exceptions("Failed to update document", 500, include_details=True)
 async def update_document(
     document_id: str,
     request: UpdateDocumentRequest,
@@ -577,7 +562,6 @@ async def update_document(
 
 
 @router.delete("/{document_id}")
-@handle_api_exceptions("Failed to delete document", 500, include_details=True)
 async def delete_document(
     document_id: str,
     document_service: DocumentService = Depends(get_document_service_for_route)

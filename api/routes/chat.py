@@ -76,7 +76,7 @@ async def get_chat_history_api(
     """Get chat history (JSON API)"""
     try:
         # Get chat history from service
-        history = chat_service.get_chat_history(limit=limit)
+        history = await chat_service.get_chat_history(limit=limit)
         
         # Convert to API response format
         messages = []

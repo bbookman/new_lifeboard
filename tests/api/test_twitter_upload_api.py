@@ -12,16 +12,34 @@ import zipfile
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
-# Import the FastAPI app
-from api.server import app
+# Import the settings router
+from api.routes.settings import router
+from services.startup import StartupService
 
 
 class TestTwitterUploadAPI:
     """Test the Twitter upload API endpoint."""
 
     @pytest.fixture
-    def client(self):
-        """Create test client for API testing."""
+    def mock_startup_service(self):
+        """Mock startup service for testing"""
+        service = MagicMock(spec=StartupService)
+        return service
+
+    @pytest.fixture
+    def app(self, mock_startup_service):
+        """Create FastAPI test application with dependency overrides"""
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
+        
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        """Create test client"""
         return TestClient(app)
 
     @pytest.fixture

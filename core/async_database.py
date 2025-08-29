@@ -466,6 +466,50 @@ class AsyncDatabaseService(ServiceDebugMixin):
             }, level="ERROR")
             raise
     
+    async def get_markdown_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> str:
+        """Extract and combine markdown content from metadata for a specific date"""
+        logger.info(f"[MARKDOWN DEBUG] Getting markdown for date: {date}, namespaces: {namespaces}")
+        markdown_parts = []
+        
+        # Use unified data_items table for all namespaces
+        data_items = await self.get_data_items_by_date(date, namespaces)
+        logger.info(f"[MARKDOWN DEBUG] Found {len(data_items)} data items for date {date}")
+        
+        for i, item in enumerate(data_items, 1):
+            logger.info(f"[MARKDOWN DEBUG] Processing item {i+1}/{len(data_items)}: {item.get('id', 'unknown')}")
+            
+            if item.get('metadata'):
+                metadata = item['metadata']
+                markdown_content = None
+                fallback_used = None
+                
+                if isinstance(metadata, dict):
+                    # First, try to get pre-generated cleaned markdown
+                    markdown_content = metadata.get('cleaned_markdown')
+                    if markdown_content:
+                        fallback_used = "cleaned_markdown"
+                    else:
+                        # Fallback to processed_content
+                        markdown_content = metadata.get('processed_content')
+                        if markdown_content:
+                            fallback_used = "processed_content"
+                        else:
+                            # Final fallback to title
+                            title = metadata.get('title', 'Untitled')
+                            markdown_content = f"# {title}\n\n*No content available*"
+                            fallback_used = "title_fallback"
+                            
+                    logger.info(f"[MARKDOWN DEBUG] Item {i}: Used {fallback_used} for content")
+                    markdown_parts.append(markdown_content)
+                else:
+                    logger.warning(f"[MARKDOWN DEBUG] Item {i}: Metadata is not a dictionary, skipping")
+            else:
+                logger.warning(f"[MARKDOWN DEBUG] Item {i}: No metadata found, skipping")
+        
+        combined_markdown = "\n\n".join(markdown_parts)
+        logger.info(f"[MARKDOWN DEBUG] Final combined markdown length: {len(combined_markdown)} characters")
+        return combined_markdown
+
     async def get_database_stats(self) -> Dict[str, Any]:
         """
         Get database statistics asynchronously.
