@@ -266,7 +266,7 @@ class DocumentService(BaseService):
             logger.error(f"Error deleting document {doc_id}: {e}")
             return False
     
-    def search_documents(self,
+    async def search_documents(self,
                         query: str,
                         document_type: Optional[str] = None,
                         limit: int = 20) -> List[Tuple[Document, float]]:
@@ -277,7 +277,7 @@ class DocumentService(BaseService):
         fts_results = self._search_documents_fts(query, document_type, limit)
         
         # 2. Vector similarity search
-        vector_results = self._search_documents_vector(query, document_type, limit)
+        vector_results = await self._search_documents_vector(query, document_type, limit)
         
         # 3. Merge and deduplicate results
         doc_scores = {}
@@ -423,7 +423,7 @@ class DocumentService(BaseService):
                        new_parent_path: str) -> bool:
         """Move a document or folder to a new location"""
         # Get the item to move
-        item = self.get_document(item_id)
+        item = await self.get_document(item_id)
         if not item:
             raise ValueError(f"Item {item_id} not found")
         
@@ -641,6 +641,31 @@ class DocumentService(BaseService):
                     markdown_parts.append(f"[Video]({text['video']})")
         
         return ''.join(markdown_parts)
+
+    def _markdown_to_delta(self, markdown: str) -> Dict[str, Any]:
+        """Convert Markdown to Quill Delta format"""
+        if not markdown:
+            return {"ops": [{"insert": "\n"}]}
+        
+        # Simple markdown to delta conversion
+        ops = []
+        
+        # Split by lines and process each line
+        lines = markdown.split("\n")
+        for line in lines:
+            line = line.strip()
+            
+            if not line:
+                # Empty line
+                ops.append({"insert": "\n"})
+                continue
+            
+            # Regular text
+            ops.append({"insert": line})
+            ops.append({"insert": "\n"})
+        
+        return {"ops": ops}
+
     
     async def _create_document_embeddings(self, document: Document):
         """Create vector embeddings for document"""
@@ -781,16 +806,14 @@ class DocumentService(BaseService):
             logger.error(f"Error in FTS search: {e}")
             return []
     
-    def _search_documents_vector(self,
+    async def _search_documents_vector(self,
                                 query: str,
                                 document_type: Optional[str],
                                 limit: int) -> List[Tuple[Document, float]]:
         """Search documents using vector similarity"""
         try:
             # Generate query embedding
-            import asyncio
-            loop = asyncio.get_event_loop()
-            query_embedding = loop.run_until_complete(self.embedding_service.embed_text(query))
+            query_embedding = await self.embedding_service.embed_text(query)
             
             # Search vector store with namespace filter
             vector_results = self.vector_store.search(
@@ -812,7 +835,7 @@ class DocumentService(BaseService):
             # Get documents and apply filters
             results = []
             for doc_id, score in doc_scores.items():
-                document = self.get_document(doc_id)
+                document = await self.get_document(doc_id)
                 if document and (not document_type or document.document_type == document_type):
                     results.append((document, score))
             

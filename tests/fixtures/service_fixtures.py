@@ -6,13 +6,14 @@ enabling isolated testing of services and their interactions.
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 from typing import Dict, Any, List, Optional, AsyncIterator
 from unittest.mock import Mock, MagicMock, AsyncMock
 from datetime import datetime, timezone
 
 # Core Services
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.embeddings import EmbeddingService
 from core.vector_store import VectorStoreService
 from core.base_service import BaseService, ServiceStatus, ServiceHealth
@@ -108,18 +109,23 @@ def mock_database_service():
 def mock_embedding_service():
     """Mock EmbeddingService with standard behaviors"""
     mock_embedding = AsyncMock(spec=EmbeddingService)
-    
-    # Configure default behaviors
+
+    # Configure embed_texts to return the correct number of embeddings
+    async def mock_embed_texts(texts):
+        """Return embeddings for each input text"""
+        return [[0.1 + i * 0.01] * 384 for i, _ in enumerate(texts)]
+
+    mock_embedding.embed_texts.side_effect = mock_embed_texts
     mock_embedding.generate_embedding.return_value = [0.1] * 384  # Standard vector size
     mock_embedding.batch_generate_embeddings.return_value = [[0.1] * 384, [0.2] * 384]
     mock_embedding.is_initialized = True
     mock_embedding.model_name = "test-model"
     mock_embedding.vector_dimension = 384
-    
+
     # Service status
     mock_embedding.status = ServiceStatus.READY
     mock_embedding.health = ServiceHealth.HEALTHY
-    
+
     return mock_embedding
 
 
@@ -127,21 +133,26 @@ def mock_embedding_service():
 def mock_vector_store_service():
     """Mock VectorStoreService with search capabilities"""
     mock_vector_store = AsyncMock(spec=VectorStoreService)
-    
+
     # Configure default behaviors
-    mock_vector_store.add_vector.return_value = None
-    mock_vector_store.search_similar.return_value = [
+    mock_vector_store.add_vector.return_value = True  # Should return success boolean
+    mock_vector_store.search.return_value = [
         ("item_1", 0.95),
         ("item_2", 0.85),
         ("item_3", 0.75)
     ]
-    mock_vector_store.delete_vector.return_value = True
-    mock_vector_store.get_vector_count.return_value = 100
-    
+    mock_vector_store.remove_vector.return_value = True
+    mock_vector_store.get_stats.return_value = {
+        'total_vectors': 100,
+        'dimension': 384,
+        'index_path': '/tmp/test_index.npy',
+        'id_map_path': '/tmp/test_id_map.json'
+    }
+
     # Service status
     mock_vector_store.is_initialized = True
     mock_vector_store.status = ServiceStatus.READY
-    
+
     return mock_vector_store
 
 
@@ -151,7 +162,7 @@ def mock_vector_store_service():
 def mock_ingestion_service():
     """Mock IngestionService with ingestion operations"""
     mock_ingestion = AsyncMock(spec=IngestionService)
-    
+
     # Create mock ingestion result
     mock_result = IngestionResult()
     mock_result.items_processed = 5
@@ -159,7 +170,7 @@ def mock_ingestion_service():
     mock_result.items_skipped = 0
     mock_result.embeddings_generated = 5
     mock_result.errors = []
-    
+
     # Configure behaviors
     mock_ingestion.ingest_data_item.return_value = mock_result
     mock_ingestion.process_pending_embeddings.return_value = 5
@@ -168,12 +179,42 @@ def mock_ingestion_service():
         "pending_embeddings": 5,
         "failed_items": 0
     }
-    
+
     # Service status
     mock_ingestion.status = ServiceStatus.READY
     mock_ingestion.is_initialized = True
-    
+
     return mock_ingestion
+
+
+@pytest_asyncio.fixture
+async def ingestion_service(async_clean_database, mock_embedding_service, mock_vector_store_service):
+    """Real IngestionService instance with async database for testing"""
+    from config.models import AppConfig
+
+    # Create a basic config for testing
+    config = AppConfig(
+        database_path=async_clean_database.db_path,
+        embedding_model="test-model",
+        vector_store_type="test"
+    )
+
+    # Create ingestion service with real async database
+    # Constructor expects: database, vector_store, embedding_service, config
+    service = IngestionService(
+        database=async_clean_database,
+        vector_store=mock_vector_store_service,
+        embedding_service=mock_embedding_service,
+        config=config
+    )
+
+    # Initialize the service
+    await service.initialize()
+
+    yield service
+
+    # Cleanup
+    await service.shutdown()
 
 
 @pytest.fixture
@@ -543,6 +584,7 @@ __all__ = [
     "mock_embedding_service",
     "mock_vector_store_service",
     "mock_ingestion_service",
+    "ingestion_service",
     "mock_weather_service",
     "mock_news_service",
     "mock_chat_service",

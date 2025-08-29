@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from services.document_service import DocumentService, Document
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from config.models import AppConfig, DocumentsConfig
@@ -21,8 +21,8 @@ from config.models import AppConfig, DocumentsConfig
 
 @pytest.fixture
 def mock_database():
-    """Mock DatabaseService"""
-    mock_db = MagicMock(spec=DatabaseService)
+    """Mock AsyncDatabaseService"""
+    mock_db = AsyncMock(spec=AsyncDatabaseService)
     mock_db.execute_query = AsyncMock()
     mock_db.execute_query_with_params = AsyncMock()
     mock_db.fetch_one = AsyncMock()
@@ -101,6 +101,7 @@ class TestDocumentCreation:
         # Verify database call
         mock_database.execute_query_with_params.assert_called_once()
 
+    @pytest.mark.asyncio
     async def test_create_prompt_document(self, document_service, mock_database):
         """Test creating a prompt document"""
         mock_database.execute_query_with_params.return_value = None
@@ -119,6 +120,7 @@ class TestDocumentCreation:
         assert result.content_delta == content_delta
         assert not result.is_folder
 
+    @pytest.mark.asyncio
     async def test_create_link_document(self, document_service, mock_database):
         """Test creating a link document"""
         mock_database.execute_query_with_params.return_value = None
@@ -138,6 +140,7 @@ class TestDocumentCreation:
         assert result.url == "https://example.com"
         assert not result.is_folder
 
+    @pytest.mark.asyncio
     async def test_create_folder(self, document_service, mock_database):
         """Test creating a folder"""
         mock_database.execute_query_with_params.return_value = None
@@ -152,6 +155,7 @@ class TestDocumentCreation:
         assert result.is_folder
         assert result.path == "/Test Folder/"
 
+    @pytest.mark.asyncio
     async def test_create_document_invalid_type(self, document_service):
         """Test creating document with invalid type"""
         with pytest.raises(ValueError, match="Document type must be"):
@@ -162,6 +166,7 @@ class TestDocumentCreation:
                 path="/"
             )
 
+    @pytest.mark.asyncio
     async def test_create_document_title_too_long(self, document_service):
         """Test creating document with title too long"""
         long_title = "x" * 201  # Exceeds max_title_length of 200
@@ -174,6 +179,7 @@ class TestDocumentCreation:
                 path="/"
             )
 
+    @pytest.mark.asyncio
     async def test_create_document_content_too_long(self, document_service):
         """Test creating document with content too long"""
         long_content = {"ops": [{"insert": "x" * 10001 + "\n"}]}  # Exceeds max_content_length
@@ -190,6 +196,7 @@ class TestDocumentCreation:
 class TestDocumentRetrieval:
     """Test document retrieval operations"""
     
+    @pytest.mark.asyncio
     async def test_get_document_by_id(self, document_service, mock_database):
         """Test getting a document by ID"""
         # Mock database response
@@ -215,6 +222,7 @@ class TestDocumentRetrieval:
         assert result.document_type == "note"
         assert not result.is_folder
 
+    @pytest.mark.asyncio
     async def test_get_document_not_found(self, document_service, mock_database):
         """Test getting a non-existent document"""
         mock_database.fetch_one.return_value = None
@@ -223,6 +231,7 @@ class TestDocumentRetrieval:
         
         assert result is None
 
+    @pytest.mark.asyncio
     async def test_list_documents_all_types(self, document_service, mock_database):
         """Test listing documents of all types"""
         mock_rows = [
@@ -273,6 +282,7 @@ class TestDocumentRetrieval:
         assert results[2].document_type == "folder"
         assert results[2].is_folder
 
+    @pytest.mark.asyncio
     async def test_list_documents_by_type(self, document_service, mock_database):
         """Test listing documents filtered by type"""
         mock_rows = [
@@ -296,6 +306,7 @@ class TestDocumentRetrieval:
         assert len(results) == 1
         assert results[0].document_type == "note"
 
+    @pytest.mark.asyncio
     async def test_list_folder_contents(self, document_service, mock_database):
         """Test listing folder contents"""
         mock_rows = [
@@ -336,6 +347,7 @@ class TestDocumentRetrieval:
 class TestDocumentSearch:
     """Test document search functionality"""
     
+    @pytest.mark.asyncio
     async def test_search_documents(self, document_service, mock_database, mock_vector_store):
         """Test searching documents"""
         # Mock vector store search results
@@ -373,7 +385,7 @@ class TestDocumentSearch:
         ]
         mock_database.fetch_all.return_value = mock_documents
         
-        results = document_service.search_documents("search query", limit=10)
+        results = await document_service.search_documents("search query", limit=10)
         
         assert len(results) == 2
         assert results[0][0].title == "Matching Document 1"
@@ -381,6 +393,7 @@ class TestDocumentSearch:
         assert results[1][0].title == "Matching Document 2"
         assert results[1][1] == 0.8  # Score
 
+    @pytest.mark.asyncio
     async def test_search_documents_by_type(self, document_service, mock_database, mock_vector_store):
         """Test searching documents filtered by type"""
         mock_vector_store.search.return_value = [("doc-1", 0.9)]
@@ -410,6 +423,7 @@ class TestDocumentSearch:
 class TestDocumentUpdate:
     """Test document update operations"""
     
+    @pytest.mark.asyncio
     async def test_update_document(self, document_service, mock_database):
         """Test updating a document"""
         # Mock existing document
@@ -442,6 +456,7 @@ class TestDocumentUpdate:
         # Verify database update call
         mock_database.execute_query_with_params.assert_called()
 
+    @pytest.mark.asyncio
     async def test_update_link_document_url(self, document_service, mock_database):
         """Test updating a link document's URL"""
         existing_doc = {
@@ -470,6 +485,7 @@ class TestDocumentUpdate:
 class TestDocumentDeletion:
     """Test document deletion operations"""
     
+    @pytest.mark.asyncio
     async def test_delete_document(self, document_service, mock_database):
         """Test deleting a document"""
         mock_database.execute_query_with_params.return_value = MagicMock(rowcount=1)
@@ -479,6 +495,7 @@ class TestDocumentDeletion:
         assert result is True
         mock_database.execute_query_with_params.assert_called()
 
+    @pytest.mark.asyncio
     async def test_delete_document_not_found(self, document_service, mock_database):
         """Test deleting a non-existent document"""
         mock_database.execute_query_with_params.return_value = MagicMock(rowcount=0)
@@ -487,6 +504,7 @@ class TestDocumentDeletion:
         
         assert result is False
 
+    @pytest.mark.asyncio
     async def test_delete_folder_empty(self, document_service, mock_database):
         """Test deleting an empty folder"""
         # Mock folder check - folder exists and is empty
@@ -500,6 +518,7 @@ class TestDocumentDeletion:
         
         assert result is True
 
+    @pytest.mark.asyncio
     async def test_delete_folder_with_contents_no_recursive(self, document_service, mock_database):
         """Test deleting a folder with contents without recursive flag"""
         # Mock folder check - folder exists and has contents
@@ -511,6 +530,7 @@ class TestDocumentDeletion:
         with pytest.raises(ValueError, match="Folder is not empty"):
             await document_service.delete_folder("/test/folder/", recursive=False)
 
+    @pytest.mark.asyncio
     async def test_delete_folder_recursive(self, document_service, mock_database):
         """Test deleting a folder recursively"""
         # Mock folder check - folder exists and has contents
@@ -553,6 +573,7 @@ class TestValidation:
 class TestMoveOperations:
     """Test document move operations"""
     
+    @pytest.mark.asyncio
     async def test_move_document(self, document_service, mock_database):
         """Test moving a document to new folder"""
         # Mock document exists
@@ -564,6 +585,7 @@ class TestMoveOperations:
         assert result is True
         mock_database.execute_query_with_params.assert_called()
 
+    @pytest.mark.asyncio
     async def test_move_folder(self, document_service, mock_database):
         """Test moving a folder"""
         # Mock folder exists
@@ -574,6 +596,7 @@ class TestMoveOperations:
         
         assert result is True
 
+    @pytest.mark.asyncio
     async def test_move_item_not_found(self, document_service, mock_database):
         """Test moving non-existent item"""
         mock_database.fetch_one.return_value = {'count': 0}

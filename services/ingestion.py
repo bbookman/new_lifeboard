@@ -209,7 +209,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
             )
             
             # Extract days_date for calendar support
-            days_date = self._extract_days_date(processed_item)
+            days_date = await self._extract_days_date(processed_item)
             
             # Store in database
             await self.database.store_data_item(
@@ -515,7 +515,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
         
         return status
     
-    def _extract_days_date(self, item: DataItem) -> Optional[str]:
+    async def _extract_days_date(self, item: DataItem) -> Optional[str]:
         """Extract days_date from DataItem for calendar support"""
         try:
             # First try to use created_at if available
@@ -527,8 +527,8 @@ class IngestionService(BaseService, ServiceDebugMixin):
                     created_at_aware = item.created_at
 
                 user_timezone = self._get_user_timezone_for_namespace(item.namespace)
-                return self.database.extract_date_from_timestamp(
-                    created_at_aware.isoformat(), 
+                return await self.database.extract_date_from_timestamp(
+                    created_at_aware.isoformat(),
                     user_timezone
                 )
             
@@ -567,8 +567,8 @@ class IngestionService(BaseService, ServiceDebugMixin):
                                     dt_obj = dt_obj.replace(tzinfo=timezone.utc)
                                 
                                 user_timezone = self._get_user_timezone_for_namespace(item.namespace)
-                                extracted_date = self.database.extract_date_from_timestamp(
-                                    dt_obj.isoformat(), 
+                                extracted_date = await self.database.extract_date_from_timestamp(
+                                    dt_obj.isoformat(),
                                     user_timezone
                                 )
                             if extracted_date:
@@ -585,6 +585,15 @@ class IngestionService(BaseService, ServiceDebugMixin):
         # Use the configured user timezone for all namespaces to ensure consistent date extraction
         # This ensures days_date reflects the user's local date regardless of data source
         return self.config.limitless.timezone
+
+    async def _count_items_for_date(self, items: List[DataItem], target_date: str) -> int:
+        """Count items that have the specified days_date"""
+        count = 0
+        for item in items:
+            item_date = await self._extract_days_date(item)
+            if item_date == target_date:
+                count += 1
+        return count
     
     async def _send_completion_notifications(self, items: List[DataItem], namespace: str) -> None:
         """Send WebSocket notifications for completed ingestion"""
@@ -599,7 +608,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
             # Track unique days_date values from processed items
             unique_dates = set()
             for item in items:
-                days_date = self._extract_days_date(item)
+                days_date = await self._extract_days_date(item)
                 if days_date:
                     unique_dates.add(days_date)
             
@@ -612,7 +621,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
                         "status": "complete",
                         "source": namespace,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "items_count": len([item for item in items if self._extract_days_date(item) == days_date])
+                        "items_count": await self._count_items_for_date(items, days_date)
                     }
                 )
                 

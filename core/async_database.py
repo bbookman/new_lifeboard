@@ -131,11 +131,11 @@ class AsyncDatabaseService(ServiceDebugMixin):
         try:
             async with self.get_connection() as conn:
                 await conn.execute("""
-                    INSERT OR REPLACE INTO data_items 
-                    (id, namespace, source_id, content, metadata, days_date, updated_at, ingestion_status)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
-                """, (id, namespace, source_id, content, 
-                      JSONMetadataParser.serialize_metadata(metadata), days_date, ingestion_status))
+                    INSERT OR REPLACE INTO data_items
+                    (id, namespace, source_id, content, metadata, days_date, ingestion_status, embedding_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (id, namespace, source_id, content,
+                      JSONMetadataParser.serialize_metadata(metadata), days_date, ingestion_status, 'pending'))
                 await conn.commit()
                 
                 self.debug.log_performance_metric("store_data_item_duration", 0.001)
@@ -466,23 +466,78 @@ class AsyncDatabaseService(ServiceDebugMixin):
             }, level="ERROR")
             raise
     
+    async def extract_date_from_timestamp(self, timestamp_str: str, user_timezone: str = "UTC") -> Optional[str]:
+        """
+        Extract date string (YYYY-MM-DD) from timestamp with timezone conversion asynchronously.
+
+        Args:
+            timestamp_str: ISO-8601 timestamp string
+            user_timezone: Target timezone for conversion (default: UTC)
+
+        Returns:
+            Date string in YYYY-MM-DD format or None if parsing fails
+
+        Raises:
+            Exception: Database operation errors
+        """
+        self.log_service_call("extract_date_from_timestamp", {
+            "timestamp_str_length": len(timestamp_str) if timestamp_str else 0,
+            "user_timezone": user_timezone
+        })
+
+        if not timestamp_str:
+            return None
+
+        try:
+            # Parse ISO-8601 timestamp
+            if timestamp_str.endswith('Z'):
+                # UTC timestamp
+                dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            elif '+' in timestamp_str or '-' in timestamp_str[10:]:
+                # Already has timezone info
+                dt = datetime.fromisoformat(timestamp_str)
+            else:
+                # Assume UTC if no timezone info
+                dt = datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
+
+            # Always convert to the target timezone
+            try:
+                import pytz
+                target_tz = pytz.timezone(user_timezone)
+                dt = dt.astimezone(target_tz)
+            except Exception:
+                # If target timezone is invalid, convert to UTC as a fallback
+                import pytz
+                dt = dt.astimezone(pytz.utc)
+
+            # Return date in YYYY-MM-DD format
+            result = dt.strftime('%Y-%m-%d')
+            self.debug.log_performance_metric("extract_date_from_timestamp_duration", 0.001)
+            return result
+
+        except (ValueError, TypeError) as e:
+            self.debug.log_state("extract_date_from_timestamp_failed", {
+                "error": str(e), "timestamp_str": timestamp_str, "user_timezone": user_timezone
+            }, level="WARNING")
+            return None
+
     async def get_markdown_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> str:
         """Extract and combine markdown content from metadata for a specific date"""
         logger.info(f"[MARKDOWN DEBUG] Getting markdown for date: {date}, namespaces: {namespaces}")
         markdown_parts = []
-        
+
         # Use unified data_items table for all namespaces
         data_items = await self.get_data_items_by_date(date, namespaces)
         logger.info(f"[MARKDOWN DEBUG] Found {len(data_items)} data items for date {date}")
-        
+
         for i, item in enumerate(data_items, 1):
             logger.info(f"[MARKDOWN DEBUG] Processing item {i+1}/{len(data_items)}: {item.get('id', 'unknown')}")
-            
+
             if item.get('metadata'):
                 metadata = item['metadata']
                 markdown_content = None
                 fallback_used = None
-                
+
                 if isinstance(metadata, dict):
                     # First, try to get pre-generated cleaned markdown
                     markdown_content = metadata.get('cleaned_markdown')
@@ -498,14 +553,14 @@ class AsyncDatabaseService(ServiceDebugMixin):
                             title = metadata.get('title', 'Untitled')
                             markdown_content = f"# {title}\n\n*No content available*"
                             fallback_used = "title_fallback"
-                            
+
                     logger.info(f"[MARKDOWN DEBUG] Item {i}: Used {fallback_used} for content")
                     markdown_parts.append(markdown_content)
                 else:
                     logger.warning(f"[MARKDOWN DEBUG] Item {i}: Metadata is not a dictionary, skipping")
             else:
                 logger.warning(f"[MARKDOWN DEBUG] Item {i}: No metadata found, skipping")
-        
+
         combined_markdown = "\n\n".join(markdown_parts)
         logger.info(f"[MARKDOWN DEBUG] Final combined markdown length: {len(combined_markdown)} characters")
         return combined_markdown

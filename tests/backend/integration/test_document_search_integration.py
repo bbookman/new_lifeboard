@@ -159,7 +159,7 @@ class TestDocumentSearchIntegration:
         )
         
         # Execute search
-        results = service.search_documents("Python programming", limit=10)
+        results = await service.search_documents("Python programming", limit=10)
         
         # Verify results
         assert len(results) == 4  # All matching documents
@@ -229,7 +229,7 @@ class TestDocumentSearchIntegration:
         )
         
         # Execute search with type filter
-        results = service.search_documents("code review", document_type="prompt", limit=10)
+        results = await service.search_documents("code review", document_type="prompt", limit=10)
         
         # Verify only prompt documents returned
         assert len(results) == 1  # Only prompt documents
@@ -264,7 +264,7 @@ class TestDocumentSearchIntegration:
         )
         
         # Execute search
-        results = service.search_documents("nonexistent topic", limit=10)
+        results = await service.search_documents("nonexistent topic", limit=10)
         
         # Verify empty results
         assert len(results) == 0
@@ -319,7 +319,7 @@ class TestDocumentSearchIntegration:
         )
         
         # Execute search
-        results = service.search_documents("Python", limit=10)
+        results = await service.search_documents("Python", limit=10)
         
         # Verify only high-scoring results returned
         assert len(results) == 3  # Only results with score >= 0.5
@@ -361,7 +361,7 @@ class TestDocumentSearchIntegration:
         ]
         
         for query in special_queries:
-            results = service.search_documents(query, limit=10)
+            results = await service.search_documents(query, limit=10)
             
             # Should handle gracefully without errors
             assert isinstance(results, list)
@@ -418,7 +418,7 @@ class TestDocumentSearchIntegration:
         test_limits = [1, 2, 3, 10]
         
         for limit in test_limits:
-            results = service.search_documents("test query", limit=limit)
+            results = await service.search_documents("test query", limit=limit)
             
             # Should respect limit (or return fewer if not enough results)
             expected_count = min(limit, len(mock_vector_search_results))
@@ -621,7 +621,7 @@ class TestSearchPerformance:
         import time
         start_time = time.time()
         
-        results = service.search_documents("test query", limit=20)
+        results = await service.search_documents("test query", limit=20)
         
         end_time = time.time()
         search_time = end_time - start_time

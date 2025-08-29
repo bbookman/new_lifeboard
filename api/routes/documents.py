@@ -256,7 +256,7 @@ async def search_documents(
 ) -> DocumentSearchResponse:
     """Search documents using full-text and semantic search"""
     try:
-        search_results = document_service.search_documents(
+        search_results = await document_service.search_documents(
             query=q,
             document_type=document_type,
             limit=limit
@@ -485,7 +485,7 @@ async def process_document_template(
     """Process template variables in a specific document"""
     try:
         # Get the document
-        document = document_service.get_document(document_id)
+        document = await document_service.get_document(document_id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         
@@ -523,7 +523,7 @@ async def get_document(
 ) -> DocumentResponse:
     """Get a specific document by ID"""
     try:
-        document = document_service.get_document(document_id)
+        document = await document_service.get_document(document_id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         

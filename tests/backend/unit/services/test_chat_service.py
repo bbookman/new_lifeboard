@@ -8,7 +8,7 @@ from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime, timezone
 
 from services.chat_service import ChatService, ChatContext
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from llm.base import LLMResponse
@@ -21,12 +21,12 @@ class TestChatService:
     
     @pytest.fixture
     def mock_database(self):
-        """Mock database service"""
-        mock_db = Mock(spec=DatabaseService)
-        mock_db.store_chat_message = Mock()
-        mock_db.get_chat_history = Mock(return_value=[])
-        mock_db.get_connection = Mock()
-        mock_db.get_data_items_by_ids = Mock(return_value=[])
+        """Mock async database service"""
+        mock_db = AsyncMock(spec=AsyncDatabaseService)
+        mock_db.store_chat_message = AsyncMock()
+        mock_db.get_chat_history = AsyncMock(return_value=[])
+        mock_db.get_connection = AsyncMock()
+        mock_db.get_data_items_by_ids = AsyncMock(return_value=[])
         return mock_db
     
     @pytest.fixture
@@ -112,9 +112,9 @@ class TestChatService:
             {"id": "id1", "content": "Test content 1"},
             {"id": "id2", "content": "Test content 2"}
         ]
-        
+
         results = await chat_service._vector_search("test query", 5)
-        
+
         chat_service.embeddings.embed_text.assert_called_once_with("test query")
         chat_service.vector_store.search.assert_called_once_with([0.1, 0.2, 0.3], k=5)
         chat_service.database.get_data_items_by_ids.assert_called_once_with(["id1", "id2"])
@@ -133,8 +133,8 @@ class TestChatService:
     async def test_sql_search(self, chat_service):
         """Test SQL search functionality"""
         # Setup mock database connection
-        mock_conn = Mock()
-        mock_cursor = Mock()
+        mock_conn = AsyncMock()
+        mock_cursor = AsyncMock()
         mock_cursor.fetchall.return_value = [
             {
                 "id": "test:1",
@@ -147,13 +147,13 @@ class TestChatService:
             }
         ]
         mock_conn.execute.return_value = mock_cursor
-        mock_conn.__enter__ = Mock(return_value=mock_conn)
-        mock_conn.__exit__ = Mock(return_value=None)
-        
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=None)
+
         chat_service.database.get_connection.return_value = mock_conn
-        
+
         results = await chat_service._sql_search("query", 5)
-        
+
         assert len(results) == 1
         assert results[0]["content"] == "Test content with query"
         assert results[0]["metadata"] == {"key": "value"}
@@ -307,7 +307,8 @@ class TestChatService:
             # Should still try to store the error message
             chat_service.database.store_chat_message.assert_called_once()
     
-    def test_get_chat_history(self, chat_service):
+    @pytest.mark.asyncio
+    async def test_get_chat_history(self, chat_service):
         """Test chat history retrieval"""
         expected_history = [
             {
@@ -318,9 +319,9 @@ class TestChatService:
             }
         ]
         chat_service.database.get_chat_history.return_value = expected_history
-        
-        history = chat_service.get_chat_history(20)
-        
+
+        history = await chat_service.get_chat_history(20)
+
         assert history == expected_history
         chat_service.database.get_chat_history.assert_called_once_with(20)
     

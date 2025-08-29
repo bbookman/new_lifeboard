@@ -18,6 +18,7 @@ sys.path.insert(0, str(project_root))
 from tests.fixtures.orchestration_fixtures import *
 from tests.fixtures.config_fixtures import *
 from tests.fixtures.database_fixtures import *
+from tests.fixtures.async_database_fixtures import *
 from tests.fixtures.api_fixtures import *
 from tests.fixtures.service_fixtures import *
 from tests.fixtures.data_fixtures import *

@@ -41,67 +41,16 @@ def async_temp_db_path():
 @pytest_asyncio.fixture(scope="function")
 async def async_clean_database(async_temp_db_path):
     """Create a clean async database with migrations applied"""
-    # Note: This will be updated once AsyncDatabaseService is created
-    # For now, create a placeholder that can be used in tests
-    
-    # Initialize database schema using aiosqlite directly
-    async with aiosqlite.connect(async_temp_db_path) as conn:
-        # Create the basic schema
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS data_items (
-                id TEXT PRIMARY KEY,
-                namespace TEXT NOT NULL,
-                source_id TEXT NOT NULL,
-                content TEXT,
-                metadata TEXT,
-                embedding_status TEXT DEFAULT 'pending',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                days_date TEXT NOT NULL,
-                ingestion_status TEXT DEFAULT 'complete'
-            )
-        """)
-        
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS data_sources (
-                namespace TEXT PRIMARY KEY,
-                source_type TEXT NOT NULL,
-                metadata TEXT,
-                item_count INTEGER DEFAULT 0,
-                is_active BOOLEAN DEFAULT TRUE,
-                last_synced TIMESTAMP,
-                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS chat_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_message TEXT NOT NULL,
-                assistant_response TEXT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS migrations (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+    # Create AsyncDatabaseService and properly initialize it
+    db_service = AsyncDatabaseService(async_temp_db_path)
 
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS system_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT,
-                updated_at TIMESTAMP
-            )
-        """)
+    # Initialize the service (this will create the schema)
+    await db_service.initialize()
 
-        await conn.commit()
-    mock_db = AsyncDatabaseService(async_temp_db_path)
-    yield mock_db
+    yield db_service
+
+    # Cleanup
+    await db_service.close()
 
 
 @pytest_asyncio.fixture(scope="function") 
