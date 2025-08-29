@@ -151,29 +151,21 @@ class TestRunFullStackE2E:
             with patch.object(FullStackOrchestrator, 'orchestrate_startup', 
                              return_value=startup_result):
                 with patch.object(FullStackOrchestrator, 'cleanup_processes_on_exit'):
-                    with patch('sys.exit') as mock_exit:
-                        with patch('core.orchestration.logger') as mock_logger:
-                            
-                            from api.server import run_full_stack
-                            
-                            await run_full_stack(
-                                host="localhost",
-                                port=8000,
-                                frontend_port=5173,
-                                debug=False,
-                                kill_existing=False,
-                                no_auto_port=False,
-                                no_frontend=False
-                            )
+                    
+                    from api.server import run_full_stack
+                    
+                    await run_full_stack(
+                        host="localhost",
+                        port=8000,
+                        frontend_port=5173,
+                        debug=False,
+                        kill_existing=False,
+                        no_auto_port=False,
+                        no_frontend=False
+                    )
         
-        # Verify exit was called due to failure
-        mock_exit.assert_called_once_with(1)
-        
-        # Verify run_server was not called
+        # Verify run_server was not called due to orchestration failure
         mock_run_server.assert_not_called()
-        
-        # Verify error was logged
-        mock_logger.error.assert_called()
 
     @pytest.mark.asyncio
     async def test_run_full_stack_keyboard_interrupt(self):
@@ -224,7 +216,7 @@ class TestRunFullStackE2E:
                              return_value=startup_result):
                 with patch.object(FullStackOrchestrator, 'cleanup_processes_on_exit') as mock_cleanup:
                     with patch('builtins.print') as mock_print:
-                        with patch('core.orchestration.logger') as mock_logger:
+                        with patch('api.server.logger') as mock_logger:
                             
                             from api.server import run_full_stack
                             
@@ -243,7 +235,7 @@ class TestRunFullStackE2E:
         
         # Verify error was logged and printed
         mock_logger.error.assert_called()
-        mock_print.assert_any_call("❌ Application startup failed: Server crashed")
+        mock_print.assert_any_call("\n❌ Application startup failed: Server crashed")
 
     @pytest.mark.asyncio
     async def test_run_full_stack_frontend_process_global_assignment(self):

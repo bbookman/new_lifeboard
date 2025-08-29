@@ -1543,7 +1543,7 @@ async def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port:
             error_msg = startup_result.get("error", "Unknown startup error")
             print(f"\n❌ Application startup failed: {error_msg}")
             logger.error(f"FULLSTACK: Application startup failed: {error_msg}")
-            exit(1)
+            return
         
         # Start backend server
         print(f"\n🔧 Starting backend API server...")

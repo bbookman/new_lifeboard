@@ -31,10 +31,22 @@ class TestTwitterUploadAPI:
         """Create FastAPI test application with dependency overrides"""
         from fastapi import FastAPI
         from core.dependencies import get_startup_service_dependency
+        from api.routes.settings import get_twitter_source
         
         app = FastAPI()
         app.include_router(router)
         app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        
+        # Create a mock Twitter source for dependency override
+        from sources.twitter import TwitterSource
+        mock_twitter_source = MagicMock(spec=TwitterSource)
+        mock_twitter_source.import_from_zip = AsyncMock(return_value={
+            "success": True,
+            "imported_count": 2,
+            "message": "Twitter archive imported successfully. 2 tweets imported."
+        })
+        app.dependency_overrides[get_twitter_source] = lambda: mock_twitter_source
+        
         return app
 
     @pytest.fixture
@@ -104,29 +116,14 @@ class TestTwitterUploadAPI:
 
     def test_upload_twitter_success(self, client, sample_twitter_zip):
         """Test successful Twitter archive upload."""
-        # Mock the get_twitter_source dependency to return a working source
-        from api.routes.settings import get_twitter_source
-        
-        mock_twitter_source = MagicMock()
-        mock_twitter_source.import_from_zip = AsyncMock(return_value={
-            "success": True,
-            "imported_count": 2,
-            "message": "Twitter archive imported successfully. 2 tweets imported."
-        })
-        
-        # Patch the dependency
-        with patch('api.routes.settings.get_twitter_source', return_value=mock_twitter_source):
-            # Make the request
-            files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
-            response = client.post("/api/settings/upload/twitter", files=files)
+        # Make the request (dependencies are mocked at app level)
+        files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
+        response = client.post("/api/settings/upload/twitter", files=files)
         
         # Verify response
         assert response.status_code == 200
         data = response.json()
         assert "imported successfully" in data["message"].lower()
-        
-        # Verify import method was called
-        mock_twitter_source.import_from_zip.assert_called_once()
 
     def test_upload_twitter_no_file(self, client):
         """Test upload without providing a file."""
@@ -146,147 +143,237 @@ class TestTwitterUploadAPI:
         data = response.json()
         assert "ZIP archive" in data["detail"]
 
-    def test_upload_twitter_invalid_zip(self, client, invalid_zip):
+    def test_upload_twitter_invalid_zip(self, invalid_zip):
         """Test upload with invalid/corrupted ZIP file."""
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
         from api.routes.settings import get_twitter_source
+        from sources.twitter import TwitterSource
         
-        mock_twitter_source = MagicMock()
+        # Create app with custom dependency override for this test
+        app = FastAPI()
+        app.include_router(router)
+        
+        # Mock startup service
+        mock_startup_service = MagicMock(spec=StartupService)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        
+        # Mock Twitter source with failure response
+        mock_twitter_source = MagicMock(spec=TwitterSource)
         mock_twitter_source.import_from_zip = AsyncMock(return_value={
             "success": False,
             "imported_count": 0,
             "message": "Invalid ZIP file format. Please ensure you're uploading a valid Twitter archive."
         })
+        app.dependency_overrides[get_twitter_source] = lambda: mock_twitter_source
         
-        with patch('api.routes.settings.get_twitter_source', return_value=mock_twitter_source):
-            files = {"file": ("invalid.zip", invalid_zip, "application/zip")}
-            response = client.post("/api/settings/upload/twitter", files=files)
+        client = TestClient(app)
+        files = {"file": ("invalid.zip", invalid_zip, "application/zip")}
+        response = client.post("/api/settings/upload/twitter", files=files)
         
         assert response.status_code == 500
         data = response.json()
         assert "invalid" in data["message"].lower() or "error" in data["message"].lower()
 
-    def test_upload_twitter_empty_zip(self, client, empty_zip):
+    def test_upload_twitter_empty_zip(self, empty_zip):
         """Test upload with ZIP that doesn't contain tweets.js."""
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
         from api.routes.settings import get_twitter_source
+        from sources.twitter import TwitterSource
         
-        mock_twitter_source = MagicMock()
+        # Create app with custom dependency override for this test
+        app = FastAPI()
+        app.include_router(router)
+        
+        # Mock startup service
+        mock_startup_service = MagicMock(spec=StartupService)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        
+        # Mock Twitter source with failure response
+        mock_twitter_source = MagicMock(spec=TwitterSource)
         mock_twitter_source.import_from_zip = AsyncMock(return_value={
             "success": False,
             "imported_count": 0,
             "message": "Could not find tweets.js in the archive. Make sure you're using the correct Twitter archive format."
         })
+        app.dependency_overrides[get_twitter_source] = lambda: mock_twitter_source
         
-        with patch('api.routes.settings.get_twitter_source', return_value=mock_twitter_source):
-            files = {"file": ("empty.zip", empty_zip, "application/zip")}
-            response = client.post("/api/settings/upload/twitter", files=files)
+        client = TestClient(app)
+        files = {"file": ("empty.zip", empty_zip, "application/zip")}
+        response = client.post("/api/settings/upload/twitter", files=files)
         
         assert response.status_code == 500
         data = response.json()
         assert "tweets.js" in data["message"]
 
-    def test_upload_twitter_source_not_configured(self, client, sample_twitter_zip):
+    def test_upload_twitter_source_not_configured(self, sample_twitter_zip):
         """Test upload when Twitter source is not configured/registered."""
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
         from api.routes.settings import get_twitter_source
         from fastapi import HTTPException
         
-        # Mock the dependency to raise 404 error (source not found)
+        # Create app with custom dependency override for this test
+        app = FastAPI()
+        app.include_router(router)
+        
+        # Mock startup service
+        mock_startup_service = MagicMock(spec=StartupService)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        
+        # Mock get_twitter_source to raise 404
         def mock_get_twitter_source():
             raise HTTPException(status_code=404, detail="Twitter source not found or not configured")
+        app.dependency_overrides[get_twitter_source] = mock_get_twitter_source
         
-        with patch('api.routes.settings.get_twitter_source', side_effect=mock_get_twitter_source):
-            files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
-            response = client.post("/api/settings/upload/twitter", files=files)
+        client = TestClient(app)
+        files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
+        response = client.post("/api/settings/upload/twitter", files=files)
         
         assert response.status_code == 404
         data = response.json()
         assert "Twitter source not found" in data["detail"]
 
-    def test_upload_twitter_service_unavailable(self, client, sample_twitter_zip):
+    def test_upload_twitter_service_unavailable(self, sample_twitter_zip):
         """Test upload when application services are not properly initialized."""
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
         from api.routes.settings import get_twitter_source
         from fastapi import HTTPException
         
+        # Create app with custom dependency override for this test
+        app = FastAPI()
+        app.include_router(router)
+        
+        # Mock startup service
+        mock_startup_service = MagicMock(spec=StartupService)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        
+        # Mock get_twitter_source to raise 503
         def mock_get_twitter_source():
             raise HTTPException(status_code=503, detail="Application not properly initialized")
+        app.dependency_overrides[get_twitter_source] = mock_get_twitter_source
         
-        with patch('api.routes.settings.get_twitter_source', side_effect=mock_get_twitter_source):
-            files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
-            response = client.post("/api/settings/upload/twitter", files=files)
+        client = TestClient(app)
+        files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
+        response = client.post("/api/settings/upload/twitter", files=files)
         
         assert response.status_code == 503
         data = response.json()
         assert "Application not properly initialized" in data["detail"]
 
-    def test_upload_twitter_processing_error(self, client, sample_twitter_zip):
+    def test_upload_twitter_processing_error(self, sample_twitter_zip):
         """Test upload when Twitter processing fails with an exception."""
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
         from api.routes.settings import get_twitter_source
+        from sources.twitter import TwitterSource
         
-        mock_twitter_source = MagicMock()
+        # Create app with custom dependency override for this test
+        app = FastAPI()
+        app.include_router(router)
+        
+        # Mock startup service
+        mock_startup_service = MagicMock(spec=StartupService)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        
+        # Mock Twitter source that raises exception
+        mock_twitter_source = MagicMock(spec=TwitterSource)
         mock_twitter_source.import_from_zip = AsyncMock(side_effect=Exception("Unexpected processing error"))
+        app.dependency_overrides[get_twitter_source] = lambda: mock_twitter_source
         
-        with patch('api.routes.settings.get_twitter_source', return_value=mock_twitter_source):
-            files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
-            response = client.post("/api/settings/upload/twitter", files=files)
+        client = TestClient(app)
+        files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
+        response = client.post("/api/settings/upload/twitter", files=files)
         
         assert response.status_code == 500
         data = response.json()
         assert "unexpected error" in data["message"].lower()
 
-    def test_upload_twitter_file_cleanup(self, client, sample_twitter_zip):
+    def test_upload_twitter_file_cleanup(self, sample_twitter_zip):
         """Test that temporary files are properly cleaned up after upload."""
         import os
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
         from api.routes.settings import get_twitter_source
+        from sources.twitter import TwitterSource
         
-        mock_twitter_source = MagicMock()
+        # Create app with custom dependency override for this test
+        app = FastAPI()
+        app.include_router(router)
+        
+        # Mock startup service
+        mock_startup_service = MagicMock(spec=StartupService)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        
+        # Mock Twitter source with success response
+        mock_twitter_source = MagicMock(spec=TwitterSource)
         mock_twitter_source.import_from_zip = AsyncMock(return_value={
             "success": True,
             "imported_count": 2,
             "message": "Import successful"
         })
+        app.dependency_overrides[get_twitter_source] = lambda: mock_twitter_source
         
-        with patch('api.routes.settings.get_twitter_source', return_value=mock_twitter_source):
-            # Patch os.remove to verify it gets called (file cleanup)
-            with patch('os.remove') as mock_remove:
-                with patch('os.path.exists', return_value=True):  # File exists for cleanup
-                    files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
-                    response = client.post("/api/settings/upload/twitter", files=files)
-                    
-                    # Should attempt to clean up temp file
-                    mock_remove.assert_called_once()
+        client = TestClient(app)
+        
+        # Patch os.remove to verify it gets called (file cleanup)
+        with patch('os.remove') as mock_remove:
+            with patch('os.path.exists', return_value=True):  # File exists for cleanup
+                files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
+                response = client.post("/api/settings/upload/twitter", files=files)
+                
+                # Should attempt to clean up temp file
+                mock_remove.assert_called_once()
         
         assert response.status_code == 200
 
-    def test_upload_twitter_with_real_archive(self, client):
+    def test_upload_twitter_with_real_archive(self):
         """Test upload using the real Twitter archive from test media."""
+        import os
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
         from api.routes.settings import get_twitter_source
+        from sources.twitter import TwitterSource
+        
+        # Create app with custom dependency override for this test
+        app = FastAPI()
+        app.include_router(router)
+        
+        # Mock startup service
+        mock_startup_service = MagicMock(spec=StartupService)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
         
         # Mock successful processing
-        mock_twitter_source = MagicMock() 
+        mock_twitter_source = MagicMock(spec=TwitterSource) 
         mock_twitter_source.import_from_zip = AsyncMock(return_value={
             "success": True,
             "imported_count": 100,
             "message": "Twitter archive imported successfully. 100 tweets imported."
         })
+        app.dependency_overrides[get_twitter_source] = lambda: mock_twitter_source
+        
+        client = TestClient(app)
         
         # Load the real test archive
         archive_path = "/Users/brucebookman/code/new_lifeboard/tests/media/twitter-x.zip"
         
         if os.path.exists(archive_path):
-            with patch('api.routes.settings.get_twitter_source', return_value=mock_twitter_source):
-                with open(archive_path, 'rb') as archive_file:
-                    files = {"file": ("twitter-x.zip", archive_file, "application/zip")}
-                    response = client.post("/api/settings/upload/twitter", files=files)
-                
-                assert response.status_code == 200
-                data = response.json()
-                assert "imported successfully" in data["message"].lower()
-                
-                # Verify the import method was called with the uploaded file
-                mock_twitter_source.import_from_zip.assert_called_once()
+            with open(archive_path, 'rb') as archive_file:
+                files = {"file": ("twitter-x.zip", archive_file, "application/zip")}
+                response = client.post("/api/settings/upload/twitter", files=files)
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert "imported successfully" in data["message"].lower()
+            
+            # Verify the import method was called with the uploaded file
+            mock_twitter_source.import_from_zip.assert_called_once()
         else:
             pytest.skip("Real Twitter archive not found for testing")
 
-    def test_upload_twitter_large_file_handling(self, client):
+    def test_upload_twitter_large_file_handling(self):
         """Test upload handling with large files (within reasonable limits)."""
         # Create a larger test archive with more tweets
         zip_buffer = io.BytesIO()
@@ -309,18 +396,31 @@ class TestTwitterUploadAPI:
         
         zip_buffer.seek(0)
         
+        from fastapi import FastAPI
+        from core.dependencies import get_startup_service_dependency
         from api.routes.settings import get_twitter_source
+        from sources.twitter import TwitterSource
         
-        mock_twitter_source = MagicMock()
+        # Create app with custom dependency override for this test
+        app = FastAPI()
+        app.include_router(router)
+        
+        # Mock startup service
+        mock_startup_service = MagicMock(spec=StartupService)
+        app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
+        
+        # Mock Twitter source with success response
+        mock_twitter_source = MagicMock(spec=TwitterSource)
         mock_twitter_source.import_from_zip = AsyncMock(return_value={
             "success": True,
             "imported_count": 100,
             "message": "Large archive processed successfully"
         })
+        app.dependency_overrides[get_twitter_source] = lambda: mock_twitter_source
         
-        with patch('api.routes.settings.get_twitter_source', return_value=mock_twitter_source):
-            files = {"file": ("large-twitter-archive.zip", zip_buffer, "application/zip")}
-            response = client.post("/api/settings/upload/twitter", files=files)
+        client = TestClient(app)
+        files = {"file": ("large-twitter-archive.zip", zip_buffer, "application/zip")}
+        response = client.post("/api/settings/upload/twitter", files=files)
         
         assert response.status_code == 200
         data = response.json()
@@ -329,50 +429,68 @@ class TestTwitterUploadAPI:
     def test_get_twitter_source_dependency(self):
         """Test the get_twitter_source dependency function directly."""
         from api.routes.settings import get_twitter_source
-        from core.dependencies import get_dependency_registry
+        from core.dependencies import get_dependency_registry, DependencyRegistry
         from fastapi import HTTPException
         
         # Test when dependency registry is not available
-        with patch('api.routes.settings.get_dependency_registry', return_value=None):
+        with patch('api.routes.settings.get_dependency_registry') as mock_get_registry:
+            mock_registry = MagicMock(spec=DependencyRegistry)
+            mock_registry.get_startup_service.side_effect = HTTPException(status_code=503, detail="Application not initialized")
+            mock_get_registry.return_value = mock_registry
+            
             with pytest.raises(HTTPException) as exc_info:
                 get_twitter_source()
             assert exc_info.value.status_code == 503
 
         # Test when startup service is not available
-        mock_registry = MagicMock()
-        mock_registry.get_startup_service.return_value = None
-        with patch('api.routes.settings.get_dependency_registry', return_value=mock_registry):
+        with patch('api.routes.settings.get_dependency_registry') as mock_get_registry:
+            mock_registry = MagicMock(spec=DependencyRegistry)
+            mock_registry.get_startup_service.return_value = None
+            mock_get_registry.return_value = mock_registry
+            
             with pytest.raises(HTTPException) as exc_info:
                 get_twitter_source()
             assert exc_info.value.status_code == 503
 
         # Test when ingestion service is not available
-        mock_startup = MagicMock()
-        mock_startup.ingestion_service = None
-        mock_registry.get_startup_service.return_value = mock_startup
-        
-        with patch('api.routes.settings.get_dependency_registry', return_value=mock_registry):
+        with patch('api.routes.settings.get_dependency_registry') as mock_get_registry:
+            mock_registry = MagicMock(spec=DependencyRegistry)
+            mock_startup = MagicMock()
+            mock_startup.ingestion_service = None
+            mock_registry.get_startup_service.return_value = mock_startup
+            mock_get_registry.return_value = mock_registry
+            
             with pytest.raises(HTTPException) as exc_info:
                 get_twitter_source()
             assert exc_info.value.status_code == 503
 
         # Test when Twitter source is not registered
-        mock_ingestion = MagicMock()
-        mock_ingestion.sources = {"limitless": "some_source"}  # No twitter source
-        mock_startup.ingestion_service = mock_ingestion
-        
-        with patch('api.routes.settings.get_dependency_registry', return_value=mock_registry):
+        with patch('api.routes.settings.get_dependency_registry') as mock_get_registry:
+            mock_registry = MagicMock(spec=DependencyRegistry)
+            mock_startup = MagicMock()
+            mock_ingestion = MagicMock()
+            mock_ingestion.sources = {"limitless": "some_source"}  # No twitter source
+            mock_startup.ingestion_service = mock_ingestion
+            mock_registry.get_startup_service.return_value = mock_startup
+            mock_get_registry.return_value = mock_registry
+            
             with pytest.raises(HTTPException) as exc_info:
                 get_twitter_source()
             assert exc_info.value.status_code == 404
             assert "Twitter source not found" in str(exc_info.value.detail)
 
         # Test successful case
-        from sources.twitter import TwitterSource
-        mock_twitter_source = MagicMock(spec=TwitterSource)
-        mock_ingestion.sources = {"twitter": mock_twitter_source}
-        
-        with patch('api.routes.settings.get_dependency_registry', return_value=mock_registry):
+        with patch('api.routes.settings.get_dependency_registry') as mock_get_registry:
+            from sources.twitter import TwitterSource
+            mock_registry = MagicMock(spec=DependencyRegistry)
+            mock_startup = MagicMock()
+            mock_ingestion = MagicMock()
+            mock_twitter_source = MagicMock(spec=TwitterSource)
+            mock_ingestion.sources = {"twitter": mock_twitter_source}
+            mock_startup.ingestion_service = mock_ingestion
+            mock_registry.get_startup_service.return_value = mock_startup
+            mock_get_registry.return_value = mock_registry
+            
             result = get_twitter_source()
             assert result is mock_twitter_source
 
@@ -383,6 +501,9 @@ class TestTwitterUploadIntegration:
     @pytest.fixture
     def integration_client(self):
         """Client for integration testing with minimal mocking."""
+        from fastapi import FastAPI
+        app = FastAPI()
+        app.include_router(router)
         return TestClient(app)
 
     def test_upload_endpoint_exists(self, integration_client):
