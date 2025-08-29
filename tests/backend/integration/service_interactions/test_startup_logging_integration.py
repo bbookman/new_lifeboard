@@ -133,7 +133,7 @@ class TestStartupServiceLoggingIntegration:
             asyncio.run(startup_service.initialize_application(enable_auto_sync=False))
         
         # Get application status
-        status = startup_service.get_application_status()
+        status = asyncio.run(startup_service.get_application_status())
         
         # Should include logging service status
         assert "logging" in status["services"]

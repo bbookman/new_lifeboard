@@ -149,6 +149,7 @@ class StartupService:
             # Database service
             logger.info("Initializing database service...")
             self.database = AsyncDatabaseService(self.config.database.path)
+            await self.database.initialize()
             startup_result["services_initialized"].append("database")
             
             # Embedding service
@@ -267,7 +268,7 @@ class StartupService:
                 try:
                     logger.info("Registering Limitless source...")
                     limitless_source = LimitlessSource(self.config.limitless)
-                    self.ingestion_service.register_source(limitless_source)
+                    await self.ingestion_service.register_source(limitless_source)
                     startup_result["sources_registered"].append("limitless")
                     logger.info("Limitless source registered successfully")
                     
@@ -283,7 +284,7 @@ class StartupService:
                 try:
                     logger.info("Registering News source...")
                     news_source = NewsSource(self.config.news, self.database)
-                    self.ingestion_service.register_source(news_source)
+                    await self.ingestion_service.register_source(news_source)
                     startup_result["sources_registered"].append("news")
                     logger.info("News source registered successfully")
                     
@@ -310,7 +311,7 @@ class StartupService:
                         self.database,
                         self.ingestion_service
                     )
-                    self.ingestion_service.register_source(twitter_source)
+                    await self.ingestion_service.register_source(twitter_source)
                     startup_result["sources_registered"].append("twitter")
                     logger.info("Twitter source registered successfully")
                 except Exception as e:
@@ -325,7 +326,7 @@ class StartupService:
                 try:
                     logger.info("Registering Weather source...")
                     weather_source = WeatherSource(self.config.weather, self.database)
-                    self.ingestion_service.register_source(weather_source)
+                    await self.ingestion_service.register_source(weather_source)
                     startup_result["sources_registered"].append("weather")
                     logger.info("Weather source registered successfully")
                 except Exception as e:
@@ -550,7 +551,7 @@ class StartupService:
             
             # Check ingestion service
             if self.ingestion_service:
-                ingestion_status = self.ingestion_service.get_ingestion_status()
+                ingestion_status = await self.ingestion_service.get_ingestion_status()
                 health_status["ingestion_service_healthy"] = ingestion_status is not None
             
             # Check scheduler
@@ -716,7 +717,7 @@ class StartupService:
                 for i, error in enumerate(shutdown_errors, 1):
                     logger.error(f"SHUTDOWN_SERVICE: Error {i}: {error}")
     
-    def get_application_status(self) -> Dict[str, Any]:
+    async def get_application_status(self) -> Dict[str, Any]:
         """Get current application status"""
         status = {
             "startup_complete": self.startup_complete,
@@ -740,7 +741,7 @@ class StartupService:
         
         # Add detailed status if services are available
         if self.ingestion_service:
-            status["ingestion_status"] = self.ingestion_service.get_ingestion_status()
+            status["ingestion_status"] = await self.ingestion_service.get_ingestion_status()
         
         if self.sync_manager:
             status["sync_status"] = self.sync_manager.get_all_sources_sync_status()

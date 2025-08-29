@@ -41,7 +41,7 @@ class StatusResponse(BaseModel):
 @handle_api_exceptions("Health check failed", 503)
 async def health_check(startup_service: StartupService = Depends(get_startup_service_dependency)):
     """Get application health status"""
-    app_status = startup_service.get_application_status()
+    app_status = await startup_service.get_application_status()
     
     return HealthResponse(
         healthy=app_status.get("startup_complete", False),
@@ -54,7 +54,7 @@ async def health_check(startup_service: StartupService = Depends(get_startup_ser
 @handle_api_exceptions("Status check failed", 500)
 async def get_application_status(startup_service: StartupService = Depends(get_startup_service_dependency)):
     """Get detailed application status"""
-    status_data = startup_service.get_application_status()
+    status_data = await startup_service.get_application_status()
     
     return StatusResponse(
         timestamp=datetime.now(timezone.utc).isoformat(),
