@@ -119,6 +119,7 @@ def configure_route_dependencies():
     registry.register_startup_service_provider(get_startup_service)
     registry.register_sync_manager_provider(lambda startup_service: startup_service.sync_manager)
     registry.register_chat_service_provider(lambda startup_service: startup_service.chat_service)
+    registry.register_database_service_provider(lambda startup_service: startup_service.database)
     logger.info("ROUTE_CONFIG: Dependency providers registered successfully")
     
     # Templates no longer needed - API-only mode

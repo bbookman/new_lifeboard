@@ -88,7 +88,7 @@ class TestLLMServiceSummaryWorkflow:
             }
         }
 
-    def test_generate_daily_summary_with_user_defined_prompt(self, mock_dependencies, sample_multi_namespace_data):
+    async def test_generate_daily_summary_with_user_defined_prompt(self, mock_dependencies, sample_multi_namespace_data):
         """Test complete summary generation with user-defined prompt and multi-namespace data"""
         database, document_service, config, mock_cursor = mock_dependencies
         

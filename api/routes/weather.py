@@ -2,18 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional, Dict, Any
 
 from services.weather_service import WeatherService
-from core.database import DatabaseService
-from config.factory import get_config
+from core.dependencies import get_startup_service_dependency
+from services.startup import StartupService
 
 router = APIRouter()
 
-def get_db_service():
-    config = get_config()
-    return DatabaseService(db_path=config.database.path)
-
-def get_weather_service(db_service: DatabaseService = Depends(get_db_service)):
-    config = get_config()
-    return WeatherService(db_service, config)
+def get_weather_service(startup_service: StartupService = Depends(get_startup_service_dependency)):
+    """Get weather service from startup service"""
+    if not startup_service.weather_service:
+        raise HTTPException(status_code=503, detail="Weather service not available")
+    return startup_service.weather_service
 
 @router.get("/weather", response_model=Optional[Dict[str, Any]])
 def get_weather(weather_service: WeatherService = Depends(get_weather_service)):

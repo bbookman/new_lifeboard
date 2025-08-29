@@ -12,34 +12,29 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends
 
 from services.startup import StartupService
-from core.database import DatabaseService
-from core.dependencies import get_startup_service_dependency
+from core.async_database import AsyncDatabaseService
+from core.dependencies import get_startup_service_dependency, get_database_service_dependency
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/headings", tags=["headings"])
 
 
-def get_database_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> DatabaseService:
-    """Get database service from startup service"""
-    if not startup_service.database:
-        raise HTTPException(status_code=503, detail="Database service not available")
-    return startup_service.database
 
 
 @router.get("/day/{days_date}")
 async def get_day_headings(
     days_date: str,
-    database: DatabaseService = Depends(get_database_service)
+    database: AsyncDatabaseService = Depends(get_database_service_dependency)
 ) -> Dict[str, Any]:
     """
     Get heading1 and heading2 content for a specific day from limitless namespace.
     Prefers cleaned/semantic processed content, falls back to raw content.
     """
     try:
-        with database.get_connection() as conn:
+        async with database.get_connection() as conn:
             # Fetch all limitless data for the specified date
-            cursor = conn.execute("""
+            cursor = await conn.execute("""
                 SELECT id, metadata, semantic_status
                 FROM data_items
                 WHERE namespace = 'limitless' 
@@ -47,7 +42,7 @@ async def get_day_headings(
                 ORDER BY created_at
             """, (days_date,))
             
-            items = cursor.fetchall()
+            items = await cursor.fetchall()
             
             if not items:
                 return {
@@ -164,15 +159,15 @@ def extract_headings_from_contents(contents: List[Dict[str, Any]]) -> List[Dict[
 @router.get("/status/{days_date}")
 async def get_day_headings_status(
     days_date: str,
-    database: DatabaseService = Depends(get_database_service)
+    database: AsyncDatabaseService = Depends(get_database_service_dependency)
 ) -> Dict[str, Any]:
     """
     Get status information about headings data for a specific day.
     Useful for UI to show processing status and decide on refresh behavior.
     """
     try:
-        with database.get_connection() as conn:
-            cursor = conn.execute("""
+        async with database.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT 
                     semantic_status,
                     COUNT(*) as count,
@@ -186,7 +181,7 @@ async def get_day_headings_status(
             status_breakdown = {row['semantic_status']: {
                 'count': row['count'],
                 'last_updated': row['last_updated']
-            } for row in cursor.fetchall()}
+            } for row in await cursor.fetchall()}
             
             # Determine overall status
             total_items = sum(status['count'] for status in status_breakdown.values())

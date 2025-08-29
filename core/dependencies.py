@@ -7,11 +7,12 @@ for FastAPI routes, avoiding the flawed module attribute injection pattern.
 
 import logging
 from typing import Optional, Callable, Any
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
 
 from services.startup import StartupService, get_startup_service
 from services.sync_manager_service import SyncManagerService
 from services.chat_service import ChatService
+from core.async_database import AsyncDatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class DependencyRegistry:
         self._startup_service_provider: Optional[Callable[[], StartupService]] = None
         self._sync_manager_provider: Optional[Callable[[StartupService], SyncManagerService]] = None
         self._chat_service_provider: Optional[Callable[[StartupService], ChatService]] = None
+        self._database_service_provider: Optional[Callable[[StartupService], AsyncDatabaseService]] = None
     
     def register_startup_service_provider(self, provider: Callable[[], StartupService]):
         """Register the startup service provider function"""
@@ -38,6 +40,11 @@ class DependencyRegistry:
         """Register the chat service provider function"""
         self._chat_service_provider = provider
         logger.info("DEPENDENCIES: Chat service provider registered")
+    
+    def register_database_service_provider(self, provider: Callable[[StartupService], AsyncDatabaseService]):
+        """Register the database service provider function"""
+        self._database_service_provider = provider
+        logger.info("DEPENDENCIES: Database service provider registered")
     
     def get_startup_service(self) -> StartupService:
         """Get startup service instance for FastAPI dependency injection"""
@@ -86,6 +93,22 @@ class DependencyRegistry:
         except Exception as e:
             logger.error(f"DEPENDENCIES: Error getting chat service: {e}")
             raise HTTPException(status_code=503, detail="Chat service not available")
+    
+    def get_database_service(self, startup_service: StartupService) -> AsyncDatabaseService:
+        """Get database service instance for FastAPI dependency injection"""
+        if not self._database_service_provider:
+            logger.error("DEPENDENCIES: Database service provider not registered")
+            raise HTTPException(status_code=503, detail="Database service not available")
+        
+        try:
+            database_service = self._database_service_provider(startup_service)
+            if not database_service:
+                logger.error("DEPENDENCIES: Database service provider returned None")
+                raise HTTPException(status_code=503, detail="Database service not available")
+            return database_service
+        except Exception as e:
+            logger.error(f"DEPENDENCIES: Error getting database service: {e}")
+            raise HTTPException(status_code=503, detail="Database service not available")
 
 
 # Global registry instance
@@ -111,3 +134,8 @@ def get_sync_manager_dependency(startup_service: StartupService) -> SyncManagerS
 def get_chat_service_dependency(startup_service: StartupService) -> ChatService:
     """FastAPI dependency for chat service"""
     return _dependency_registry.get_chat_service(startup_service)
+
+
+def get_database_service_dependency(startup_service: StartupService = Depends(get_startup_service_dependency)) -> AsyncDatabaseService:
+    """FastAPI dependency for async database service"""
+    return _dependency_registry.get_database_service(startup_service)

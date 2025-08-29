@@ -3,21 +3,21 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import logging
 
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.embeddings import EmbeddingService
 from services.semantic_deduplication_service import SemanticDeduplicationService
-from config.factory import ConfigFactory
+from core.dependencies import get_startup_service_dependency
+from services.startup import StartupService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/semantic-patterns", tags=["semantic-patterns"])
 
-def get_semantic_service() -> SemanticDeduplicationService:
+def get_semantic_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> SemanticDeduplicationService:
     """Get semantic deduplication service instance"""
-    config = ConfigFactory.create_config()
-    database = DatabaseService(config.database.path)
-    embedding_service = EmbeddingService(config.embeddings)
-    return SemanticDeduplicationService(database, embedding_service)
+    if not startup_service.semantic_service:
+        raise HTTPException(status_code=503, detail="Semantic deduplication service not available")
+    return startup_service.semantic_service
 
 
 @router.get("/clusters")
@@ -34,7 +34,7 @@ async def get_semantic_clusters(
         List of semantic clusters with metadata
     """
     try:
-        with service.database.get_connection() as conn:
+        async with service.database.get_connection() as conn:
             # Build query with filters
             where_conditions = []
             params = []
@@ -50,7 +50,7 @@ async def get_semantic_clusters(
             where_clause = f"WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
             
             # Get clusters
-            cursor = conn.execute(f"""
+            cursor = await conn.execute(f"""
                 SELECT id, theme, canonical_line, confidence_score, frequency_count, 
                        created_at, updated_at
                 FROM semantic_clusters
@@ -60,18 +60,18 @@ async def get_semantic_clusters(
             """, params + [limit])
             
             clusters = []
-            for row in cursor.fetchall():
+            for row in await cursor.fetchall():
                 cluster_dict = dict(row)
                 
                 # Get variations for this cluster
-                variations_cursor = conn.execute("""
+                variations_cursor = await conn.execute("""
                     SELECT line_content, speaker, line_timestamp, similarity_score
                     FROM line_cluster_mapping
                     WHERE cluster_id = ? AND is_canonical = FALSE
                     ORDER BY similarity_score DESC
                 """, (row['id'],))
                 
-                variations = [dict(var_row) for var_row in variations_cursor.fetchall()]
+                variations = [dict(var_row) for var_row in await variations_cursor.fetchall()]
                 cluster_dict['variations'] = variations
                 
                 clusters.append(cluster_dict)
@@ -129,8 +129,8 @@ async def get_available_themes(
         List of themes and their frequencies
     """
     try:
-        with service.database.get_connection() as conn:
-            cursor = conn.execute("""
+        async with service.database.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT theme, 
                        COUNT(*) as cluster_count,
                        SUM(frequency_count) as total_occurrences,
@@ -140,7 +140,7 @@ async def get_available_themes(
                 ORDER BY total_occurrences DESC
             """)
             
-            themes = [dict(row) for row in cursor.fetchall()]
+            themes = [dict(row) for row in await cursor.fetchall()]
         
         return {
             "themes": themes,
@@ -256,23 +256,23 @@ async def get_cluster_details(
         Detailed cluster information with all variations and conversations
     """
     try:
-        with service.database.get_connection() as conn:
+        async with service.database.get_connection() as conn:
             # Get cluster info
-            cursor = conn.execute("""
+            cursor = await conn.execute("""
                 SELECT id, theme, canonical_line, confidence_score, frequency_count, 
                        created_at, updated_at
                 FROM semantic_clusters
                 WHERE id = ?
             """, (cluster_id,))
             
-            cluster_row = cursor.fetchone()
+            cluster_row = await cursor.fetchone()
             if not cluster_row:
                 raise HTTPException(status_code=404, detail="Cluster not found")
             
             cluster = dict(cluster_row)
             
             # Get all line mappings for this cluster
-            cursor = conn.execute("""
+            cursor = await conn.execute("""
                 SELECT data_item_id, line_content, similarity_score, speaker, 
                        line_timestamp, is_canonical
                 FROM line_cluster_mapping
@@ -280,7 +280,7 @@ async def get_cluster_details(
                 ORDER BY similarity_score DESC
             """, (cluster_id,))
             
-            mappings = [dict(row) for row in cursor.fetchall()]
+            mappings = [dict(row) for row in await cursor.fetchall()]
             
             # Group by conversation
             conversations = {}
@@ -320,30 +320,31 @@ async def delete_cluster(
         Deletion result
     """
     try:
-        with service.database.get_connection() as conn:
+        async with service.database.get_connection() as conn:
             # Check if cluster exists
-            cursor = conn.execute(
+            cursor = await conn.execute(
                 "SELECT COUNT(*) FROM semantic_clusters WHERE id = ?",
                 (cluster_id,)
             )
             
-            if cursor.fetchone()[0] == 0:
+            result = await cursor.fetchone()
+            if result[0] == 0:
                 raise HTTPException(status_code=404, detail="Cluster not found")
             
             # Delete line mappings first (foreign key constraint)
-            cursor = conn.execute(
+            cursor = await conn.execute(
                 "DELETE FROM line_cluster_mapping WHERE cluster_id = ?",
                 (cluster_id,)
             )
             mappings_deleted = cursor.rowcount
             
             # Delete cluster
-            cursor = conn.execute(
+            cursor = await conn.execute(
                 "DELETE FROM semantic_clusters WHERE id = ?",
                 (cluster_id,)
             )
             
-            conn.commit()
+            await conn.commit()
             
         logger.info(f"Deleted cluster {cluster_id} and {mappings_deleted} line mappings")
         

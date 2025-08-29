@@ -18,8 +18,8 @@ from services.weather_service import WeatherService
 from services.news_service import NewsService
 from services.ingestion import IngestionService
 from services.sync_status_service import get_sync_status_service, SyncStatusService
-from core.database import DatabaseService
-from core.dependencies import get_startup_service_dependency
+from core.async_database import AsyncDatabaseService
+from core.dependencies import get_startup_service_dependency, get_database_service_dependency
 from config.factory import get_config
 from sources.limitless import LimitlessSource
 from sources.twitter import TwitterSource
@@ -32,20 +32,13 @@ router = APIRouter(prefix="/calendar", tags=["calendar"])
 # Calendar API - JSON endpoints only
 
 
-def get_database_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> DatabaseService:
-    """Get database service from startup service"""
-    if not startup_service.database:
-        raise HTTPException(status_code=503, detail="Database service not available")
-    return startup_service.database
-
-
-def get_weather_service(database: DatabaseService = Depends(get_database_service)) -> WeatherService:
+def get_weather_service(database: AsyncDatabaseService = Depends(get_database_service_dependency)) -> WeatherService:
     """Get weather service instance"""
     config = get_config()
     return WeatherService(database, config)
 
 
-def get_news_service(database: DatabaseService = Depends(get_database_service)) -> NewsService:
+def get_news_service(database: AsyncDatabaseService = Depends(get_database_service_dependency)) -> NewsService:
     """Get news service instance"""
     config = get_config()
     return NewsService(database, config.news)
@@ -112,7 +105,7 @@ async def get_today_date(
 async def get_days_with_data(
     year: Optional[int] = None,
     month: Optional[int] = None,
-    database: DatabaseService = Depends(get_database_service)
+    database: AsyncDatabaseService = Depends(get_database_service_dependency)
 ) -> Dict[str, Any]:
     """Get list of dates that have data available"""
     logger.info(f"[CALENDAR API] Request received - year: {year}, month: {month}")
@@ -120,10 +113,10 @@ async def get_days_with_data(
     try:
         # Get all days with data
         logger.info("[CALENDAR API] Calling database.get_days_with_data()")
-        all_days = database.get_days_with_data()
+        all_days = await database.get_days_with_data()
         
         # Get all distinct namespaces from the database
-        all_namespaces = database.get_all_namespaces()
+        all_namespaces = await database.get_all_namespaces()
         
         # Prepare the result dictionary with 'all' days initially
         result_data: Dict[str, List[str]] = {"all": all_days}
@@ -131,7 +124,7 @@ async def get_days_with_data(
         # Fetch days with data for each namespace dynamically
         for namespace in all_namespaces:
             logger.info(f"[CALENDAR API] Calling database.get_days_with_data(namespaces=['{namespace}'])")
-            namespace_days = database.get_days_with_data(namespaces=[namespace])
+            namespace_days = await database.get_days_with_data(namespaces=[namespace])
             result_data[namespace] = namespace_days
             logger.info(f"[CALENDAR DEBUG] {namespace} days count: {len(namespace_days) if namespace_days else 0}")
         
@@ -177,7 +170,7 @@ async def get_days_with_data(
 
 
 @router.get("/day/{date}")
-async def get_day_details(date: str, database: DatabaseService = Depends(get_database_service)) -> Dict[str, Any]:
+async def get_day_details(date: str, database: AsyncDatabaseService = Depends(get_database_service_dependency)) -> Dict[str, Any]:
     """Get details and markdown content for a specific date"""
     try:
         # Validate date format
@@ -187,10 +180,10 @@ async def get_day_details(date: str, database: DatabaseService = Depends(get_dat
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
         # Get limitless data items from unified table
-        limitless_items = database.get_data_items_by_date(date, namespaces=['limitless'])
+        limitless_items = await database.get_data_items_by_date(date, namespaces=['limitless'])
         
         # Get markdown content from limitless items
-        markdown_content = database.get_markdown_by_date(date, namespaces=['limitless'])
+        markdown_content = await database.get_markdown_by_date(date, namespaces=['limitless'])
         
         return {
             "date": date,
@@ -210,7 +203,7 @@ async def get_day_details(date: str, database: DatabaseService = Depends(get_dat
 @router.get("/day/{date}/enhanced")
 async def get_enhanced_day_data(
     date: str, 
-    database: DatabaseService = Depends(get_database_service),
+    database: AsyncDatabaseService = Depends(get_database_service_dependency),
     weather_service: WeatherService = Depends(get_weather_service),
     news_service: NewsService = Depends(get_news_service)
 ) -> Dict[str, Any]:
@@ -223,8 +216,8 @@ async def get_enhanced_day_data(
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
         # Get basic day details
-        markdown_content = database.get_markdown_by_date(date, namespaces=['limitless'])
-        limitless_items = database.get_data_items_by_date(date, namespaces=['limitless'])
+        markdown_content = await database.get_markdown_by_date(date, namespaces=['limitless'])
+        limitless_items = await database.get_data_items_by_date(date, namespaces=['limitless'])
         
         # Get 5-day weather forecast starting from this date
         weather_data = weather_service.get_weather_for_date_range(date, 5)
@@ -272,7 +265,7 @@ async def get_enhanced_day_data(
 async def get_month_data(
     year: int, 
     month: int, 
-    database: DatabaseService = Depends(get_database_service)
+    database: AsyncDatabaseService = Depends(get_database_service_dependency)
 ) -> Dict[str, Any]:
     """Get calendar data for a specific month"""
     try:
@@ -306,7 +299,7 @@ async def get_month_data(
 async def debug_markdown_content(
     date: str,
     namespaces: Optional[str] = "limitless",
-    database: DatabaseService = Depends(get_database_service)
+    database: AsyncDatabaseService = Depends(get_database_service_dependency)
 ) -> Dict[str, Any]:
     """
     Debug endpoint to inspect raw markdown content from database for a specific date.
@@ -321,10 +314,10 @@ async def debug_markdown_content(
             namespace_list = [ns.strip() for ns in namespaces.split(",")]
         
         # Get raw data items
-        data_items = database.get_data_items_by_date(date, namespace_list)
+        data_items = await database.get_data_items_by_date(date, namespace_list)
         
         # Get processed markdown
-        markdown_content = database.get_markdown_by_date(date, namespace_list)
+        markdown_content = await database.get_markdown_by_date(date, namespace_list)
         
         # Analyze each item
         item_analysis = []
@@ -410,7 +403,7 @@ async def debug_markdown_content(
 async def debug_markdown_raw(
     date: str,
     namespaces: Optional[str] = "limitless",
-    database: DatabaseService = Depends(get_database_service)
+    database: AsyncDatabaseService = Depends(get_database_service_dependency)
 ) -> Dict[str, str]:
     """
     Get raw markdown content only (for easy copying/testing)
@@ -420,7 +413,7 @@ async def debug_markdown_raw(
         if namespaces:
             namespace_list = [ns.strip() for ns in namespaces.split(",")]
         
-        markdown_content = database.get_markdown_by_date(date, namespace_list)
+        markdown_content = await database.get_markdown_by_date(date, namespace_list)
         
         return {
             'date': date,
@@ -436,7 +429,7 @@ async def debug_markdown_raw(
 @router.post("/limitless/fetch/{date}")
 async def fetch_limitless_for_date(
     date: str,
-    database: DatabaseService = Depends(get_database_service),
+    database: AsyncDatabaseService = Depends(get_database_service_dependency),
     ingestion_service: IngestionService = Depends(get_ingestion_service)
 ) -> Dict[str, Any]:
     """
@@ -456,7 +449,7 @@ async def fetch_limitless_for_date(
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
         # Check if data already exists (optional optimization)
-        existing_items = database.get_data_items_by_date(date, namespaces=['limitless'])
+        existing_items = await database.get_data_items_by_date(date, namespaces=['limitless'])
         if existing_items:
             logger.info(f"[OnDemandFetch] Data already exists for {date}: {len(existing_items)} items")
             return {
@@ -594,7 +587,7 @@ async def fetch_limitless_for_date(
             logger.warning(f"[OnDemandFetch] Error processing embeddings (non-critical): {e}")
         
         # Verify final result
-        final_items = database.get_data_items_by_date(date, namespaces=['limitless'])
+        final_items = await database.get_data_items_by_date(date, namespaces=['limitless'])
         
         logger.info(f"[OnDemandFetch] On-demand fetch completed for {date}: processed={processed_count}, stored={stored_count}, final_count={len(final_items)}")
         
@@ -643,7 +636,7 @@ def get_twitter_source() -> TwitterSource:
 @router.post("/twitter/fetch/{date}")
 async def fetch_twitter_for_date(
     date: str,
-    database: DatabaseService = Depends(get_database_service),
+    database: AsyncDatabaseService = Depends(get_database_service_dependency),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
     twitter_source: TwitterSource = Depends(get_twitter_source)
 ) -> Dict[str, Any]:
@@ -664,7 +657,7 @@ async def fetch_twitter_for_date(
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
         # Check if data already exists (optional optimization)
-        existing_items = database.get_data_items_by_date(date, namespaces=['twitter'])
+        existing_items = await database.get_data_items_by_date(date, namespaces=['twitter'])
         if existing_items:
             logger.info(f"[TwitterOnDemandFetch] Data already exists for {date}: {len(existing_items)} items")
             return {
@@ -790,7 +783,7 @@ async def fetch_twitter_for_date(
             logger.warning(f"[TwitterOnDemandFetch] Error processing embeddings (non-critical): {e}")
         
         # Verify final result
-        final_items = database.get_data_items_by_date(date, namespaces=['twitter'])
+        final_items = await database.get_data_items_by_date(date, namespaces=['twitter'])
         
         logger.info(f"[TwitterOnDemandFetch] On-demand fetch completed for {date}: processed={processed_count}, stored={stored_count}, final_count={len(final_items)}")
         
@@ -814,7 +807,7 @@ async def fetch_twitter_for_date(
 @router.post("/news/fetch/{date}")
 async def fetch_news_for_date(
     date: str,
-    database: DatabaseService = Depends(get_database_service),
+    database: AsyncDatabaseService = Depends(get_database_service_dependency),
     ingestion_service: IngestionService = Depends(get_ingestion_service)
 ) -> Dict[str, Any]:
     """
@@ -833,7 +826,7 @@ async def fetch_news_for_date(
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
         # Check if news data already exists for this date
-        existing_items = database.get_data_items_by_date(date, namespaces=['news'])
+        existing_items = await database.get_data_items_by_date(date, namespaces=['news'])
         if existing_items:
             logger.info(f"[OnDemandNewsFetch] News data already exists for {date}: {len(existing_items)} items")
             return {
@@ -934,7 +927,7 @@ async def fetch_news_for_date(
             logger.warning(f"[OnDemandNewsFetch] Error processing embeddings (non-critical): {e}")
         
         # Verify final result
-        final_items = database.get_data_items_by_date(date, namespaces=['news'])
+        final_items = await database.get_data_items_by_date(date, namespaces=['news'])
         
         logger.info(f"[OnDemandNewsFetch] On-demand news fetch completed for {date}: processed={processed_count}, stored={stored_count}, final_count={len(final_items)}")
         
@@ -959,7 +952,7 @@ async def fetch_news_for_date(
 async def get_data_items_for_date(
     date: str, 
     namespaces: Optional[str] = None,
-    database: DatabaseService = Depends(get_database_service)
+    database: AsyncDatabaseService = Depends(get_database_service_dependency)
 ) -> List[Dict[str, Any]]:
     """Get all data_items for a specific date, optionally filtered by namespaces"""
     try:
@@ -986,7 +979,7 @@ async def get_data_items_for_date(
             logger.info(f"[DATA_ITEMS API DEBUG] Checking Twitter data in database...")
             
             # Get all Twitter data for debugging
-            all_twitter_items = database.get_data_items_by_date(date, ['twitter'])
+            all_twitter_items = await database.get_data_items_by_date(date, ['twitter'])
             logger.info(f"[DATA_ITEMS API DEBUG] Found {len(all_twitter_items)} Twitter items for {date}")
             
             # Check for different Twitter source types
@@ -1012,7 +1005,7 @@ async def get_data_items_for_date(
         
         # Get data items for the date
         logger.info(f"[DATA_ITEMS API DEBUG] Calling database.get_data_items_by_date...")
-        data_items = database.get_data_items_by_date(date, namespace_list)
+        data_items = await database.get_data_items_by_date(date, namespace_list)
         
         logger.info(f"[DATA_ITEMS API DEBUG] Retrieved {len(data_items)} data items for date {date}")
         
@@ -1065,7 +1058,7 @@ async def get_data_items_for_date(
             logger.warning(f"[DATA_ITEMS API DEBUG] No data items found for date {date} with namespaces {namespace_list}")
             
             # Debug: Check if data exists for this date with any namespace
-            all_date_items = database.get_data_items_by_date(date, None)
+            all_date_items = await database.get_data_items_by_date(date, None)
             logger.info(f"[DATA_ITEMS API DEBUG] Total items for {date} (all namespaces): {len(all_date_items)}")
             
             if all_date_items:

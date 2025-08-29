@@ -12,7 +12,8 @@ from fastapi.responses import JSONResponse
 
 from services.sync_manager_service import SyncManagerService
 from sources.twitter import TwitterSource
-from core.dependencies import get_dependency_registry
+from core.dependencies import get_dependency_registry, get_database_service_dependency
+from core.async_database import AsyncDatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -50,26 +51,20 @@ async def update_settings(request: SettingsUpdateRequest) -> Dict[str, bool]:
     return {"success": True}
 
 @router.get("/prompt-selection")
-async def get_prompt_selection() -> PromptSelectionResponse:
+async def get_prompt_selection(
+    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+) -> PromptSelectionResponse:
     """Get current prompt selection for daily summary"""
-    from core.dependencies import get_dependency_registry
-    
-    registry = get_dependency_registry()
-    startup_service = registry.get_startup_service()
-    
-    if not startup_service or not startup_service.database:
-        raise HTTPException(status_code=503, detail="Database service not available")
-    
     try:
-        with startup_service.database.get_connection() as conn:
-            cursor = conn.execute("""
+        async with database.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT prompt_document_id, is_active
                 FROM prompt_settings 
                 WHERE setting_key = 'daily_summary_prompt' AND is_active = TRUE
                 ORDER BY updated_at DESC
                 LIMIT 1
             """)
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             
             if row:
                 return PromptSelectionResponse(
@@ -87,20 +82,15 @@ async def get_prompt_selection() -> PromptSelectionResponse:
         raise HTTPException(status_code=500, detail="Failed to get prompt selection")
 
 @router.post("/prompt-selection")
-async def save_prompt_selection(request: PromptSelectionRequest) -> Dict[str, bool]:
+async def save_prompt_selection(
+    request: PromptSelectionRequest,
+    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+) -> Dict[str, bool]:
     """Save prompt selection for daily summary"""
-    from core.dependencies import get_dependency_registry
-    
-    registry = get_dependency_registry()
-    startup_service = registry.get_startup_service()
-    
-    if not startup_service or not startup_service.database:
-        raise HTTPException(status_code=503, detail="Database service not available")
-    
     try:
-        with startup_service.database.get_connection() as conn:
+        async with database.get_connection() as conn:
             # First, deactivate any existing settings
-            conn.execute("""
+            await conn.execute("""
                 UPDATE prompt_settings 
                 SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
                 WHERE setting_key = 'daily_summary_prompt'
@@ -108,12 +98,12 @@ async def save_prompt_selection(request: PromptSelectionRequest) -> Dict[str, bo
             
             # Insert new setting if prompt_document_id provided
             if request.prompt_document_id:
-                conn.execute("""
+                await conn.execute("""
                     INSERT INTO prompt_settings (setting_key, prompt_document_id, is_active)
                     VALUES ('daily_summary_prompt', ?, TRUE)
                 """, (request.prompt_document_id,))
             
-            conn.commit()
+            await conn.commit()
             logger.info(f"Saved prompt selection: {request.prompt_document_id}")
             return {"success": True}
             

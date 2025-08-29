@@ -5,8 +5,8 @@ import logging
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.dependencies import get_startup_service_dependency
-from core.database import DatabaseService
+from core.dependencies import get_startup_service_dependency, get_database_service_dependency
+from core.async_database import AsyncDatabaseService
 from services.news_service import NewsService
 from services.startup import StartupService
 
@@ -14,16 +14,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/news", tags=["news"])
 
 
-def get_database_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> DatabaseService:
-    """Get database service from startup service"""
-    if not startup_service.database:
-        raise HTTPException(status_code=503, detail="Database service not available")
-    return startup_service.database
-
-
-def get_news_service(database: DatabaseService = Depends(get_database_service)) -> NewsService:
-    """Dependency injection for NewsService."""
-    return NewsService(database)
+def get_news_service(
+    startup_service: StartupService = Depends(get_startup_service_dependency)
+) -> NewsService:
+    """Dependency injection for NewsService using async database."""
+    if not startup_service.news_service:
+        raise HTTPException(status_code=503, detail="News service not available")
+    return startup_service.news_service
 
 
 @router.get("", response_model=List[Dict[str, Any]])
