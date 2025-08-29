@@ -382,12 +382,13 @@ class TestRunFullStackIntegration:
     async def test_run_full_stack_error_propagation(self):
         """Test that errors from real orchestration components are properly handled"""
         # Mock components to simulate real failure scenarios
-        with patch('core.orchestration.PortManager.resolve_port', 
+        with patch('core.orchestration.PortManager.resolve_port',
                   side_effect=RuntimeError("No available ports")):
-            with patch('sys.exit') as mock_exit:
-                
-                from api.server import run_full_stack
-                
+
+            from api.server import run_full_stack
+
+            # Should raise an exception when orchestration fails
+            with pytest.raises(RuntimeError, match="No available ports"):
                 await run_full_stack(
                     host="localhost",
                     port=8000,
@@ -397,9 +398,6 @@ class TestRunFullStackIntegration:
                     no_auto_port=False,
                     no_frontend=False
                 )
-        
-        # Should exit with error code
-        mock_exit.assert_called_once_with(1)
 
 
 class TestRunFullStackEdgeCases:

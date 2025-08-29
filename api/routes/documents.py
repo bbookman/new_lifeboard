@@ -8,7 +8,7 @@ create, read, update, delete, and search operations.
 import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from services.document_service import DocumentService, Document
@@ -38,7 +38,8 @@ class CreateDocumentRequest(BaseModel):
     url: Optional[str] = Field(None, description="URL for link documents")
     home_date: Optional[str] = Field(None, description="Home date (ignored, uses created_at)")
 
-    @validator('title')
+    @field_validator('title')
+    @classmethod
     def validate_title(cls, v):
         if not v.strip():
             raise ValueError("Title cannot be empty or whitespace only")
@@ -49,7 +50,8 @@ class CreateFolderRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     parent_path: str = Field("/", description="Parent directory path")
 
-    @validator('name')
+    @field_validator('name')
+    @classmethod
     def validate_name(cls, v):
         if not v.strip():
             raise ValueError("Folder name cannot be empty or whitespace only")
@@ -71,7 +73,8 @@ class UpdateDocumentRequest(BaseModel):
     url: Optional[str] = Field(None, description="URL for link documents")
     home_date: Optional[str] = Field(None, description="Home date (ignored, uses updated_at)")
 
-    @validator('title')
+    @field_validator('title')
+    @classmethod
     def validate_title(cls, v):
         if v is not None and not v.strip():
             raise ValueError("Title cannot be empty or whitespace only")

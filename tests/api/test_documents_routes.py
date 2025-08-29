@@ -25,10 +25,10 @@ def mock_document_service():
     # Mock service methods as async
     service.create_document = AsyncMock()
     service.create_folder = AsyncMock()
-    service.get_document = MagicMock()
+    service.get_document = AsyncMock()
     service.list_documents = MagicMock()
     service.list_folder_contents = MagicMock()
-    service.search_documents = MagicMock()
+    service.search_documents = AsyncMock()
     service.update_document = AsyncMock()
     service.delete_document = AsyncMock()
     service.delete_folder = AsyncMock()

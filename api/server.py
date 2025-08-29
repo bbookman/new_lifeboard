@@ -1543,7 +1543,7 @@ async def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port:
             error_msg = startup_result.get("error", "Unknown startup error")
             print(f"\n❌ Application startup failed: {error_msg}")
             logger.error(f"FULLSTACK: Application startup failed: {error_msg}")
-            return
+            raise RuntimeError(error_msg)
         
         # Start backend server
         print(f"\n🔧 Starting backend API server...")
@@ -1564,6 +1564,7 @@ async def run_full_stack(host: str = "0.0.0.0", port: int = 8000, frontend_port:
     except Exception as e:
         print(f"\n❌ Application startup failed: {e}")
         logger.error(f"FULLSTACK: Application startup failed: {e}")
+        raise
     finally:
         # Use orchestrator for cleanup
         frontend_info = startup_result.get("frontend_info") if startup_result else None
