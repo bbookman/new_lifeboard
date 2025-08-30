@@ -5,12 +5,12 @@ from unittest.mock import patch, MagicMock
 
 from api.server import app
 from services.weather_service import WeatherService
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 
 
 @pytest.fixture
 def db_service():
-    return MagicMock(spec=DatabaseService)
+    return MagicMock(spec=AsyncDatabaseService)
 
 @pytest.fixture
 def weather_service(db_service):

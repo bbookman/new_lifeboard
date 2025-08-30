@@ -6,16 +6,19 @@ temporary database creation, test data population, and cleanup management.
 """
 
 import pytest
+import pytest_asyncio
 import tempfile
 import os
 import sqlite3
+import aiosqlite
 import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 from contextlib import contextmanager
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, AsyncMock
 
 from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.migrations.runner import MigrationRunner
 from sources.base import DataItem
 
@@ -54,6 +57,31 @@ def database_service(clean_database):
 def memory_database():
     """Create an in-memory database for fast testing"""
     db_service = DatabaseService(":memory:")
+    return db_service
+
+
+# Async Database Fixtures
+
+@pytest_asyncio.fixture(scope="function")
+async def async_clean_database(temp_db_path):
+    """Create a clean async database with migrations applied"""
+    db_service = AsyncDatabaseService(temp_db_path)
+    await db_service.initialize()
+    yield db_service
+    await db_service.close()
+
+
+@pytest_asyncio.fixture(scope="function") 
+async def async_database_service(async_clean_database):
+    """Alias for async_clean_database for consistency"""
+    return async_clean_database
+
+
+@pytest_asyncio.fixture
+async def async_memory_database():
+    """Create an in-memory async database for fast testing"""
+    db_service = AsyncDatabaseService(":memory:")
+    await db_service.initialize()
     return db_service
 
 
@@ -106,6 +134,66 @@ def database_with_test_data(clean_database):
     # Insert test data
     for item in test_data:
         db.store_data_item(
+            id=item['id'],
+            namespace=item['namespace'],
+            source_id=item['source_id'],
+            content=item['content'],
+            metadata=item['metadata'],
+            days_date=item['days_date']
+        )
+    
+    return db
+
+
+@pytest_asyncio.fixture
+async def async_database_with_test_data(async_clean_database):
+    """Async database pre-populated with test data"""
+    db = async_clean_database
+    
+    # Sample test data
+    test_data = [
+        {
+            'id': 'limitless:test_001',
+            'namespace': 'limitless',
+            'source_id': 'test_001',
+            'content': 'Test meeting discussion about project planning',
+            'metadata': {
+                'title': 'Project Planning Meeting',
+                'start_time': '2025-01-15T09:00:00Z',
+                'end_time': '2025-01-15T10:00:00Z',
+                'participants': ['Alice', 'Bob']
+            },
+            'days_date': '2025-01-15'
+        },
+        {
+            'id': 'news:test_001',
+            'namespace': 'news',
+            'source_id': 'test_001',
+            'content': 'Breaking news about technology advancement',
+            'metadata': {
+                'title': 'Tech Breakthrough',
+                'published_datetime_utc': '2025-01-15T12:00:00Z',
+                'link': 'https://example.com/news/1'
+            },
+            'days_date': '2025-01-15'
+        },
+        {
+            'id': 'weather:test_001',
+            'namespace': 'weather',
+            'source_id': 'test_001',
+            'content': 'Sunny weather forecast for tomorrow',
+            'metadata': {
+                'temperature': 75,
+                'humidity': 65,
+                'forecast_date': '2025-01-16'
+            },
+            'days_date': '2025-01-15'
+        }
+    ]
+    
+    # Insert test data
+    for item in test_data:
+        await db.store_data_item(
             id=item['id'],
             namespace=item['namespace'],
             source_id=item['source_id'],
@@ -436,6 +524,7 @@ __all__ = [
     "database_service",
     "memory_database", 
     "database_with_test_data",
+    "async_database_with_test_data",
     "sample_data_items",
     "db_helper",
     "DatabaseTestHelper",

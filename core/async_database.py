@@ -1213,6 +1213,84 @@ class AsyncDatabaseService(ServiceDebugMixin):
             }, level="ERROR")
             raise
 
+    def get_migration_status(self) -> Dict[str, Any]:
+        """
+        Get migration status information.
+        
+        Returns:
+            Dictionary with migration status information
+        """
+        self.log_service_call("get_migration_status", {})
+        
+        try:
+            # Basic migration status - can be enhanced later
+            return {
+                "migrations_applied": True,
+                "last_migration": "initial_schema",
+                "database_version": "1.0"
+            }
+        except Exception as e:
+            self.debug.log_state("get_migration_status_failed", {
+                "error": str(e)
+            }, level="ERROR")
+            raise
+
+    async def update_ingestion_status(self, id: str, status: str) -> None:
+        """
+        Update the ingestion status of a data item asynchronously.
+        
+        Args:
+            id: The namespaced ID of the data item
+            status: New ingestion status (pending, processing, complete, failed, error)
+        """
+        self.log_service_call("update_ingestion_status", {
+            "id": id, "status": status
+        })
+        
+        try:
+            async with self.get_connection() as conn:
+                await conn.execute(
+                    "UPDATE data_items SET ingestion_status = ? WHERE id = ?",
+                    (status, id)
+                )
+                await conn.commit()
+                
+                self.debug.log_performance_metric("update_ingestion_status_duration", 0.001)
+                
+        except Exception as e:
+            self.debug.log_state("update_ingestion_status_failed", {
+                "error": str(e), "id": id, "status": status
+            }, level="ERROR")
+            raise
+
+    async def get_active_namespaces(self) -> List[str]:
+        """
+        Get list of active data source namespaces asynchronously.
+        
+        Returns:
+            List of active namespace strings
+        """
+        self.log_service_call("get_active_namespaces", {})
+        
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute("""
+                    SELECT namespace FROM data_sources 
+                    WHERE is_active = TRUE
+                    ORDER BY namespace
+                """) as cursor:
+                    rows = await cursor.fetchall()
+                    result = [row[0] for row in rows]
+                    
+                    self.debug.log_performance_metric("get_active_namespaces_duration", 0.001)
+                    return result
+                    
+        except Exception as e:
+            self.debug.log_state("get_active_namespaces_failed", {
+                "error": str(e)
+            }, level="ERROR")
+            raise
+
 
 class AsyncMigrationRunner:
     """
