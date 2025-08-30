@@ -239,6 +239,24 @@ def create_complete_schema(conn: sqlite3.Connection) -> None:
         )
     """)
     
+    # ========================================
+    # TEMPLATE SYSTEM
+    # ========================================
+    
+    # Template cache table for performance optimization
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS template_cache (
+            id TEXT PRIMARY KEY,
+            template_hash TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            target_date TEXT NOT NULL,
+            resolved_content TEXT NOT NULL,
+            variables_resolved INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL
+        )
+    """)
+    
     logger.info("Database tables created successfully")
 
 
@@ -336,6 +354,14 @@ def create_all_indexes(conn: sqlite3.Connection) -> None:
     # Generated summaries indexes
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_summaries_date ON generated_summaries(days_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_summaries_active ON generated_summaries(is_active)")
+    
+    # ========================================
+    # TEMPLATE SYSTEM INDEXES
+    # ========================================
+    
+    # Template cache indexes for performance
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_template_cache_hash_date ON template_cache(template_hash, target_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_template_cache_expires ON template_cache(expires_at)")
     
     logger.info("Database indexes created successfully")
 
