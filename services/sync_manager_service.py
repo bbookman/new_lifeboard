@@ -19,6 +19,28 @@ logger = logging.getLogger(__name__)
 
 
 class SyncManagerService(BaseService, ServiceDebugMixin):
+    def _run_async(self, coro):
+        """Run async coroutine from sync context, handling event loop issues."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            import concurrent.futures
+            future = concurrent.futures.Future()
+            def _run():
+                try:
+                    result = loop.create_task(coro)
+                    future.set_result(loop.run_until_complete(result))
+                except Exception as e:
+                    future.set_exception(e)
+            import threading
+            t = threading.Thread(target=_run)
+            t.start()
+            t.join()
+            return future.result()
+        else:
+            return asyncio.run(coro)
     """Service that coordinates scheduled syncing of data sources"""
     
     def __init__(self, 
@@ -117,7 +139,7 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                                f"{result.items_processed} processed, "
                                f"{result.items_stored} stored, "
                                f"{result.errors} errors")
-                               
+                                
                     logger.info(f"SYNC_FUNCTION: Current asyncio tasks after sync: {len(asyncio.all_tasks())}")
                     
                     # Log sync completion metrics
@@ -128,7 +150,7 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                         self.log_service_performance_metric(f"sync_errors_{namespace}", len(result.errors), "count")
                     
                     return result.to_dict()
-                               
+                                
                 except asyncio.TimeoutError as timeout_error:
                     sync_duration = (time.time() - sync_start_time) * 1000
                     logger.error(f"SYNC_FUNCTION: Sync for {namespace} timed out after 5 minutes")
@@ -258,27 +280,23 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         job_id = self.source_job_mapping.get(namespace)
         if not job_id:
             return None
-        
         job_status = self.scheduler.get_job_status(job_id)
         if not job_status:
             return None
-        
         # Enhance with source-specific information
+        ingestion_status_result = self._run_async(self.ingestion_service.get_ingestion_status())
         source_status = {
             "namespace": namespace,
             "job_id": job_id,
             "scheduler_status": job_status,
-            "ingestion_status": self.ingestion_service.get_ingestion_status().get("source_stats", {}).get(namespace, {})
+            "ingestion_status": ingestion_status_result.get("source_stats", {}).get(namespace, {})
         }
-        
         return source_status
-    
+
     def get_all_sources_sync_status(self) -> Dict[str, Any]:
         """Get sync status for all registered sources"""
         all_jobs = self.scheduler.get_all_jobs_status()
-        ingestion_status = self.ingestion_service.get_ingestion_status()
-        
-        # Organize by namespace
+        ingestion_status = self._run_async(self.ingestion_service.get_ingestion_status())
         sources_status = {}
         for namespace, job_id in self.source_job_mapping.items():
             job_status = all_jobs["jobs"].get(job_id, {})
@@ -289,7 +307,6 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                 "ingestion_status": ingestion_status.get("source_stats", {}).get(namespace, {})
             }
             sources_status[namespace] = source_status
-        
         return {
             "sources": sources_status,
             "scheduler_summary": all_jobs["summary"],
