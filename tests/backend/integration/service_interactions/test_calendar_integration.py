@@ -19,7 +19,7 @@ from typing import List, Dict, Any
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from api.routes.calendar import router as calendar_router
 from services.startup import StartupService
 from config.factory import get_config
@@ -37,7 +37,7 @@ class TestCalendarIntegration:
     @pytest.fixture
     def database_service(self, temp_db_path):
         """Create database service with temporary database"""
-        return DatabaseService(temp_db_path)
+        return AsyncDatabaseService(temp_db_path)
 
     @pytest.fixture
     def mock_startup_service(self, database_service):

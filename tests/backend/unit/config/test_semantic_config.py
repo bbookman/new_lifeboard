@@ -8,7 +8,7 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.embeddings import EmbeddingService
 from services.ingestion import IngestionService
 
@@ -18,7 +18,7 @@ def test_semantic_config():
         print("Testing semantic deduplication configuration...")
         
         # Initialize services
-        database_service = DatabaseService()
+        database_service = AsyncDatabaseService()
         embedding_service = EmbeddingService()
         
         # Initialize ingestion service with semantic deduplication enabled

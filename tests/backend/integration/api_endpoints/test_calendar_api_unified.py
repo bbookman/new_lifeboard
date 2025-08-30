@@ -21,7 +21,7 @@ from fastapi import FastAPI
 # Import the calendar routes and dependencies
 from api.routes.calendar import router
 from core.async_database import AsyncDatabaseService
-from core.dependencies import get_database_service_dependency
+from core.dependencies import get_async_database_service
 
 
 class TestCalendarAPIUnified(unittest.TestCase):

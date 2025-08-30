@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from api.routes.calendar import fetch_limitless_for_date
 from sources.base import DataItem
 from services.ingestion import IngestionService, IngestionResult
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from config.models import LimitlessConfig
 
 

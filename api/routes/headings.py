@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from services.startup import StartupService
 from core.async_database import AsyncDatabaseService
-from core.dependencies import get_startup_service_dependency, get_database_service_dependency
+from core.dependencies import get_startup_service_dependency, get_async_database_service
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/headings", tags=["headings"])
 @router.get("/day/{days_date}")
 async def get_day_headings(
     days_date: str,
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ) -> Dict[str, Any]:
     """
     Get heading1 and heading2 content for a specific day from limitless namespace.
@@ -159,7 +159,7 @@ def extract_headings_from_contents(contents: List[Dict[str, Any]]) -> List[Dict[
 @router.get("/status/{days_date}")
 async def get_day_headings_status(
     days_date: str,
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ) -> Dict[str, Any]:
     """
     Get status information about headings data for a specific day.

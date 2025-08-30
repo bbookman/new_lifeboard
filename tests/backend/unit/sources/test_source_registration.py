@@ -13,7 +13,7 @@ try:
     
     print("\nTesting source instantiation...")
     from config.models import LimitlessConfig, NewsConfig, WeatherConfig, TwitterConfig
-    from core.database import DatabaseService
+    from core.async_database import AsyncDatabaseService
     
     # Create mock configs
     limitless_config = LimitlessConfig(api_key='test')
@@ -21,7 +21,7 @@ try:
     weather_config = WeatherConfig(api_key='test')
     twitter_config = TwitterConfig(data_path='/tmp')
     
-    db = DatabaseService(':memory:')
+    db = AsyncDatabaseService(':memory:')
     
     # Test instantiation
     limitless_source = LimitlessSource(limitless_config)

@@ -5,7 +5,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.dependencies import get_database_service_dependency
+from core.dependencies import get_async_database_service
 from core.async_database import AsyncDatabaseService
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ async def get_data_items(
     namespace: Optional[str] = Query(None, description="Filter by namespace (e.g., 'twitter', 'news', 'limitless')"),
     date: Optional[str] = Query(None, description="Filter by date in YYYY-MM-DD format"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of items to return"),
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ):
     """Get data items filtered by namespace and/or date."""
     try:
@@ -72,7 +72,7 @@ async def get_data_items(
 
 @router.get("/namespaces", response_model=List[str])
 async def get_namespaces(
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ):
     """Get all available namespaces."""
     try:
@@ -92,7 +92,7 @@ async def get_namespaces(
 async def get_data_items_count(
     namespace: Optional[str] = Query(None, description="Filter by namespace"),
     date: Optional[str] = Query(None, description="Filter by date in YYYY-MM-DD format"),
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ):
     """Get count of data items filtered by namespace and/or date."""
     try:

@@ -15,7 +15,7 @@ import json
 from services.llm_service import LLMService, LLMGenerationResult
 from services.document_service import DocumentService
 from services.template_processor import TemplateProcessor
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from llm.base import LLMResponse, LLMError
 from llm.factory import LLMProviderFactory
 from config.models import AppConfig

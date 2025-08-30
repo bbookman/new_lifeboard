@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch, MagicMock
 
 from services.template_processor import TemplateProcessor, TemplateVariable, ResolvedTemplate
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from config.models import AppConfig
 
 
@@ -21,7 +21,7 @@ class TestTemplateProcessor:
     def setup_method(self):
         """Set up test fixtures"""
         # Create in-memory database for testing
-        self.db_service = DatabaseService(":memory:")
+        self.db_service = AsyncDatabaseService(":memory:")
         
         # Create mock config
         self.mock_config = Mock(spec=AppConfig)
@@ -72,7 +72,8 @@ class TestTemplateProcessor:
             cache_enabled=False  # Disable cache for most tests
         )
     
-    def test_parse_template_variables_valid_patterns(self):
+    @pytest.mark.asyncio
+    async def test_parse_template_variables_valid_patterns(self):
         """Test parsing of valid template variable patterns"""
         content = "Hello {{LIMITLESS_DAY}} and {{TWITTER_WEEK}} and {{NEWS_MONTH}}"
         
@@ -209,7 +210,8 @@ class TestTemplateProcessor:
         
         assert current_date == '2024-01-15'
     
-    def test_resolve_template_with_valid_variables(self):
+    @pytest.mark.asyncio
+    async def test_resolve_template_with_valid_variables(self):
         """Test resolving template with valid variables"""
         content = "Today's data: {{LIMITLESS_DAY}}"
         target_date = '2024-01-15'
@@ -266,7 +268,8 @@ class TestTemplateProcessor:
         assert result.variables_resolved == 1
         assert 'Sample limitless content for today' in result.resolved_content
     
-    def test_validate_template_all_valid(self):
+    @pytest.mark.asyncio
+    async def test_validate_template_all_valid(self):
         """Test template validation with all valid variables"""
         content = "{{LIMITLESS_DAY}} {{TWITTER_WEEK}} {{NEWS_MONTH}}"
         
@@ -323,7 +326,7 @@ class TestTemplateProcessorCaching:
     
     def setup_method(self):
         """Set up test fixtures for caching tests"""
-        self.db_service = DatabaseService(":memory:")
+        self.db_service = AsyncDatabaseService(":memory:")
         self.mock_config = Mock(spec=AppConfig)
         
         # Add test data
@@ -490,7 +493,7 @@ class TestTemplateProcessorIntegration:
     
     def setup_method(self):
         """Set up integration test fixtures"""
-        self.db_service = DatabaseService(":memory:")
+        self.db_service = AsyncDatabaseService(":memory:")
         self.mock_config = Mock(spec=AppConfig)
         
         # Add realistic test data spanning multiple days
@@ -524,7 +527,8 @@ class TestTemplateProcessorIntegration:
             timezone='UTC'
         )
     
-    def test_complex_template_resolution(self):
+    @pytest.mark.asyncio
+    async def test_complex_template_resolution(self):
         """Test resolving a complex template with multiple variables"""
         template = """
         Daily Summary for {{LIMITLESS_DAY}}

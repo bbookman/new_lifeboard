@@ -242,7 +242,7 @@ def mock_service_registry():
             def shutdown(self) -> bool:
                 return True
         
-        class MockDatabaseService(DatabaseServiceInterface):
+        class MockAsyncDatabaseService(DatabaseServiceInterface):
             def __init__(self):
                 self.connections = {}
             def initialize(self) -> bool:
@@ -262,7 +262,7 @@ def mock_service_registry():
                 return True
         
         return {
-            DatabaseServiceInterface: MockDatabaseService(),
+            DatabaseServiceInterface: MockAsyncDatabaseService(),
             HTTPClientInterface: None,  # Not implemented in this example
             EmbeddingServiceInterface: None,
             VectorStoreInterface: None,

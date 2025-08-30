@@ -7,7 +7,7 @@ import json
 from sources.twitter import TwitterSource
 from sources.base import DataItem
 from config.models import TwitterConfig
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from services.twitter_api_service import TwitterAPIService
 
 @pytest.fixture

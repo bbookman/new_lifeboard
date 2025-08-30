@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from sources.twitter import TwitterSource
 from config.models import TwitterConfig
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from unittest.mock import MagicMock, patch
 
 @pytest.fixture

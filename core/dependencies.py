@@ -143,6 +143,8 @@ def get_chat_service_dependency(startup_service: StartupService) -> ChatService:
     return _dependency_registry.get_chat_service(startup_service)
 
 
-def get_database_service_dependency(startup_service: StartupService = Depends(get_startup_service_dependency)) -> AsyncDatabaseService:
+def get_async_database_service(startup_service: StartupService = Depends(get_startup_service_dependency)) -> AsyncDatabaseService:
     """FastAPI dependency for async database service"""
-    return _dependency_registry.get_database_service(startup_service)
+    if not startup_service.database:
+        raise HTTPException(status_code=503, detail="Database service not available")
+    return startup_service.database

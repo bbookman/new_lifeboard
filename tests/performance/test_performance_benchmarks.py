@@ -118,14 +118,15 @@ class PerformanceBenchmarks:
         import gc
         gc.collect()
         
-    def test_database_query_performance(self):
+    @pytest.mark.asyncio
+    async def test_database_query_performance(self):
         """Benchmark database query performance."""
         from core.database import Database
-        
+
         # Create test database in memory
         db = Database(":memory:")
         db.init_db()
-        
+
         # Insert test data
         test_data = [(f"test:item_{i}", f"namespace_{i%3}", f"content_{i}") for i in range(1000)]
         with db.get_connection() as conn:
@@ -133,52 +134,54 @@ class PerformanceBenchmarks:
                 "INSERT INTO data_items (id, namespace, content) VALUES (?, ?, ?)",
                 test_data
             )
-        
+
         # Benchmark query performance
         def query_test():
             with db.get_connection() as conn:
                 cursor = conn.execute("SELECT * FROM data_items WHERE namespace = ?", ("namespace_1",))
                 results = cursor.fetchall()
                 assert len(results) > 0
-        
+
         metrics = PerformanceProfiler.run_multiple_iterations(query_test, iterations=10)
-        
+
         # Validate performance thresholds
         avg_time = metrics['avg_execution_time']
         assert avg_time < self.THRESHOLDS['database_query_time'], \
             f"Database query too slow: {avg_time:.3f}s > {self.THRESHOLDS['database_query_time']}s"
     
-    def test_embedding_service_performance(self):
-        """Benchmark embedding generation performance.""" 
+    @pytest.mark.asyncio
+    async def test_embedding_service_performance(self):
+        """Benchmark embedding generation performance."""
         try:
             from core.embeddings import EmbeddingService
         except ImportError:
             pytest.skip("EmbeddingService not available")
-        
+
         embedding_service = EmbeddingService()
-        
+
         def embedding_test():
             test_text = "This is a test document for embedding generation performance testing."
             embedding = embedding_service.embed_text(test_text)
             assert len(embedding) > 0
-        
+
         metrics = PerformanceProfiler.run_multiple_iterations(embedding_test, iterations=3)
-        
-        avg_time = metrics['avg_execution_time'] 
+
+        avg_time = metrics['avg_execution_time']
         assert avg_time < self.THRESHOLDS['embedding_generation_time'], \
             f"Embedding generation too slow: {avg_time:.3f}s > {self.THRESHOLDS['embedding_generation_time']}s"
-    
-    def test_vector_search_performance(self):
+
+    @pytest.mark.asyncio
+    async def test_vector_search_performance(self):
         """Benchmark vector search performance."""
         try:
             from core.vector_store import VectorStore
             from core.embeddings import EmbeddingService
         except ImportError:
             pytest.skip("VectorStore or EmbeddingService not available")
-        
+
         vector_store = VectorStore()
         embedding_service = EmbeddingService()
-        
+
         # Add test vectors
         test_vectors = []
         for i in range(100):
@@ -186,62 +189,65 @@ class PerformanceBenchmarks:
             vector = embedding_service.embed_text(text)
             vector_store.add_vector(f"test:{i}", vector)
             test_vectors.append(vector)
-        
+
         def search_test():
             query_vector = test_vectors[0]  # Use first vector as query
             results = vector_store.search(query_vector, top_k=10)
             assert len(results) > 0
-        
+
         metrics = PerformanceProfiler.run_multiple_iterations(search_test, iterations=10)
-        
+
         avg_time = metrics['avg_execution_time']
         assert avg_time < self.THRESHOLDS['vector_search_time'], \
             f"Vector search too slow: {avg_time:.3f}s > {self.THRESHOLDS['vector_search_time']}s"
-    
-    def test_api_endpoint_performance(self):
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_performance(self):
         """Benchmark API endpoint response times."""
         try:
             from api.main import app
             from fastapi.testclient import TestClient
         except ImportError:
             pytest.skip("FastAPI app not available")
-        
+
         client = TestClient(app)
-        
+
         def api_test():
             response = client.get("/health")
             assert response.status_code == 200
-        
+
         metrics = PerformanceProfiler.run_multiple_iterations(api_test, iterations=20)
-        
+
         avg_time = metrics['avg_execution_time']
         assert avg_time < self.THRESHOLDS['api_response_time'], \
             f"API response too slow: {avg_time:.3f}s > {self.THRESHOLDS['api_response_time']}s"
     
-    def test_memory_usage_performance(self):
+    @pytest.mark.asyncio
+    async def test_memory_usage_performance(self):
         """Benchmark memory usage of core operations."""
         try:
             from services.ingestion import IngestionService
         except ImportError:
             pytest.skip("IngestionService not available")
-        
+
         ingestion_service = IngestionService()
-        
+
         with PerformanceProfiler.measure_performance():
             # Simulate processing a batch of data items
             test_items = [
-                {'id': f'test:{i}', 'content': f'Test content {i}' * 100} 
+                {'id': f'test:{i}', 'content': f'Test content {i}' * 100}
                 for i in range(100)
             ]
             # Note: This is a mock test - actual implementation depends on service interface
-            
+
         results = PerformanceProfiler.get_last_measurement()
         memory_usage = results['memory_usage']
-        
+
         assert memory_usage < self.THRESHOLDS['memory_usage_mb'], \
             f"Memory usage too high: {memory_usage:.2f}MB > {self.THRESHOLDS['memory_usage_mb']}MB"
-    
-    def test_application_startup_performance(self):
+
+    @pytest.mark.asyncio
+    async def test_application_startup_performance(self):
         """Benchmark application startup time."""
         def startup_test():
             try:
@@ -252,14 +258,15 @@ class PerformanceBenchmarks:
                 assert isinstance(health_status, dict)
             except Exception as e:
                 pytest.skip(f"Startup test failed: {e}")
-        
+
         metrics = PerformanceProfiler.run_multiple_iterations(startup_test, iterations=3)
-        
+
         avg_time = metrics['avg_execution_time']
         assert avg_time < self.THRESHOLDS['startup_time'], \
             f"Startup too slow: {avg_time:.3f}s > {self.THRESHOLDS['startup_time']}s"
-    
-    def test_concurrent_request_performance(self):
+
+    @pytest.mark.asyncio
+    async def test_concurrent_request_performance(self):
         """Benchmark performance under concurrent load."""
         import concurrent.futures
         try:
@@ -267,25 +274,25 @@ class PerformanceBenchmarks:
             from fastapi.testclient import TestClient
         except ImportError:
             pytest.skip("FastAPI app not available")
-        
+
         client = TestClient(app)
-        
+
         def make_request():
             response = client.get("/health")
             return response.status_code == 200
-        
+
         # Test concurrent requests
         start_time = time.perf_counter()
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(make_request) for _ in range(50)]
             results = [future.result() for future in concurrent.futures.as_completed(futures)]
-        
+
         end_time = time.perf_counter()
         total_time = end_time - start_time
-        
+
         # All requests should succeed
         assert all(results), "Some concurrent requests failed"
-        
+
         # Total time should be reasonable (concurrent execution should be faster than sequential)
         max_acceptable_time = self.THRESHOLDS['api_response_time'] * 10  # Allow 10x for 50 concurrent requests
         assert total_time < max_acceptable_time, \
@@ -383,31 +390,33 @@ class TestPerformanceRegression:
         # Cleanup
         os.unlink(temp_db_path)
     
-    def test_regression_detection(self, regression_tracker):
+    @pytest.mark.asyncio
+    async def test_regression_detection(self, regression_tracker):
         """Test that regression detection works correctly."""
         # Record some baseline metrics
         for i in range(5):
             metric = PerformanceMetric(
-                name="test_metric", 
+                name="test_metric",
                 value=1.0 + (i * 0.1),  # Slight variation
                 unit="seconds",
                 threshold=2.0,
                 passed=True
             )
             regression_tracker.record_metric("test_benchmark", metric)
-        
+
         # Test normal performance (should not be regression)
         assert not regression_tracker.detect_regression("test_benchmark", "test_metric", 1.2)
-        
+
         # Test performance regression (50% slower)
         assert regression_tracker.detect_regression("test_benchmark", "test_metric", 1.8)
-    
-    def test_insufficient_history_handling(self, regression_tracker):
+
+    @pytest.mark.asyncio
+    async def test_insufficient_history_handling(self, regression_tracker):
         """Test handling when insufficient history is available."""
         # With no history, should not detect regression
         assert not regression_tracker.detect_regression("new_test", "new_metric", 10.0)
-        
-        # With only one data point, should not detect regression  
+
+        # With only one data point, should not detect regression
         metric = PerformanceMetric("new_metric", 1.0, "seconds", 2.0, True)
         regression_tracker.record_metric("new_test", metric)
         assert not regression_tracker.detect_regression("new_test", "new_metric", 5.0)

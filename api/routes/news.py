@@ -5,7 +5,7 @@ import logging
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.dependencies import get_startup_service_dependency, get_database_service_dependency
+from core.dependencies import get_startup_service_dependency, get_async_database_service
 from core.async_database import AsyncDatabaseService
 from services.news_service import NewsService
 from services.startup import StartupService

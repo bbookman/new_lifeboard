@@ -21,11 +21,11 @@ class TestCalendarRoutes:
     @pytest.fixture
     def app(self, mock_startup_service, mock_database_service):
         """Create FastAPI test application with dependency overrides"""
-        from core.dependencies import get_startup_service_dependency, get_database_service_dependency
+        from core.dependencies import get_startup_service_dependency, get_async_database_service
         app = FastAPI()
         app.include_router(router)
         app.dependency_overrides[get_startup_service_dependency] = lambda: mock_startup_service
-        app.dependency_overrides[get_database_service_dependency] = lambda: mock_database_service
+        app.dependency_overrides[get_async_database_service] = lambda: mock_database_service
         return app
     
     @pytest.fixture

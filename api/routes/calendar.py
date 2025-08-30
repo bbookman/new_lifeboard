@@ -19,7 +19,7 @@ from services.news_service import NewsService
 from services.ingestion import IngestionService
 from services.sync_status_service import get_sync_status_service, SyncStatusService
 from core.async_database import AsyncDatabaseService
-from core.dependencies import get_startup_service_dependency, get_database_service_dependency
+from core.dependencies import get_startup_service_dependency, get_async_database_service
 from config.factory import get_config
 from sources.limitless import LimitlessSource
 from sources.twitter import TwitterSource
@@ -32,13 +32,13 @@ router = APIRouter(prefix="/calendar", tags=["calendar"])
 # Calendar API - JSON endpoints only
 
 
-def get_weather_service(database: AsyncDatabaseService = Depends(get_database_service_dependency)) -> WeatherService:
+def get_weather_service(database: AsyncDatabaseService = Depends(get_async_database_service)) -> WeatherService:
     """Get weather service instance"""
     config = get_config()
     return WeatherService(database, config)
 
 
-def get_news_service(database: AsyncDatabaseService = Depends(get_database_service_dependency)) -> NewsService:
+def get_news_service(database: AsyncDatabaseService = Depends(get_async_database_service)) -> NewsService:
     """Get news service instance"""
     config = get_config()
     return NewsService(database, config.news)
@@ -105,7 +105,7 @@ async def get_today_date(
 async def get_days_with_data(
     year: Optional[int] = None,
     month: Optional[int] = None,
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ) -> Dict[str, Any]:
     """Get list of dates that have data available"""
     logger.info(f"[CALENDAR API] Request received - year: {year}, month: {month}")
@@ -170,7 +170,7 @@ async def get_days_with_data(
 
 
 @router.get("/day/{date}")
-async def get_day_details(date: str, database: AsyncDatabaseService = Depends(get_database_service_dependency)) -> Dict[str, Any]:
+async def get_day_details(date: str, database: AsyncDatabaseService = Depends(get_async_database_service)) -> Dict[str, Any]:
     """Get details and markdown content for a specific date"""
     try:
         # Validate date format
@@ -203,7 +203,7 @@ async def get_day_details(date: str, database: AsyncDatabaseService = Depends(ge
 @router.get("/day/{date}/enhanced")
 async def get_enhanced_day_data(
     date: str, 
-    database: AsyncDatabaseService = Depends(get_database_service_dependency),
+    database: AsyncDatabaseService = Depends(get_async_database_service),
     weather_service: WeatherService = Depends(get_weather_service),
     news_service: NewsService = Depends(get_news_service)
 ) -> Dict[str, Any]:
@@ -265,7 +265,7 @@ async def get_enhanced_day_data(
 async def get_month_data(
     year: int, 
     month: int, 
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ) -> Dict[str, Any]:
     """Get calendar data for a specific month"""
     try:
@@ -299,7 +299,7 @@ async def get_month_data(
 async def debug_markdown_content(
     date: str,
     namespaces: Optional[str] = "limitless",
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ) -> Dict[str, Any]:
     """
     Debug endpoint to inspect raw markdown content from database for a specific date.
@@ -403,7 +403,7 @@ async def debug_markdown_content(
 async def debug_markdown_raw(
     date: str,
     namespaces: Optional[str] = "limitless",
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ) -> Dict[str, str]:
     """
     Get raw markdown content only (for easy copying/testing)
@@ -429,7 +429,7 @@ async def debug_markdown_raw(
 @router.post("/limitless/fetch/{date}")
 async def fetch_limitless_for_date(
     date: str,
-    database: AsyncDatabaseService = Depends(get_database_service_dependency),
+    database: AsyncDatabaseService = Depends(get_async_database_service),
     ingestion_service: IngestionService = Depends(get_ingestion_service)
 ) -> Dict[str, Any]:
     """
@@ -636,7 +636,7 @@ def get_twitter_source() -> TwitterSource:
 @router.post("/twitter/fetch/{date}")
 async def fetch_twitter_for_date(
     date: str,
-    database: AsyncDatabaseService = Depends(get_database_service_dependency),
+    database: AsyncDatabaseService = Depends(get_async_database_service),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
     twitter_source: TwitterSource = Depends(get_twitter_source)
 ) -> Dict[str, Any]:
@@ -807,7 +807,7 @@ async def fetch_twitter_for_date(
 @router.post("/news/fetch/{date}")
 async def fetch_news_for_date(
     date: str,
-    database: AsyncDatabaseService = Depends(get_database_service_dependency),
+    database: AsyncDatabaseService = Depends(get_async_database_service),
     ingestion_service: IngestionService = Depends(get_ingestion_service)
 ) -> Dict[str, Any]:
     """
@@ -952,7 +952,7 @@ async def fetch_news_for_date(
 async def get_data_items_for_date(
     date: str, 
     namespaces: Optional[str] = None,
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ) -> List[Dict[str, Any]]:
     """Get all data_items for a specific date, optionally filtered by namespaces"""
     try:

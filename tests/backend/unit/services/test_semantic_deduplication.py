@@ -13,7 +13,7 @@ from sources.semantic_deduplication_processor import (
 )
 from services.semantic_deduplication_service import SemanticDeduplicationService
 from core.embeddings import EmbeddingService
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 
 
 class TestSemanticDeduplicationProcessor:

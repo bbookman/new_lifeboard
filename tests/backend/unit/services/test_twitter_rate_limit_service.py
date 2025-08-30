@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone, timedelta
 
 from services.twitter_rate_limit_service import TwitterRateLimitService
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 
 
 @pytest.fixture

@@ -29,7 +29,7 @@ class MockService(ServiceInterface):
         return True
 
 
-class MockDatabaseService(DatabaseServiceInterface):
+class MockAsyncDatabaseService(DatabaseServiceInterface):
     """Mock database service for testing."""
     
     def __init__(self):

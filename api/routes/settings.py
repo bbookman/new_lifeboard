@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from services.sync_manager_service import SyncManagerService
 from sources.twitter import TwitterSource
-from core.dependencies import get_dependency_registry, get_database_service_dependency
+from core.dependencies import get_dependency_registry, get_async_database_service
 from core.async_database import AsyncDatabaseService
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ async def update_settings(request: SettingsUpdateRequest) -> Dict[str, bool]:
 
 @router.get("/prompt-selection")
 async def get_prompt_selection(
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ) -> PromptSelectionResponse:
     """Get current prompt selection for daily summary"""
     try:
@@ -84,7 +84,7 @@ async def get_prompt_selection(
 @router.post("/prompt-selection")
 async def save_prompt_selection(
     request: PromptSelectionRequest,
-    database: AsyncDatabaseService = Depends(get_database_service_dependency)
+    database: AsyncDatabaseService = Depends(get_async_database_service)
 ) -> Dict[str, bool]:
     """Save prompt selection for daily summary"""
     try:

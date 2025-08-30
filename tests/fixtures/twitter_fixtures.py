@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 from config.models import TwitterConfig
-from core.database import DatabaseService
+# DatabaseService import removed - not needed for Twitter fixtures
 
 @pytest.fixture
 def twitter_config_api_enabled():

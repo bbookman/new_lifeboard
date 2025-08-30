@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from unittest.mock import MagicMock, patch
 
 from api.routes.calendar import router
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from services.startup import StartupService
 from core.dependencies import get_startup_service_dependency
 

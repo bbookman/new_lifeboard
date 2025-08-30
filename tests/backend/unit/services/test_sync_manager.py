@@ -10,7 +10,7 @@ import tempfile
 from sources.sync_manager import SyncManager, SyncResult
 from sources.limitless import LimitlessSource
 from sources.base import DataItem
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from config.models import LimitlessConfig
 
 
@@ -20,7 +20,7 @@ def temp_db():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
     
-    db = DatabaseService(db_path)
+    db = AsyncDatabaseService(db_path)
     yield db
     
     # Cleanup

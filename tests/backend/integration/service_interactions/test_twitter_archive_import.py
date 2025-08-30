@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from config.models import TwitterConfig
-from core.database import DatabaseService  
+from core.async_database import AsyncDatabaseService  
 from services.ingestion import IngestionService
 from sources.twitter import TwitterSource
 
@@ -52,7 +52,7 @@ class TestTwitterArchiveImport:
     def temp_db(self, tmp_path):
         """Create temporary database for testing."""
         db_path = tmp_path / "test_twitter_import.db"
-        return DatabaseService(str(db_path))
+        return AsyncDatabaseService(str(db_path))
 
     @pytest.fixture
     def mock_ingestion_service(self):
@@ -325,7 +325,7 @@ class TestTwitterArchiveImport:
     async def test_database_integration(self, twitter_config, real_twitter_archive):
         """Test full database integration during import."""
         # Use real database (in-memory)
-        db = DatabaseService(':memory:')
+        db = AsyncDatabaseService(':memory:')
         mock_ingestion = MagicMock(spec=IngestionService)
         mock_ingestion.ingest_items = AsyncMock()
         
@@ -473,7 +473,7 @@ class TestTwitterImportEndToEnd:
         """Test the complete import workflow from zip to database."""
         # Setup real components
         db_path = tmp_path / "e2e_test.db" 
-        db = DatabaseService(str(db_path))
+        db = AsyncDatabaseService(str(db_path))
         
         # Mock minimal ingestion service for E2E test
         ingestion = MagicMock(spec=IngestionService)
@@ -514,7 +514,7 @@ class TestTwitterImportEndToEnd:
         import time
         
         # Setup for performance test
-        db = DatabaseService(':memory:')
+        db = AsyncDatabaseService(':memory:')
         ingestion = MagicMock(spec=IngestionService) 
         ingestion.ingest_items = AsyncMock(return_value={
             "items_processed": 1000,

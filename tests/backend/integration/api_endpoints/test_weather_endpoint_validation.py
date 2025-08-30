@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import Mock
 from config.models import WeatherConfig
 from sources.weather import WeatherSource
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 
 
 class TestWeatherEndpointValidation:

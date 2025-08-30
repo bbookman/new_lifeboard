@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from services.document_service import DocumentService
 from services.template_processor import TemplateProcessor
 from api.routes.documents import router as documents_router
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from config.models import AppConfig
 
 
@@ -23,7 +23,7 @@ class TestDocumentServiceTemplateIntegration:
     def setup_method(self):
         """Set up test fixtures"""
         # Create in-memory database
-        self.db_service = DatabaseService(":memory:")
+        self.db_service = AsyncDatabaseService(":memory:")
         
         # Create mock dependencies
         self.mock_config = Mock(spec=AppConfig)
@@ -329,7 +329,7 @@ class TestTemplateEndToEndScenarios:
     def setup_method(self):
         """Set up end-to-end test fixtures"""
         # Create real database and services for integration testing
-        self.db_service = DatabaseService(":memory:")
+        self.db_service = AsyncDatabaseService(":memory:")
         
         self.mock_config = Mock(spec=AppConfig)
         self.mock_config.documents.max_title_length = 200

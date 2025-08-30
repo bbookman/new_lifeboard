@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from config.models import TwitterConfig
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from services.ingestion import IngestionService
 from sources.twitter import TwitterSource
 
@@ -40,9 +40,12 @@ class TestTwitterImportPerformance:
         )
 
     @pytest.fixture
-    def memory_db(self):
-        """In-memory database for performance testing."""
-        return DatabaseService(':memory:')
+    async def memory_db(self):
+        """In-memory async database for performance testing."""
+        db = AsyncDatabaseService(':memory:')
+        await db.initialize()
+        yield db
+        await db.close()
 
     @pytest.fixture
     def mock_fast_ingestion(self):
@@ -322,7 +325,7 @@ class TestTwitterImportPerformance:
             # Create separate DB and source for each concurrent import
             sources = []
             for i in range(num_concurrent):
-                db = DatabaseService(':memory:')
+                db = AsyncDatabaseService(':memory:')
                 source = TwitterSource(performance_config, db, mock_fast_ingestion)
                 sources.append(source)
             
@@ -413,56 +416,58 @@ class TestTwitterImportPerformance:
 class TestTwitterImportScalability:
     """Test scalability characteristics of Twitter import."""
 
-    def test_file_size_vs_performance(self):
+    @pytest.mark.asyncio
+    async def test_file_size_vs_performance(self):
         """Test how performance scales with file size."""
         # This test documents the relationship between archive size and processing time
         test_sizes = [100, 500, 1000, 2000]
         results = []
-        
+
         for size in test_sizes:
             print(f"\\nTesting with {size} tweets...")
             # In a real implementation, you would run the import and measure
             # For now, we'll document the expected scalability characteristics
             expected_duration = size * 0.01  # ~10ms per tweet
             expected_memory = 20 + (size * 0.05)  # Base + 50KB per tweet
-            
+
             results.append({
                 'size': size,
                 'expected_duration': expected_duration,
                 'expected_memory': expected_memory
             })
-            
+
             print(f"Expected duration: {expected_duration:.2f}s")
             print(f"Expected memory: {expected_memory:.2f}MB")
-        
+
         # Verify scalability is roughly linear
         for i in range(1, len(results)):
             prev_result = results[i-1]
             curr_result = results[i]
-            
+
             size_ratio = curr_result['size'] / prev_result['size']
             duration_ratio = curr_result['expected_duration'] / prev_result['expected_duration']
-            
+
             # Duration should scale roughly linearly with size
             assert 0.8 < duration_ratio / size_ratio < 1.2, "Performance should scale roughly linearly"
 
-    def test_memory_efficiency_requirements(self):
+    @pytest.mark.asyncio
+    async def test_memory_efficiency_requirements(self):
         """Test that memory usage doesn't grow excessively with large archives."""
         # Define memory efficiency requirements
         max_memory_per_1k_tweets = 50  # MB
         max_baseline_memory = 30  # MB
-        
+
         # Test various archive sizes
         test_cases = [
             (1000, max_baseline_memory + max_memory_per_1k_tweets),
             (5000, max_baseline_memory + max_memory_per_1k_tweets * 5),
             (10000, max_baseline_memory + max_memory_per_1k_tweets * 10),
         ]
-        
+
         for tweet_count, max_expected_memory in test_cases:
             print(f"\\nMemory requirements for {tweet_count} tweets:")
             print(f"Maximum expected memory: {max_expected_memory}MB")
-            
+
             # In a real test, verify actual memory usage is within limits
             # For now, document the requirements
             assert max_expected_memory < 600, f"Memory usage should not exceed 600MB for {tweet_count} tweets"

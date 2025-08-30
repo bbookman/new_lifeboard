@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from services.ingestion import IngestionService, IngestionResult
 from sources.limitless import LimitlessSource
 from sources.base import DataItem
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from config.models import LimitlessConfig, AppConfig
@@ -32,10 +32,12 @@ def test_config(temp_dir):
 
 
 @pytest.fixture
-def database_service(test_config):
-    """Create test database service"""
-    db = DatabaseService(test_config.database.path)
+async def database_service(test_config):
+    """Create test async database service"""
+    db = AsyncDatabaseService(test_config.database.path)
+    await db.initialize()
     yield db
+    await db.close()
     # Cleanup
     if os.path.exists(test_config.database.path):
         os.unlink(test_config.database.path)
@@ -81,7 +83,7 @@ def mock_limitless_source():
 
 
 @pytest.fixture
-def ingestion_service(database_service, vector_store_service, mock_embedding_service, test_config):
+async def ingestion_service(database_service, vector_store_service, mock_embedding_service, test_config):
     """Create ingestion service with all dependencies"""
     return IngestionService(
         database=database_service,

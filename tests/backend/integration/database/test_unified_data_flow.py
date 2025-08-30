@@ -17,7 +17,7 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from typing import List, Dict, Any
 
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from services.ingestion import IngestionService
@@ -39,9 +39,12 @@ class TestUnifiedDataFlow:
             yield f.name
 
     @pytest.fixture
-    def database_service(self, temp_db_path):
-        """Create database service with temporary database"""
-        return DatabaseService(temp_db_path)
+    async def database_service(self, temp_db_path):
+        """Create async database service with temporary database"""
+        db = AsyncDatabaseService(temp_db_path)
+        await db.initialize()
+        yield db
+        await db.close()
 
     @pytest.fixture
     def mock_vector_store(self):

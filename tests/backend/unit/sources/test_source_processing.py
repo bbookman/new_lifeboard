@@ -16,7 +16,7 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from typing import List, Dict, Any
 
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from sources.base import DataItem
 from sources.limitless import LimitlessSource
 from sources.limitless_processor import LimitlessProcessor
@@ -38,7 +38,7 @@ class TestSourceSpecificProcessing:
     @pytest.fixture
     def database_service(self, temp_db_path):
         """Create database service with temporary database"""
-        return DatabaseService(temp_db_path)
+        return AsyncDatabaseService(temp_db_path)
 
     @pytest.fixture
     def config(self):

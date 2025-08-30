@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from services.document_service import DocumentService, Document
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from api.routes.documents import router

@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from api.server import app
 from services.llm_service import LLMService
 from services.document_service import DocumentService
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from llm.base import LLMResponse
 
 

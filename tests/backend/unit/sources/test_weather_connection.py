@@ -5,7 +5,7 @@ import asyncio
 sys.path.append('.')
 from sources.weather import WeatherSource
 from config.factory import get_config
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 import logging
 
 # Enable debug logging
@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 async def test_weather_connection():
     config = get_config()
-    db = DatabaseService(':memory:')
+    db = AsyncDatabaseService(':memory:')
     
     print("=== TESTING WEATHER SOURCE CONNECTION METHOD ===")
     

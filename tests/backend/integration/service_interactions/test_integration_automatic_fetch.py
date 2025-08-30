@@ -15,7 +15,7 @@ from api.routes.calendar import fetch_limitless_for_date
 from sources.base import DataItem
 from sources.limitless import LimitlessSource
 from services.ingestion import IngestionService, IngestionResult
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 from config.models import LimitlessConfig
 
 

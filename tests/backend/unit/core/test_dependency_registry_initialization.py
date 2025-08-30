@@ -65,7 +65,7 @@ class TestDependencyRegistryInitialization:
         from api.server import lifespan
         from core.dependencies import get_startup_service_dependency, get_database_service
         from services.startup import StartupService
-        from core.database import DatabaseService
+        from core.async_database import AsyncDatabaseService
         from config.models import AppConfig
         
         # Create mocks

@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from sources.news import NewsSource
 from sources.base import DataItem
 from config.models import NewsConfig
-from core.database import DatabaseService
+from core.async_database import AsyncDatabaseService
 
 
 class TestNewsIntegration:

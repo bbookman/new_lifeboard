@@ -43,20 +43,22 @@ class TestHealthSimple:
         """Test client"""
         return TestClient(app)
     
-    def test_health_endpoint(self, client):
+    @pytest.mark.asyncio
+    async def test_health_endpoint(self, client):
         """Test basic health endpoint"""
         response = client.get("/health")
         assert response.status_code == 200
-        
+
         data = response.json()
         assert "healthy" in data
         assert "services" in data
-    
-    def test_status_endpoint(self, client):
+
+    @pytest.mark.asyncio
+    async def test_status_endpoint(self, client):
         """Test basic status endpoint"""
         response = client.get("/status")
         assert response.status_code == 200
-        
+
         data = response.json()
         assert "data" in data
         assert "services" in data["data"]
