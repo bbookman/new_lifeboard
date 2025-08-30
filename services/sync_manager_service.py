@@ -74,6 +74,7 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         elif isinstance(source, TwitterSource):
             # Twitter Basic plan rate limit: 1 request per 15 minutes
             interval_seconds = 15 * 60  # 15 minutes in seconds
+            interval_hours = interval_seconds / 3600  # Convert to hours for logging
             logger.info(f"Twitter source configured for 15-minute sync interval due to API rate limits")
         else:
             # Default sync interval for other sources
@@ -450,7 +451,8 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         from datetime import datetime, timezone, timedelta
         
         # Get the last sync time from database
-        last_sync_setting = self.ingestion_service.database.get_setting(f"{namespace}_last_sync")
+        last_sync_setting = await self.ingestion_service.database.get_setting(f"{namespace}_last_sync")
+
         if not last_sync_setting:
             # Never synced before, should sync
             logger.info(f"Source {namespace} has never been synced, triggering startup sync")

@@ -30,6 +30,7 @@ class DependencyRegistry:
         """Register the startup service provider function"""
         self._startup_service_provider = provider
         logger.info("DEPENDENCIES: Startup service provider registered")
+        logger.debug(f"DEPENDENCIES: Provider callable: {callable(provider)}")
     
     def register_sync_manager_provider(self, provider: Callable[[StartupService], SyncManagerService]):
         """Register the sync manager provider function"""
@@ -48,15 +49,21 @@ class DependencyRegistry:
     
     def get_startup_service(self) -> StartupService:
         """Get startup service instance for FastAPI dependency injection"""
+        logger.debug("DEPENDENCIES: get_startup_service called")
+        logger.debug(f"DEPENDENCIES: Provider exists: {self._startup_service_provider is not None}")
+
         if not self._startup_service_provider:
             logger.error("DEPENDENCIES: Startup service provider not registered")
             raise HTTPException(status_code=503, detail="Application not initialized")
-        
+
         try:
+            logger.debug("DEPENDENCIES: Calling startup service provider")
             startup_service = self._startup_service_provider()
+            logger.debug(f"DEPENDENCIES: Provider returned: {startup_service is not None}")
             if not startup_service:
                 logger.error("DEPENDENCIES: Startup service provider returned None")
                 raise HTTPException(status_code=503, detail="Application not initialized")
+            logger.debug("DEPENDENCIES: Successfully returned startup service")
             return startup_service
         except Exception as e:
             logger.error(f"DEPENDENCIES: Error getting startup service: {e}")

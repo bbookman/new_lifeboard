@@ -122,6 +122,16 @@ class IngestionService(BaseService, ServiceDebugMixin):
         try:
             logger.info(f"Starting ingestion from {namespace}")
             
+            # DIAGNOSTIC: Check if database has get_setting method
+            logger.info(f"[DIAGNOSTIC] Database type: {type(self.database)}")
+            logger.info(f"[DIAGNOSTIC] Database has get_setting: {hasattr(self.database, 'get_setting')}")
+            if hasattr(self.database, 'get_setting'):
+                logger.info(f"[DIAGNOSTIC] get_setting is callable: {callable(getattr(self.database, 'get_setting'))}")
+            else:
+                logger.error(f"[DIAGNOSTIC] AsyncDatabaseService missing get_setting method!")
+
+            # Unified source handling for all sources
+            last_sync = await self.database.get_setting(f"{namespace}_last_sync")
             # Unified source handling for all sources
             last_sync = await self.database.get_setting(f"{namespace}_last_sync")
             since = None

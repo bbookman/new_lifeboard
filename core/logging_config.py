@@ -77,7 +77,20 @@ class LoggingConfig:
             
             # Set logging level
             root_logger.setLevel(getattr(logging, self.log_level))
-            
+
+            # Configure third-party library loggers to reduce verbosity
+            third_party_loggers = {
+                'httpcore': logging.WARNING,
+                'httpcore.http11': logging.WARNING,
+                'httpx': logging.WARNING,
+                'urllib3': logging.WARNING,
+                'aiohttp': logging.WARNING,
+                'aiosqlite': logging.WARNING,
+            }
+
+            for logger_name, level in third_party_loggers.items():
+                logging.getLogger(logger_name).setLevel(level)
+
             # Create formatter
             formatter = logging.Formatter(
                 fmt=self.log_format,

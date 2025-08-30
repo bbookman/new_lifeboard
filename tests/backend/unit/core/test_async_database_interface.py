@@ -15,7 +15,7 @@ import tempfile
 import os
 from unittest.mock import AsyncMock, patch
 
-from core.async_database import AsyncDatabaseService, AsyncMigrationRunner
+from core.async_database import AsyncDatabaseService
 from tests.fixtures.async_database_fixtures import *
 
 
