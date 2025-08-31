@@ -136,22 +136,23 @@ class WebSocketManager:
         if client_id not in self.connections:
             logger.warning(f"Attempted to disconnect unknown client: {client_id}")
             return
-        
+
         connection = self.connections[client_id]
-        
+
         # Remove from all subscriptions
         for topic in list(connection.subscriptions):
             await self._unsubscribe_client_from_topic(client_id, topic)
-        
-        # Close WebSocket connection
+
+        # Close WebSocket connection if not already closed/closing
         try:
-            await connection.websocket.close(reason=reason)
+            if connection.websocket.client_state not in {WebSocketState.CLOSING, WebSocketState.CLOSED, WebSocketState.DISCONNECTED}:
+                await connection.websocket.close(reason=reason)
         except Exception as e:
             logger.debug(f"Error closing WebSocket for client {client_id}: {e}")
-        
+
         # Remove from connections
         del self.connections[client_id]
-        logger.info(f"Client {client_id} disconnected ({reason}). Total connections: {len(self.connections)}")
+        logger.info(f"Client {client_id} disconnected ({reason}). Total connections: {len(self.connections)})")
     
     async def subscribe_client(self, client_id: str, topics: List[str]):
         """Subscribe a client to one or more topics"""
@@ -304,16 +305,16 @@ class WebSocketManager:
         """Send a message to a specific client"""
         if client_id not in self.connections:
             raise ValueError(f"Client {client_id} not connected")
-        
+
         connection = self.connections[client_id]
-        
+
         # Check if WebSocket connection is still valid
-        if connection.websocket.client_state == WebSocketState.DISCONNECTED:
-            logger.debug(f"Cannot send to client {client_id}: WebSocket is disconnected")
+        if connection.websocket.client_state in {WebSocketState.DISCONNECTED, WebSocketState.CLOSING, WebSocketState.CLOSED}:
+            logger.debug(f"Cannot send to client {client_id}: WebSocket is not open (state: {connection.websocket.client_state})")
             # Remove the closed connection
-            await self.disconnect_client(client_id, "websocket_disconnected")
-            raise ConnectionError(f"WebSocket for client {client_id} is disconnected")
-        
+            await self.disconnect_client(client_id, "websocket_not_open")
+            raise ConnectionError(f"WebSocket for client {client_id} is not open (state: {connection.websocket.client_state})")
+
         try:
             message_json = json.dumps({
                 "type": message.type.value,
@@ -321,13 +322,16 @@ class WebSocketManager:
                 "timestamp": message.timestamp,
                 "message_id": message.message_id
             })
-            
+
             await connection.websocket.send_text(message_json)
-            
+
         except Exception as e:
             logger.error(f"Error sending message to client {client_id}: {e}")
             # If send fails, likely the connection is dead - disconnect client
-            await self.disconnect_client(client_id, f"send_error: {e}")
+            try:
+                await self.disconnect_client(client_id, f"send_error: {e}")
+            except Exception as close_error:
+                logger.debug(f"Error during disconnect after send failure for client {client_id}: {close_error}")
             raise
     
     async def _send_error_to_client(self, client_id: str, error_message: str):

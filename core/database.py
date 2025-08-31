@@ -604,4 +604,387 @@ class DatabaseService:
             logger.error(f"Error in execute_query: {e}")
             raise
 
+    # Async versions of core CRUD operations
+    
+    async def async_store_data_item(self, id: str, namespace: str, source_id: str, 
+                                  content: str, metadata: Dict = None, days_date: str = None,
+                                  ingestion_status: str = 'complete'):
+        """Async version of store_data_item"""
+        try:
+            async with self.get_async_connection() as conn:
+                await conn.execute("""
+                    INSERT OR REPLACE INTO data_items 
+                    (id, namespace, source_id, content, metadata, days_date, updated_at, ingestion_status)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                """, (id, namespace, source_id, content, 
+                      JSONMetadataParser.serialize_metadata(metadata), days_date, ingestion_status))
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Error in async_store_data_item: {e}")
+            raise
+    
+    async def async_get_data_items_by_ids(self, ids: List[str]) -> List[Dict]:
+        """Async version of get_data_items_by_ids"""
+        if not ids:
+            return []
+        
+        try:
+            placeholders = ','.join('?' * len(ids))
+            async with self.get_async_connection() as conn:
+                async with conn.execute(f"""
+                    SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at, embedding_status, ingestion_status
+                    FROM data_items 
+                    WHERE id IN ({placeholders})
+                    ORDER BY updated_at DESC
+                """, ids) as cursor:
+                    rows = await cursor.fetchall()
+                    
+                    return DatabaseRowParser.parse_rows_with_metadata(
+                        [dict(row) for row in rows]
+                    )
+        except Exception as e:
+            logger.error(f"Error in async_get_data_items_by_ids: {e}")
+            raise
+
+    async def async_get_data_items_by_namespace(self, namespace: str, limit: int = 100) -> List[Dict]:
+        """Async version of get_data_items_by_namespace"""
+        try:
+            async with self.get_async_connection() as conn:
+                async with conn.execute("""
+                    SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
+                    FROM data_items 
+                    WHERE namespace = ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                """, (namespace, limit)) as cursor:
+                    rows = await cursor.fetchall()
+                    
+                    return DatabaseRowParser.parse_rows_with_metadata(
+                        [dict(row) for row in rows]
+                    )
+        except Exception as e:
+            logger.error(f"Error in async_get_data_items_by_namespace: {e}")
+            raise
+    
+    async def async_get_data_items_by_date_range(self, start_date: str, end_date: str, 
+                                               namespaces: Optional[List[str]] = None,
+                                               limit: int = 100) -> List[Dict]:
+        """Async version of get_data_items_by_date_range"""
+        try:
+            # Base query
+            query = """
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
+                FROM data_items 
+                WHERE days_date >= ? AND days_date <= ?
+            """
+            params = [start_date, end_date]
+            
+            # Add namespace filter if provided
+            if namespaces:
+                placeholders = ','.join('?' * len(namespaces))
+                query += f" AND namespace IN ({placeholders})"
+                params.extend(namespaces)
+            
+            # Add ordering and limit
+            query += " ORDER BY days_date DESC, updated_at DESC LIMIT ?"
+            params.append(limit)
+            
+            async with self.get_async_connection() as conn:
+                async with conn.execute(query, params) as cursor:
+                    rows = await cursor.fetchall()
+                    
+                    return DatabaseRowParser.parse_rows_with_metadata(
+                        [dict(row) for row in rows]
+                    )
+        except Exception as e:
+            logger.error(f"Error in async_get_data_items_by_date_range: {e}")
+            raise
+    
+    async def async_get_data_items_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> List[Dict]:
+        """Async version of get_data_items_by_date"""
+        return await self.async_get_data_items_by_date_range(date, date, namespaces, limit=1000)
+    
+    async def async_get_available_dates(self, namespaces: Optional[List[str]] = None) -> List[str]:
+        """Async version of get_available_dates"""
+        try:
+            query = """
+                SELECT DISTINCT days_date 
+                FROM data_items 
+                WHERE days_date IS NOT NULL
+            """
+            params = []
+            
+            # Add namespace filter if provided
+            if namespaces:
+                placeholders = ','.join('?' * len(namespaces))
+                query += f" AND namespace IN ({placeholders})"
+                params.extend(namespaces)
+            
+            query += " ORDER BY days_date DESC"
+            
+            async with self.get_async_connection() as conn:
+                async with conn.execute(query, params) as cursor:
+                    rows = await cursor.fetchall()
+                    return [row['days_date'] for row in rows]
+        except Exception as e:
+            logger.error(f"Error in async_get_available_dates: {e}")
+            raise
+    
+    async def async_get_days_with_data(self, namespaces: Optional[List[str]] = None) -> List[str]:
+        """Async version of get_days_with_data"""
+        try:
+            query = """
+                SELECT DISTINCT days_date
+                FROM data_items
+                WHERE days_date IS NOT NULL
+            """
+            params = []
+            
+            if namespaces:
+                placeholders = ','.join('?' * len(namespaces))
+                query += f" AND namespace IN ({placeholders})"
+                params.extend(namespaces)
+            
+            query += " ORDER BY days_date DESC"
+            
+            async with self.get_async_connection() as conn:
+                async with conn.execute(query, params) as cursor:
+                    rows = await cursor.fetchall()
+                    return [row['days_date'] for row in rows]
+        except Exception as e:
+            logger.error(f"Error in async_get_days_with_data: {e}")
+            raise
+    
+    async def async_get_all_namespaces(self) -> List[str]:
+        """Async version of get_all_namespaces"""
+        try:
+            async with self.get_async_connection() as conn:
+                async with conn.execute("""
+                    SELECT DISTINCT namespace 
+                    FROM data_items 
+                    ORDER BY namespace
+                """) as cursor:
+                    rows = await cursor.fetchall()
+                    return [row['namespace'] for row in rows]
+        except Exception as e:
+            logger.error(f"Error in async_get_all_namespaces: {e}")
+            raise
+
+    # Async versions of settings and metadata operations
+    
+    async def async_get_setting(self, key: str, default: Any = None) -> Any:
+        """Async version of get_setting"""
+        try:
+            async with self.get_async_connection() as conn:
+                async with conn.execute(
+                    "SELECT value FROM system_settings WHERE key = ?", (key,)) as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        # Try to parse as JSON, fallback to string value
+                        parsed = JSONMetadataParser.parse_metadata(row['value'])
+                        return parsed if parsed is not None else row['value']
+                    return default
+        except Exception as e:
+            logger.error(f"Error in async_get_setting: {e}")
+            raise
+    
+    async def async_set_setting(self, key: str, value: Any):
+        """Async version of set_setting"""
+        try:
+            async with self.get_async_connection() as conn:
+                await conn.execute("""
+                    INSERT OR REPLACE INTO system_settings (key, value, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                """, (key, JSONMetadataParser.serialize_metadata(value) or value))
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Error in async_set_setting: {e}")
+            raise
+    
+    async def async_register_data_source(self, namespace: str, source_type: str, metadata: Dict = None):
+        """Async version of register_data_source"""
+        try:
+            async with self.get_async_connection() as conn:
+                await conn.execute("""
+                    INSERT OR REPLACE INTO data_sources 
+                    (namespace, source_type, metadata, first_seen)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """, (namespace, source_type, JSONMetadataParser.serialize_metadata(metadata)))
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Error in async_register_data_source: {e}")
+            raise
+    
+    async def async_get_active_namespaces(self) -> List[str]:
+        """Async version of get_active_namespaces"""
+        try:
+            async with self.get_async_connection() as conn:
+                async with conn.execute("""
+                    SELECT namespace FROM data_sources 
+                    WHERE is_active = TRUE
+                    ORDER BY namespace
+                """) as cursor:
+                    rows = await cursor.fetchall()
+                    return [row['namespace'] for row in rows]
+        except Exception as e:
+            logger.error(f"Error in async_get_active_namespaces: {e}")
+            raise
+    
+    async def async_update_source_item_count(self, namespace: str):
+        """Async version of update_source_item_count"""
+        try:
+            async with self.get_async_connection() as conn:
+                async with conn.execute("""
+                    SELECT COUNT(*) as count FROM data_items WHERE namespace = ?
+                """, (namespace,)) as cursor:
+                    count_row = await cursor.fetchone()
+                    count = count_row['count']
+                
+                await conn.execute("""
+                    UPDATE data_sources 
+                    SET item_count = ?
+                    WHERE namespace = ?
+                """, (count, namespace))
+                await conn.commit()
+                
+                return count
+        except Exception as e:
+            logger.error(f"Error in async_update_source_item_count: {e}")
+            raise
+    
+    async def async_get_database_stats(self) -> Dict[str, Any]:
+        """Async version of get_database_stats"""
+        try:
+            async with self.get_async_connection() as conn:
+                # Total items
+                async with conn.execute("SELECT COUNT(*) as count FROM data_items") as cursor:
+                    total_items_row = await cursor.fetchone()
+                    total_items = total_items_row['count']
+                
+                # Items by namespace
+                async with conn.execute("""
+                    SELECT namespace, COUNT(*) as count 
+                    FROM data_items 
+                    GROUP BY namespace
+                    ORDER BY count DESC
+                """) as cursor:
+                    namespace_rows = await cursor.fetchall()
+                    namespace_counts = {row['namespace']: row['count'] for row in namespace_rows}
+                
+                # Embedding status
+                async with conn.execute("""
+                    SELECT embedding_status, COUNT(*) as count 
+                    FROM data_items 
+                    GROUP BY embedding_status
+                """) as cursor:
+                    embedding_rows = await cursor.fetchall()
+                    embedding_status = {row['embedding_status']: row['count'] for row in embedding_rows}
+                
+                # Data sources
+                async with conn.execute("SELECT COUNT(*) as count FROM data_sources WHERE is_active = TRUE") as cursor:
+                    active_sources_row = await cursor.fetchone()
+                    active_sources = active_sources_row['count']
+                
+                return {
+                    'total_items': total_items,
+                    'namespace_counts': namespace_counts,
+                    'embedding_status': embedding_status,
+                    'active_sources': active_sources,
+                    'database_path': self.db_path,
+                    'database_size_mb': os.path.getsize(self.db_path) / (1024 * 1024) if os.path.exists(self.db_path) else 0
+                }
+        except Exception as e:
+            logger.error(f"Error in async_get_database_stats: {e}")
+            raise
+    
+    async def async_store_chat_message(self, user_message: str, assistant_response: str):
+        """Async version of store_chat_message"""
+        try:
+            async with self.get_async_connection() as conn:
+                await conn.execute("""
+                    INSERT INTO chat_messages (user_message, assistant_response)
+                    VALUES (?, ?)
+                """, (user_message, assistant_response))
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Error in async_store_chat_message: {e}")
+            raise
+    
+    async def async_get_chat_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Async version of get_chat_history"""
+        try:
+            async with self.get_async_connection() as conn:
+                async with conn.execute("""
+                    SELECT id, user_message, assistant_response, timestamp
+                    FROM chat_messages
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (limit,)) as cursor:
+                    rows = await cursor.fetchall()
+                    
+                    messages = []
+                    for row in rows:
+                        messages.append({
+                            'id': row['id'],
+                            'user_message': row['user_message'],
+                            'assistant_response': row['assistant_response'],
+                            'timestamp': row['timestamp']
+                        })
+                    
+                    # Return in chronological order (oldest first)
+                    return list(reversed(messages))
+        except Exception as e:
+            logger.error(f"Error in async_get_chat_history: {e}")
+            raise
+
+    # Async versions of embedding and status operations
+    
+    async def async_update_embedding_status(self, id: str, status: str):
+        """Async version of update_embedding_status"""
+        try:
+            async with self.get_async_connection() as conn:
+                await conn.execute("""
+                    UPDATE data_items 
+                    SET embedding_status = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (status, id))
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Error in async_update_embedding_status: {e}")
+            raise
+    
+    async def async_update_ingestion_status(self, item_id: str, status: str):
+        """Async version of update_ingestion_status"""
+        try:
+            async with self.get_async_connection() as conn:
+                await conn.execute("""
+                    UPDATE data_items
+                    SET ingestion_status = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (status, item_id))
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Error in async_update_ingestion_status: {e}")
+            raise
+    
+    async def async_get_pending_embeddings(self, limit: int = 100) -> List[Dict]:
+        """Async version of get_pending_embeddings"""
+        try:
+            async with self.get_async_connection() as conn:
+                async with conn.execute("""
+                    SELECT id, namespace, source_id, content, metadata
+                    FROM data_items 
+                    WHERE embedding_status = 'pending'
+                    ORDER BY created_at ASC
+                    LIMIT ?
+                """, (limit,)) as cursor:
+                    rows = await cursor.fetchall()
+                    
+                    return DatabaseRowParser.parse_rows_with_metadata(
+                        [dict(row) for row in rows]
+                    )
+        except Exception as e:
+            logger.error(f"Error in async_get_pending_embeddings: {e}")
+            raise
+
     

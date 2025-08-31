@@ -429,6 +429,22 @@ def pre_migration_database(migration_test_database):
     return migration_test_database
 
 
+# Async Database Fixtures
+
+@pytest.fixture(scope="function")
+def async_database(temp_db_path):
+    """Create an async database for testing async operations"""
+    from core.database import DatabaseService
+    
+    # Create database service (initialization is still sync)
+    db_service = DatabaseService(temp_db_path)
+    
+    return db_service
+
+
+# Note: async_database_with_test_data fixture removed due to complexity
+# Tests should populate their own test data as needed
+
 # Export all fixtures
 __all__ = [
     "temp_db_path",
@@ -446,5 +462,6 @@ __all__ = [
     "readonly_database_scenario",
     "large_dataset_database",
     "migration_test_database",
-    "pre_migration_database"
+    "pre_migration_database",
+    "async_database"
 ]
