@@ -29,12 +29,10 @@ class TwitterSource(BaseSource):
         self.rate_limit_service = TwitterRateLimitService(db_service)
     
     async def cleanup(self):
-        """Clean up resources, especially HTTP sessions"""
-        if hasattr(self.api_service, 'session') and self.api_service.session:
-            if not self.api_service.session.closed:
-                await self.api_service.session.close()
-                logger.info("[TWITTER] Cleaned up HTTP session")
-            self.api_service.session = None
+        """Clean up resources - TwitterAPIService manages its own session lifecycle via context manager"""
+        # TwitterAPIService handles session cleanup via __aexit__ when used with async context manager
+        # No manual session cleanup needed here
+        logger.info("[TWITTER] Cleanup called - TwitterAPIService manages its own session lifecycle")
 
     async def import_from_zip(self, zip_path: str) -> Dict[str, Any]:
         """Import Twitter data from a zip archive, only adding new tweets."""

@@ -99,7 +99,9 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                     "active_tasks_before": len(asyncio.all_tasks())
                 })
                 
-                # Add timeout protection
+                # Add timeout protection - longer timeout for Twitter due to rate limiting
+                timeout_seconds = 1200.0 if namespace == "twitter" else 300.0  # 20 minutes for Twitter, 5 minutes for others
+                
                 try:
                     result = await asyncio.wait_for(
                         self.ingestion_service.ingest_from_source(
@@ -108,7 +110,7 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                             limit=1000,
                             ingestion_mode='complete'  # Scheduled syncs are complete
                         ),
-                        timeout=300.0  # 5 minute timeout
+                        timeout=timeout_seconds
                     )
                     
                     sync_duration = (time.time() - sync_start_time) * 1000
@@ -131,13 +133,14 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                                
                 except asyncio.TimeoutError as timeout_error:
                     sync_duration = (time.time() - sync_start_time) * 1000
-                    logger.error(f"SYNC_FUNCTION: Sync for {namespace} timed out after 5 minutes")
+                    timeout_minutes = timeout_seconds / 60
+                    logger.error(f"SYNC_FUNCTION: Sync for {namespace} timed out after {timeout_minutes} minutes")
                     
                     # Log timeout error
                     self.log_service_error(f"scheduled_sync_{namespace}_timeout", timeout_error, {
                         "namespace": namespace,
                         "timeout_duration_ms": sync_duration,
-                        "timeout_limit_ms": 300000
+                        "timeout_limit_ms": timeout_seconds * 1000
                     })
                     
                     # Return a failure result instead of raising
