@@ -464,14 +464,14 @@ async def lifespan(app: FastAPI):
             logger.info("LIFESPAN: Graceful shutdown completed")
         else:
             logger.warning("LIFESPAN: Shutdown completed with warnings/errors")
-            logger.warning(f"LIFESPAN: Error summary: {'; '.join(shutdown_errors) if shutdown_errors else 'Unknown errors'}")
+            if shutdown_errors:
+                logger.warning(f"LIFESPAN: Error summary: {'; '.join(shutdown_errors)}")
+            else:
+                logger.warning("LIFESPAN: Error summary: No specific errors tracked")
             
         # Final cleanup - make sure global state is reset
-        try:
-            # Note: _signal_handler already tracks shutdown state internally
-            pass
-        except:
-            pass
+        # Note: _signal_handler already tracks shutdown state internally
+        logger.debug("LIFESPAN: Final cleanup completed")
 
 
 # Create FastAPI app with lifespan

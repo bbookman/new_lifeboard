@@ -413,7 +413,7 @@ class StartupService:
                 logger.info("Automatic synchronization started successfully")
             else:
                 startup_result["auto_sync_started"] = False
-                logger.warning("Automatic synchronization could not be started (no sources available)")
+                logger.info("Automatic synchronization could not be started (no sources available)")
             
         except Exception as e:
             error_msg = f"Failed to start automatic synchronization: {str(e)}"

@@ -73,6 +73,7 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
             interval_seconds = interval_hours * 3600
         elif isinstance(source, TwitterSource):
             # Twitter Basic plan rate limit: 1 request per 15 minutes
+            interval_hours = 0.25  # 15 minutes in hours
             interval_seconds = 15 * 60  # 15 minutes in seconds
             logger.info(f"Twitter source configured for 15-minute sync interval due to API rate limits")
         else:
