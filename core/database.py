@@ -1,10 +1,11 @@
 import sqlite3
+import aiosqlite
 import json
 import os
 import logging
 import re
 from typing import List, Dict, Optional, Any
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from datetime import datetime, timezone
 import pytz
 
@@ -27,6 +28,30 @@ class DatabaseService:
             yield conn
         finally:
             conn.close()
+    
+    @asynccontextmanager
+    async def get_async_connection(self):
+        """Async context manager for database connections"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            try:
+                yield conn
+            finally:
+                # Connection automatically closed by aiosqlite context manager
+                pass
+    
+    @asynccontextmanager
+    async def async_transaction(self):
+        """Async transaction context manager with rollback support"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            try:
+                await conn.execute("BEGIN")
+                yield conn
+                await conn.commit()
+            except Exception:
+                await conn.rollback()
+                raise
     
     def _init_database(self):
         """Initialize database using migration system"""
@@ -554,29 +579,27 @@ class DatabaseService:
 
     async def fetch_one(self, query: str, params: tuple = None) -> Optional[Dict[str, Any]]:
         """
-        Async wrapper for fetching one row from database.
-        Added for compatibility with TwitterRateLimitService.
+        Real async method for fetching one row from database.
+        Converted from fake async to real async using aiosqlite.
         """
         try:
-            with self.get_connection() as conn:
-                cursor = conn.execute(query, params or ())
-                row = cursor.fetchone()
-                if row:
-                    return dict(row)
-                return None
+            async with self.get_async_connection() as conn:
+                async with conn.execute(query, params or ()) as cursor:
+                    row = await cursor.fetchone()
+                    return dict(row) if row else None
         except Exception as e:
             logger.error(f"Error in fetch_one: {e}")
             raise
 
     async def execute_query(self, query: str, params: tuple = None) -> None:
         """
-        Async wrapper for executing a query (INSERT, UPDATE, DELETE).
-        Added for compatibility with TwitterRateLimitService.
+        Real async method for executing a query (INSERT, UPDATE, DELETE).
+        Converted from fake async to real async using aiosqlite.
         """
         try:
-            with self.get_connection() as conn:
-                conn.execute(query, params or ())
-                conn.commit()
+            async with self.get_async_connection() as conn:
+                await conn.execute(query, params or ())
+                await conn.commit()
         except Exception as e:
             logger.error(f"Error in execute_query: {e}")
             raise
