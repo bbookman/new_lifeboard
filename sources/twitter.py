@@ -160,7 +160,7 @@ class TwitterSource(BaseSource):
 
     async def _get_existing_tweet_ids(self) -> set:
         """Get existing tweet IDs from data_items table"""
-        existing_tweets = self.db_service.get_data_items_by_namespace(self.namespace, limit=10000)
+        existing_tweets = await self.db_service.async_get_data_items_by_namespace(self.namespace, limit=10000)
         return {item['source_id'] for item in existing_tweets}
 
     async def _ingest_tweets(self, tweets: List[Dict[str, Any]]):
@@ -254,7 +254,7 @@ class TwitterSource(BaseSource):
 
     async def get_data_for_date(self, date: str) -> List[Dict[str, Any]]:
         """Get tweets for a specific date"""
-        return self.db_service.get_data_items_by_date(date, [self.namespace])
+        return await self.db_service.async_get_data_items_by_date(date, [self.namespace])
     
     async def get_status_for_day(self, days_date: str) -> Optional[Dict[str, str]]:
         """Get Twitter fetch status for a specific day for UI display"""
@@ -308,7 +308,7 @@ class TwitterSource(BaseSource):
                 logger.error(f"[TWITTER IMPORT] Error fetching API tweets: {e}")
         
         # Then get existing Twitter data from the unified data_items table
-        items = self.db_service.get_data_items_by_namespace(self.namespace, limit)
+        items = await self.db_service.async_get_data_items_by_namespace(self.namespace, limit)
         
         for item in items:
             # Filter by since if provided
@@ -338,7 +338,7 @@ class TwitterSource(BaseSource):
     async def get_item(self, source_id: str) -> Optional[DataItem]:
         """Get specific tweet by ID"""
         namespaced_id = f"{self.namespace}:{source_id}"
-        items = self.db_service.get_data_items_by_ids([namespaced_id])
+        items = await self.db_service.async_get_data_items_by_ids([namespaced_id])
         
         if not items:
             return None

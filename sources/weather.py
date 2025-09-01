@@ -52,15 +52,15 @@ class WeatherSource(BaseHTTPSource, BaseSource):
         
         return await super().test_connection()
 
-    def _has_weather_data_for_date(self, date: str) -> bool:
+    async def _has_weather_data_for_date(self, date: str) -> bool:
         """Check if weather data already exists for the given date"""
-        with self.db_service.get_connection() as conn:
-            cursor = conn.execute("""
+        async with self.db_service.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT COUNT(*) as count
                 FROM weather 
                 WHERE days_date LIKE ?
             """, (f"%{date}%",))
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             return row['count'] > 0 if row else False
 
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 1) -> AsyncIterator[DataItem]:
@@ -84,7 +84,7 @@ class WeatherSource(BaseHTTPSource, BaseSource):
 
         # Check if we already have weather data for today
         today = datetime.now().strftime("%Y-%m-%d")
-        if self._has_weather_data_for_date(today):
+        if await self._has_weather_data_for_date(today):
             logger.info(f"Weather data already exists for {today}. Skipping API call.")
             # Yield a dummy item to indicate we checked but didn't fetch new data
             yield DataItem(
@@ -138,12 +138,12 @@ class WeatherSource(BaseHTTPSource, BaseSource):
             logger.warning("Weather data is missing 'readTime'")
             return
 
-        with self.db_service.get_connection() as conn:
-            conn.execute("""
+        async with self.db_service.get_connection() as conn:
+            await conn.execute("""
                 INSERT INTO weather (days_date, response_json)
                 VALUES (?, ?)
             """, (days_date, json.dumps(data)))
-            conn.commit()
+            await conn.commit()
 
     def _transform_weather_data(self, data: Dict[str, Any]) -> List[DataItem]:
         """Transform weather API data into DataItems for unified processing"""
@@ -291,25 +291,25 @@ class WeatherSource(BaseHTTPSource, BaseSource):
             "last_sync": datetime.now(timezone.utc).isoformat()
         }
     
-    def get_latest_weather(self, db_service) -> Optional[Dict[str, Any]]:
+    async def get_latest_weather(self, db_service) -> Optional[Dict[str, Any]]:
         """Get the most recent weather data"""
-        with db_service.get_connection() as conn:
-            cursor = conn.execute("""
+        async with db_service.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT response_json 
                 FROM weather 
                 ORDER BY days_date DESC 
                 LIMIT 1
             """)
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             if row:
                 return self.parse_weather_data(json.loads(row['response_json']))
         return None
 
-    def get_weather_by_date(self, db_service, date: str) -> Optional[Dict[str, Any]]:
+    async def get_weather_by_date(self, db_service, date: str) -> Optional[Dict[str, Any]]:
         """Get weather data for a specific date (YYYY-MM-DD format)"""
-        with db_service.get_connection() as conn:
+        async with db_service.get_connection() as conn:
             # First try to find weather data for the exact date
-            cursor = conn.execute("""
+            cursor = await conn.execute("""
                 SELECT response_json 
                 FROM weather 
                 WHERE days_date = ?
@@ -317,38 +317,39 @@ class WeatherSource(BaseHTTPSource, BaseSource):
                 LIMIT 1
             """, (date,))
             
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             if row:
                 return self.parse_weather_data(json.loads(row['response_json']))
             
             # If no exact match, get the most recent weather data as fallback
-            cursor = conn.execute("""
+            cursor = await conn.execute("""
                 SELECT response_json 
                 FROM weather 
                 ORDER BY days_date DESC, created_at DESC
                 LIMIT 1
             """)
             
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             if row:
                 return self.parse_weather_data(json.loads(row['response_json']))
             
         return None
 
-    def get_weather_for_specific_date(self, db_service, target_date: str) -> Optional[Dict[str, Any]]:
+    async def get_weather_for_specific_date(self, db_service, target_date: str) -> Optional[Dict[str, Any]]:
         """Get weather data specifically for the target date only"""
         from datetime import datetime, timedelta
         target_datetime = datetime.strptime(target_date, "%Y-%m-%d").date()
         
         # Look through all available weather data to find one that contains the target date
-        with db_service.get_connection() as conn:
-            cursor = conn.execute("""
+        async with db_service.get_connection() as conn:
+            cursor = await conn.execute("""
                 SELECT response_json, days_date, created_at
                 FROM weather 
                 ORDER BY days_date DESC, created_at DESC
             """)
             
-            for row in cursor.fetchall():
+            rows = await cursor.fetchall()
+            for row in rows:
                 try:
                     weather_data = self.parse_weather_data(json.loads(row['response_json']))
                     if not weather_data or 'days' not in weather_data:
@@ -380,7 +381,7 @@ class WeatherSource(BaseHTTPSource, BaseSource):
         
         return None
 
-    def get_weather_for_date_range(self, db_service, start_date: str, days: int = 5) -> List[Dict[str, Any]]:
+    async def get_weather_for_date_range(self, db_service, start_date: str, days: int = 5) -> List[Dict[str, Any]]:
         """Get weather data for a date range - only returns data for dates that actually exist in forecasts"""
         from datetime import datetime, timedelta
         start_datetime = datetime.strptime(start_date, "%Y-%m-%d").date()
@@ -391,7 +392,7 @@ class WeatherSource(BaseHTTPSource, BaseSource):
             current_date = start_datetime + timedelta(days=i)
             current_date_str = current_date.strftime("%Y-%m-%d")
             
-            day_weather = self.get_weather_for_specific_date(db_service, current_date_str)
+            day_weather = await self.get_weather_for_specific_date(db_service, current_date_str)
             if day_weather:
                 forecast_days.append(day_weather)
         
