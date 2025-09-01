@@ -54,10 +54,22 @@ async def websocket_processing_updates(
     - Error handling and graceful disconnection
     """
     
+    actual_client_id = None
     try:
-        # Connect client
+        # Validate WebSocket state before connection attempt  
+        from starlette.websockets import WebSocketState
+        if websocket.client_state != WebSocketState.CONNECTING:
+            logger.warning(f"WebSocket not in CONNECTING state: {websocket.client_state}")
+            return
+            
+        # Connect client with error handling
         actual_client_id = await manager.connect_client(websocket, client_id)
         logger.info(f"WebSocket client connected: {actual_client_id}")
+        
+        # Verify connection was successful before proceeding
+        if actual_client_id not in manager.connections:
+            logger.error(f"Client {actual_client_id} not found in connections after connect_client")
+            return
         
         # Auto-subscribe to general processing updates
         await manager.subscribe_client(actual_client_id, [
@@ -88,31 +100,49 @@ async def websocket_processing_updates(
                 
             except Exception as e:
                 logger.error(f"Error handling message from client {actual_client_id}: {e}")
+                
+                # Check if the error indicates connection issues
+                if "not connected" in str(e).lower() or "need to call" in str(e).lower():
+                    logger.info(f"Client {actual_client_id} connection error, disconnecting: {e}")
+                    break
+                
                 # Try to send error, but don't fail if client disconnected
                 try:
-                    await manager._send_error_to_client(
-                        actual_client_id,
-                        f"Message processing error: {e}"
-                    )
+                    if actual_client_id in manager.connections:
+                        await manager._send_error_to_client(
+                            actual_client_id,
+                            f"Message processing error: {e}"
+                        )
+                    else:
+                        logger.debug(f"Client {actual_client_id} no longer connected, cannot send error")
+                        break
                 except Exception as send_error:
-                    logger.debug(f"Could not send error to disconnected client {actual_client_id}: {send_error}")
+                    logger.debug(f"Could not send error to client {actual_client_id}: {send_error}")
                     # Client likely disconnected, break out of loop
                     break
     
     except Exception as e:
         logger.error(f"WebSocket connection error: {e}")
-        if 'actual_client_id' in locals():
-            await manager.disconnect_client(actual_client_id, f"connection_error: {e}")
+        # Only disconnect if we have a valid client_id
+        if 'actual_client_id' in locals() and actual_client_id is not None:
+            try:
+                await manager.disconnect_client(actual_client_id, f"connection_error: {e}")
+            except Exception as disconnect_error:
+                logger.debug(f"Error during disconnect after connection error: {disconnect_error}")
         else:
+            # No valid client_id, try to close WebSocket directly
             try:
                 await websocket.close(reason=f"connection_error: {e}")
             except Exception:
                 pass
     
     finally:
-        # Ensure cleanup
-        if 'actual_client_id' in locals():
-            await manager.disconnect_client(actual_client_id, "connection_closed")
+        # Ensure cleanup - only disconnect if we have a valid client_id
+        if 'actual_client_id' in locals() and actual_client_id is not None:
+            try:
+                await manager.disconnect_client(actual_client_id, "connection_closed")
+            except Exception as cleanup_error:
+                logger.debug(f"Error during final cleanup for client {actual_client_id}: {cleanup_error}")
 
 
 @router.get("/stats")

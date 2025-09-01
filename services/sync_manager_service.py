@@ -256,7 +256,7 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         
         return success
     
-    def get_source_sync_status(self, namespace: str) -> Optional[Dict[str, Any]]:
+    async def get_source_sync_status(self, namespace: str) -> Optional[Dict[str, Any]]:
         """Get sync status for a specific source"""
         job_id = self.source_job_mapping.get(namespace)
         if not job_id:
@@ -271,15 +271,15 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
             "namespace": namespace,
             "job_id": job_id,
             "scheduler_status": job_status,
-            "ingestion_status": self.ingestion_service.get_ingestion_status().get("source_stats", {}).get(namespace, {})
+            "ingestion_status": (await self.ingestion_service.async_get_ingestion_status()).get("source_stats", {}).get(namespace, {})
         }
         
         return source_status
     
-    def get_all_sources_sync_status(self) -> Dict[str, Any]:
+    async def get_all_sources_sync_status(self) -> Dict[str, Any]:
         """Get sync status for all registered sources"""
         all_jobs = self.scheduler.get_all_jobs_status()
-        ingestion_status = self.ingestion_service.get_ingestion_status()
+        ingestion_status = await self.ingestion_service.async_get_ingestion_status()
         
         # Organize by namespace
         sources_status = {}
@@ -417,7 +417,7 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         }
         
         # Check for issues
-        all_status = self.get_all_sources_sync_status()
+        all_status = await self.get_all_sources_sync_status()
         
         for namespace, status in all_status["sources"].items():
             job_status = status["scheduler_status"]

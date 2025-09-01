@@ -106,30 +106,48 @@ class WebSocketManager:
         logger.info("WebSocketManager stopped")
     
     async def connect_client(self, websocket: WebSocket, client_id: str = None) -> str:
-        """Connect a new WebSocket client"""
+        """Connect a new WebSocket client with improved error handling"""
         if client_id is None:
             client_id = str(uuid.uuid4())
         
-        await websocket.accept()
-        
-        connection = ClientConnection(
-            websocket=websocket,
-            client_id=client_id,
-            connected_at=datetime.now(timezone.utc),
-            subscriptions=set(),
-            last_heartbeat=datetime.now(timezone.utc)
-        )
-        
-        self.connections[client_id] = connection
-        logger.info(f"Client {client_id} connected. Total connections: {len(self.connections)}")
-        
-        # Send connection confirmation
-        await self._send_to_client(client_id, WebSocketMessage(
-            type=MessageType.HEARTBEAT,
-            data={"status": "connected", "client_id": client_id}
-        ))
-        
-        return client_id
+        try:
+            # Accept the WebSocket connection (FastAPI handles state validation)
+            await websocket.accept()
+            
+            # Verify WebSocket is now in CONNECTED state
+            if websocket.client_state != WebSocketState.CONNECTED:
+                logger.error(f"WebSocket accept succeeded but client_state is {websocket.client_state}")
+                raise ConnectionError(f"WebSocket accept failed - state: {websocket.client_state}")
+            
+            connection = ClientConnection(
+                websocket=websocket,
+                client_id=client_id,
+                connected_at=datetime.now(timezone.utc),
+                subscriptions=set(),
+                last_heartbeat=datetime.now(timezone.utc)
+            )
+            
+            self.connections[client_id] = connection
+            logger.info(f"Client {client_id} connected. Total connections: {len(self.connections)}")
+            
+            # Send connection confirmation with error handling
+            try:
+                await self._send_to_client(client_id, WebSocketMessage(
+                    type=MessageType.HEARTBEAT,
+                    data={"status": "connected", "client_id": client_id}
+                ))
+            except Exception as send_error:
+                logger.warning(f"Failed to send connection confirmation to {client_id}: {send_error}")
+                # Don't fail connection setup for this, client can still receive other messages
+            
+            return client_id
+            
+        except Exception as e:
+            logger.error(f"Failed to connect client {client_id}: {e}")
+            # Clean up any partial connection state
+            if client_id in self.connections:
+                del self.connections[client_id]
+            raise
     
     async def disconnect_client(self, client_id: str, reason: str = "normal_closure"):
         """Disconnect a WebSocket client"""
@@ -263,7 +281,20 @@ class WebSocketManager:
         await self.broadcast_to_topic("day_updates", message)
     
     async def handle_client_message(self, client_id: str, message_data: Dict[str, Any]):
-        """Handle incoming message from client"""
+        """Handle incoming message from client with connection state validation"""
+        # Validate client is properly connected before handling any messages
+        if client_id not in self.connections:
+            logger.warning(f"Received message from unknown client {client_id}, ignoring")
+            return
+            
+        connection = self.connections[client_id]
+        
+        # Verify WebSocket is still in connected state
+        if connection.websocket.client_state != WebSocketState.CONNECTED:
+            logger.warning(f"Received message from client {client_id} in state {connection.websocket.client_state}, disconnecting")
+            await self.disconnect_client(client_id, "invalid_state")
+            return
+        
         try:
             message_type = MessageType(message_data.get("type"))
             data = message_data.get("data", {})
@@ -284,7 +315,9 @@ class WebSocketManager:
         
         except Exception as e:
             logger.error(f"Error handling client message from {client_id}: {e}")
-            await self._send_error_to_client(client_id, f"Message handling error: {e}")
+            # Only send error response if client is still connected
+            if client_id in self.connections:
+                await self._send_error_to_client(client_id, f"Message handling error: {e}")
     
     async def get_connection_stats(self) -> Dict[str, Any]:
         """Get connection and subscription statistics"""
@@ -309,7 +342,7 @@ class WebSocketManager:
         connection = self.connections[client_id]
 
         # Check if WebSocket connection is still valid
-        if connection.websocket.client_state in {WebSocketState.DISCONNECTED}:
+        if connection.websocket.client_state != WebSocketState.CONNECTED:
             logger.debug(f"Cannot send to client {client_id}: WebSocket is not open (state: {connection.websocket.client_state})")
             # Remove the closed connection
             await self.disconnect_client(client_id, "websocket_not_open")

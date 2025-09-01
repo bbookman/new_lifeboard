@@ -218,7 +218,7 @@ class HealthMonitor:
     async def _check_sync_health(self, health_report: Dict[str, Any]):
         """Check overall sync system health"""
         try:
-            sync_status = self.sync_manager.get_all_sources_sync_status()
+            sync_status = await self.sync_manager.get_all_sources_sync_status()
             
             total_sources = len(sync_status.get("sources", {}))
             failed_sources = 0
@@ -254,7 +254,7 @@ class HealthMonitor:
     async def _check_source_health(self, health_report: Dict[str, Any]):
         """Check health of individual sources"""
         try:
-            sync_status = self.sync_manager.get_all_sources_sync_status()
+            sync_status = await self.sync_manager.get_all_sources_sync_status()
             
             for namespace, status in sync_status.get("sources", {}).items():
                 source_health = await self._analyze_source_health(namespace, status)

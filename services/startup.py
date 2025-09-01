@@ -746,7 +746,23 @@ class StartupService:
             status["ingestion_status"] = self.ingestion_service.get_ingestion_status()
         
         if self.sync_manager:
-            status["sync_status"] = self.sync_manager.get_all_sources_sync_status()
+            try:
+                # Try to get sync status, but handle async context issues
+                import asyncio
+                loop = asyncio.get_running_loop()
+                # We're in async context - provide minimal status
+                status["sync_status"] = {
+                    "note": "Sync status available via async methods only",
+                    "registered_sources": list(self.sync_manager.source_job_mapping.keys())
+                }
+            except RuntimeError:
+                # No running loop, we can create one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    status["sync_status"] = loop.run_until_complete(self.sync_manager.get_all_sources_sync_status())
+                finally:
+                    loop.close()
         
         return status
     
