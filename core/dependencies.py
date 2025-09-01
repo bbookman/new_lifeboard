@@ -7,7 +7,7 @@ for FastAPI routes, avoiding the flawed module attribute injection pattern.
 
 import logging
 from typing import Optional, Callable, Any
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
 
 from services.startup import StartupService, get_startup_service
 from services.sync_manager_service import SyncManagerService
@@ -111,3 +111,10 @@ def get_sync_manager_dependency(startup_service: StartupService) -> SyncManagerS
 def get_chat_service_dependency(startup_service: StartupService) -> ChatService:
     """FastAPI dependency for chat service"""
     return _dependency_registry.get_chat_service(startup_service)
+
+
+def get_database_service_dependency(startup_service: StartupService = Depends(get_startup_service_dependency)):
+    """FastAPI dependency for database service - compatible with async operations"""
+    if not startup_service.database:
+        raise HTTPException(status_code=503, detail="Database service not available")
+    return startup_service.database

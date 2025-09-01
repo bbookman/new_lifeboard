@@ -19,7 +19,8 @@ from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
 # Import the calendar routes and dependencies
-from api.routes.calendar import router, get_database_service
+from api.routes.calendar import router
+from core.dependencies import get_database_service_dependency
 from core.database import DatabaseService
 
 
@@ -55,14 +56,14 @@ class TestCalendarAPIUnified(unittest.TestCase):
     
     def test_get_day_details_success(self):
         """Test GET /calendar/api/day/{date} returns correct data"""
-        # Mock database responses
-        self.mock_db.get_data_items_by_date.return_value = self.sample_data_items
+        # Mock database responses (async methods)
+        self.mock_db.async_get_data_items_by_date.return_value = self.sample_data_items
         self.mock_db.get_markdown_by_date.return_value = self.sample_markdown
         
         # Override dependency
-        self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
+        self.app.dependency_overrides[get_database_service_dependency] = lambda: self.mock_db
         
-        response = self.client.get("/calendar/api/day/2024-01-15")
+        response = self.client.get("/calendar/day/2024-01-15")
         
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -76,18 +77,18 @@ class TestCalendarAPIUnified(unittest.TestCase):
         self.assertTrue(data['has_data'])
         
         # Verify correct database methods were called
-        self.mock_db.get_data_items_by_date.assert_called_once_with('2024-01-15', namespaces=['limitless'])
+        self.mock_db.async_get_data_items_by_date.assert_called_once_with('2024-01-15', namespaces=['limitless'])
         self.mock_db.get_markdown_by_date.assert_called_once_with('2024-01-15', namespaces=['limitless'])
     
     def test_get_day_details_no_data(self):
         """Test GET /calendar/api/day/{date} with no data returns appropriate response"""
         # Mock empty responses
-        self.mock_db.get_data_items_by_date.return_value = []
+        self.mock_db.async_get_data_items_by_date.return_value = []
         self.mock_db.get_markdown_by_date.return_value = '# 2024-01-16\n\nNo data available for this date.'
         
-        self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
+        self.app.dependency_overrides[get_database_service_dependency] = lambda: self.mock_db
         
-        response = self.client.get("/calendar/api/day/2024-01-16")
+        response = self.client.get("/calendar/day/2024-01-16")
         
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -99,9 +100,9 @@ class TestCalendarAPIUnified(unittest.TestCase):
     
     def test_get_day_details_invalid_date_format(self):
         """Test GET /calendar/api/day/{date} with invalid date format"""
-        self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
+        self.app.dependency_overrides[get_database_service_dependency] = lambda: self.mock_db
         
-        response = self.client.get("/calendar/api/day/invalid-date")
+        response = self.client.get("/calendar/day/invalid-date")
         
         self.assertEqual(response.status_code, 400)
         self.assertIn('Invalid date format', response.json()['detail'])
@@ -113,7 +114,7 @@ class TestCalendarAPIUnified(unittest.TestCase):
         mock_news_service = Mock()
         
         # Setup mock responses
-        self.mock_db.get_data_items_by_date.return_value = self.sample_data_items
+        self.mock_db.async_get_data_items_by_date.return_value = self.sample_data_items
         self.mock_db.get_markdown_by_date.return_value = self.sample_markdown
         mock_weather_service.get_weather_for_date_range.return_value = [
             {'date': '2024-01-15', 'temperature': 72, 'condition': 'sunny'}
@@ -123,7 +124,7 @@ class TestCalendarAPIUnified(unittest.TestCase):
         ]
         
         # Override dependencies
-        self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
+        self.app.dependency_overrides[get_database_service_dependency] = lambda: self.mock_db
         
         with patch('api.routes.calendar.get_weather_service', return_value=mock_weather_service), \
              patch('api.routes.calendar.get_news_service', return_value=mock_news_service):
@@ -156,12 +157,12 @@ class TestCalendarAPIUnified(unittest.TestCase):
         mock_news_service = Mock()
         
         # Setup minimal mock responses
-        self.mock_db.get_data_items_by_date.return_value = []
+        self.mock_db.async_get_data_items_by_date.return_value = []
         self.mock_db.get_markdown_by_date.return_value = '# 2024-01-15\n\nNo data available.'
         mock_weather_service.get_weather_for_date_range.return_value = []
         mock_news_service.get_news_by_date.return_value = []
         
-        self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
+        self.app.dependency_overrides[get_database_service_dependency] = lambda: self.mock_db
         
         with patch('api.routes.calendar.get_weather_service', return_value=mock_weather_service), \
              patch('api.routes.calendar.get_news_service', return_value=mock_news_service):
@@ -169,7 +170,7 @@ class TestCalendarAPIUnified(unittest.TestCase):
             response = self.client.get("/calendar/api/day/2024-01-15/enhanced")
         
         # Verify that the unified methods were called, not the old limitless table methods
-        self.mock_db.get_data_items_by_date.assert_called_with('2024-01-15', namespaces=['limitless'])
+        self.mock_db.async_get_data_items_by_date.assert_called_with('2024-01-15', namespaces=['limitless'])
         self.mock_db.get_markdown_by_date.assert_called_with('2024-01-15', namespaces=['limitless'])
         
         # Verify old methods are NOT called (would raise AttributeError if they existed)
@@ -182,7 +183,7 @@ class TestCalendarAPIUnified(unittest.TestCase):
         mock_startup_service.database = self.mock_db
         
         # Mock get_days_with_data calls
-        self.mock_db.get_days_with_data.side_effect = [
+        self.mock_db.async_get_days_with_data.side_effect = [
             ['2024-01-15', '2024-01-16'],  # All days
             ['2024-01-15']  # Twitter days
         ]
@@ -235,12 +236,12 @@ class TestCalendarAPIUnified(unittest.TestCase):
     def test_get_days_with_data_api_endpoint(self):
         """Test GET /calendar/api/days-with-data endpoint uses unified approach"""
         # Mock database response
-        self.mock_db.get_days_with_data.side_effect = [
+        self.mock_db.async_get_days_with_data.side_effect = [
             ['2024-01-15', '2024-01-16'],  # All days
             ['2024-01-15']  # Twitter days
         ]
         
-        self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
+        self.app.dependency_overrides[get_database_service_dependency] = lambda: self.mock_db
         
         response = self.client.get("/calendar/api/days-with-data")
         
@@ -254,17 +255,17 @@ class TestCalendarAPIUnified(unittest.TestCase):
         self.assertEqual(data['twitter'], ['2024-01-15'])
         
         # Verify correct database calls
-        self.assertEqual(self.mock_db.get_days_with_data.call_count, 2)
+        self.assertEqual(self.mock_db.async_get_days_with_data.call_count, 2)
     
     def test_get_days_with_data_filtered_by_month(self):
         """Test GET /calendar/api/days-with-data with year/month filtering"""
         # Mock database response
-        self.mock_db.get_days_with_data.side_effect = [
+        self.mock_db.async_get_days_with_data.side_effect = [
             ['2024-01-15', '2024-01-16', '2024-02-01'],  # All days
             ['2024-01-15', '2024-02-01']  # Twitter days
         ]
         
-        self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
+        self.app.dependency_overrides[get_database_service_dependency] = lambda: self.mock_db
         
         response = self.client.get("/calendar/api/days-with-data?year=2024&month=1")
         
@@ -301,10 +302,10 @@ class TestCalendarAPIUnified(unittest.TestCase):
     def test_day_view_template_endpoint(self):
         """Test GET /calendar/day/{date} template endpoint"""
         # Mock database responses
-        self.mock_db.get_data_items_by_date.return_value = self.sample_data_items
+        self.mock_db.async_get_data_items_by_date.return_value = self.sample_data_items
         self.mock_db.get_markdown_by_date.return_value = self.sample_markdown
         
-        self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
+        self.app.dependency_overrides[get_database_service_dependency] = lambda: self.mock_db
         
         # Mock templates
         with patch('api.routes.calendar.templates') as mock_templates:
@@ -317,25 +318,25 @@ class TestCalendarAPIUnified(unittest.TestCase):
         self.assertIn(response.status_code, [200, 500])  # 500 might occur due to template mocking
         
         # Verify database methods were called correctly
-        self.mock_db.get_data_items_by_date.assert_called_once_with('2024-01-15', namespaces=['limitless'])
+        self.mock_db.async_get_data_items_by_date.assert_called_once_with('2024-01-15', namespaces=['limitless'])
         self.mock_db.get_markdown_by_date.assert_called_once_with('2024-01-15', namespaces=['limitless'])
     
     def test_error_handling_maintains_consistency(self):
         """Test that error scenarios don't break the unified data flow"""
         # Mock database to raise an exception
-        self.mock_db.get_data_items_by_date.side_effect = Exception("Database error")
+        self.mock_db.async_get_data_items_by_date.side_effect = Exception("Database error")
         self.mock_db.get_markdown_by_date.side_effect = Exception("Database error")
         
-        self.app.dependency_overrides[get_database_service] = lambda: self.mock_db
+        self.app.dependency_overrides[get_database_service_dependency] = lambda: self.mock_db
         
-        response = self.client.get("/calendar/api/day/2024-01-15")
+        response = self.client.get("/calendar/day/2024-01-15")
         
         # Should return 500 error, not crash
         self.assertEqual(response.status_code, 500)
         
         # Verify the exception didn't leave the system in an inconsistent state
         # by testing that the database methods were still called correctly
-        self.mock_db.get_data_items_by_date.assert_called_once_with('2024-01-15', namespaces=['limitless'])
+        self.mock_db.async_get_data_items_by_date.assert_called_once_with('2024-01-15', namespaces=['limitless'])
     
     def tearDown(self):
         """Clean up after tests"""
