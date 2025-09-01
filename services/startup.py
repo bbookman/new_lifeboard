@@ -267,7 +267,7 @@ class StartupService:
                 try:
                     logger.info("Registering Limitless source...")
                     limitless_source = LimitlessSource(self.config.limitless)
-                    self.ingestion_service.register_source(limitless_source)
+                    await self.ingestion_service.register_source(limitless_source)
                     startup_result["sources_registered"].append("limitless")
                     logger.info("Limitless source registered successfully")
                     
@@ -283,7 +283,7 @@ class StartupService:
                 try:
                     logger.info("Registering News source...")
                     news_source = NewsSource(self.config.news, self.database)
-                    self.ingestion_service.register_source(news_source)
+                    await self.ingestion_service.register_source(news_source)
                     startup_result["sources_registered"].append("news")
                     logger.info("News source registered successfully")
                     
@@ -310,7 +310,7 @@ class StartupService:
                         self.database,
                         self.ingestion_service
                     )
-                    self.ingestion_service.register_source(twitter_source)
+                    await self.ingestion_service.register_source(twitter_source)
                     startup_result["sources_registered"].append("twitter")
                     logger.info("Twitter source registered successfully")
                 except Exception as e:
@@ -325,7 +325,7 @@ class StartupService:
                 try:
                     logger.info("Registering Weather source...")
                     weather_source = WeatherSource(self.config.weather, self.database)
-                    self.ingestion_service.register_source(weather_source)
+                    await self.ingestion_service.register_source(weather_source)
                     startup_result["sources_registered"].append("weather")
                     logger.info("Weather source registered successfully")
                 except Exception as e:
@@ -531,7 +531,7 @@ class StartupService:
         try:
             # Check database
             if self.database:
-                db_stats = self.database.get_database_stats()
+                db_stats = await self.database.async_get_database_stats()
                 health_status["database_healthy"] = db_stats is not None
             
             # Check vector store
@@ -541,16 +541,19 @@ class StartupService:
             
             # Check embedding service
             if self.embedding_service:
-                # Simple health check - try to embed a test string
+                # Simple health check - verify model is loaded without running inference
                 try:
-                    test_embeddings = await self.embedding_service.embed_texts(["test"])
-                    health_status["embedding_service_healthy"] = len(test_embeddings) > 0
+                    health_status["embedding_service_healthy"] = (
+                        self.embedding_service.is_initialized and 
+                        hasattr(self.embedding_service, 'model') and 
+                        self.embedding_service.model is not None
+                    )
                 except:
                     health_status["embedding_service_healthy"] = False
             
             # Check ingestion service
             if self.ingestion_service:
-                ingestion_status = self.ingestion_service.get_ingestion_status()
+                ingestion_status = await self.ingestion_service.async_get_ingestion_status()
                 health_status["ingestion_service_healthy"] = ingestion_status is not None
             
             # Check scheduler

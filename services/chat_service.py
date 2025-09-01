@@ -115,7 +115,7 @@ class ChatService(ServiceDebugMixin):
             
             # Step 3: Store chat exchange
             db_start = time.time()
-            self.database.store_chat_message(user_message, response.content)
+            await self.database.async_store_chat_message(user_message, response.content)
             db_duration = (time.time() - db_start) * 1000
             self.log_database_operation("INSERT", "chat_messages", db_duration)
             
@@ -136,7 +136,7 @@ class ChatService(ServiceDebugMixin):
         """Store error message for debugging (fallback action)"""
         error_msg = "I'm sorry, I encountered an error processing your message. Please try again."
         with safe_operation("store_error_message", log_errors=False):
-            self.database.store_chat_message(user_message, error_msg)
+            await self.database.async_store_chat_message(user_message, error_msg)
     
     async def _get_chat_context(self, query: str, max_results: int = 10) -> ChatContext:
         """Get relevant context using hybrid approach (vector + SQL)"""
@@ -196,7 +196,7 @@ class ChatService(ServiceDebugMixin):
         # Get full data items from database
         if similar_ids:
             ids = [item_id for item_id, _ in similar_ids]
-            return self.database.get_data_items_by_ids(ids)
+            return await self.database.async_get_data_items_by_ids(ids)
         
         return []
     
@@ -213,26 +213,26 @@ class ChatService(ServiceDebugMixin):
         
         # Simple keyword search in content
         db_start = time.time()
-        with self.database.get_connection() as conn:
-            cursor = conn.execute("""
+        async with self.database.get_async_connection() as conn:
+            async with conn.execute("""
                 SELECT id, namespace, source_id, content, metadata, created_at, updated_at
                 FROM data_items 
                 WHERE content LIKE ? 
                 ORDER BY updated_at DESC
                 LIMIT ?
-            """, (f"%{query}%", max_results))
-            
-            results = cursor.fetchall()
-            db_duration = (time.time() - db_start) * 1000
-            self.log_database_operation("SELECT", "data_items", db_duration)
-            
-            from core.json_utils import DatabaseRowParser
-            parsed_results = DatabaseRowParser.parse_rows_with_metadata(
-                [dict(row) for row in results]
-            )
-            
-            self.log_service_performance_metric("sql_search_results_count", len(parsed_results), "count")
-            return parsed_results
+            """, (f"%{query}%", max_results)) as cursor:
+                
+                results = await cursor.fetchall()
+                db_duration = (time.time() - db_start) * 1000
+                self.log_database_operation("SELECT", "data_items", db_duration)
+                
+                from core.json_utils import DatabaseRowParser
+                parsed_results = DatabaseRowParser.parse_rows_with_metadata(
+                    [dict(row) for row in results]
+                )
+                
+                self.log_service_performance_metric("sql_search_results_count", len(parsed_results), "count")
+                return parsed_results
     
     async def _generate_response(self, user_message: str, context: ChatContext) -> LLMResponse:
         """Generate LLM response with context"""
@@ -307,12 +307,12 @@ If the context doesn't contain relevant information to answer the question, plea
         
         return "\n\n".join(context_parts)
     
-    def get_chat_history(self, limit: int = 20) -> List[Dict[str, Any]]:
+    async def get_chat_history(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recent chat history"""
         self.log_service_call("get_chat_history", {"limit": limit})
         
         db_start = time.time()
-        history = self.database.get_chat_history(limit)
+        history = await self.database.async_get_chat_history(limit)
         db_duration = (time.time() - db_start) * 1000
         
         self.log_database_operation("SELECT", "chat_messages", db_duration)

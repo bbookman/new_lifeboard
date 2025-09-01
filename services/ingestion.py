@@ -93,12 +93,12 @@ class IngestionService(BaseService, ServiceDebugMixin):
         self.add_capability("embedding_processing")
         self.add_capability("batch_processing")
     
-    def register_source(self, source: BaseSource):
+    async def register_source(self, source: BaseSource):
         """Register a data source"""
         self.sources[source.namespace] = source
         
         # Register in database
-        self.database.register_data_source(
+        await self.database.async_register_data_source(
             namespace=source.namespace,
             source_type=source.get_source_type(),
             metadata={"registered_at": datetime.now(timezone.utc).isoformat()}
@@ -123,7 +123,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
             logger.info(f"Starting ingestion from {namespace}")
             
             # Unified source handling for all sources
-            last_sync = self.database.get_setting(f"{namespace}_last_sync")
+            last_sync = await self.database.async_get_setting(f"{namespace}_last_sync")
             since = None
             if last_sync and not force_full_sync:
                 try:
@@ -179,7 +179,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
                         await self._process_and_store_item(item, result)
             
             # Update last sync time after successful processing
-            self.database.set_setting(
+            await self.database.async_set_setting(
                 f"{namespace}_last_sync", 
                 datetime.now(timezone.utc).isoformat()
             )
@@ -212,7 +212,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
             days_date = self._extract_days_date(processed_item)
             
             # Store in database
-            self.database.store_data_item(
+            await self.database.async_store_data_item(
                 id=namespaced_id,
                 namespace=processed_item.namespace,
                 source_id=processed_item.source_id,
@@ -255,7 +255,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
         
         try:
             # Get items needing embeddings
-            pending_items = self.database.get_pending_embeddings(limit=batch_size * 2)
+            pending_items = await self.database.async_get_pending_embeddings(limit=batch_size * 2)
             
             if not pending_items:
                 logger.info("No pending embeddings")
@@ -301,16 +301,16 @@ class IngestionService(BaseService, ServiceDebugMixin):
                     
                     if success:
                         # Update embedding status
-                        self.database.update_embedding_status(item['id'], 'completed')
+                        await self.database.async_update_embedding_status(item['id'], 'completed')
                         result["successful"] += 1
                         logger.debug(f"Generated embedding for: {item['id']}")
                     else:
-                        self.database.update_embedding_status(item['id'], 'failed')
+                        await self.database.async_update_embedding_status(item['id'], 'failed')
                         result["failed"] += 1
                         result["errors"].append(f"Failed to add vector for {item['id']}")
                 
                 except Exception as e:
-                    self.database.update_embedding_status(item['id'], 'failed')
+                    await self.database.async_update_embedding_status(item['id'], 'failed')
                     result["failed"] += 1
                     result["errors"].append(f"Error processing {item['id']}: {str(e)}")
                 
@@ -323,7 +323,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
             
             # Mark all items in batch as failed
             for item in batch:
-                self.database.update_embedding_status(item['id'], 'failed')
+                await self.database.async_update_embedding_status(item['id'], 'failed')
                 result["failed"] += 1
                 result["processed"] += 1
     
@@ -469,7 +469,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
         
         try:
             # Check database connectivity
-            db_stats = self.database.get_database_stats()
+            db_stats = await self.database.async_get_database_stats()
             health_info["database_available"] = True
             health_info["total_items"] = db_stats.get("total_items", 0)
             
@@ -479,7 +479,8 @@ class IngestionService(BaseService, ServiceDebugMixin):
             health_info["total_vectors"] = vs_stats.get("total_vectors", 0)
             
             # Check pending embeddings
-            pending = len(self.database.get_pending_embeddings(limit=100))
+            pending_items = await self.database.async_get_pending_embeddings(limit=100)
+            pending = len(pending_items)
             health_info["pending_embeddings"] = pending
             
         except Exception as e:
@@ -488,28 +489,56 @@ class IngestionService(BaseService, ServiceDebugMixin):
         
         return health_info
     
-    def get_ingestion_status(self) -> Dict[str, Any]:
+    async def async_get_ingestion_status(self) -> Dict[str, Any]:
         """Get current ingestion status"""
+        # Async version - properly handles async database calls
+        db_stats = await self.database.async_get_database_stats()
+        pending_items = await self.database.async_get_pending_embeddings(limit=1000)
+        
         status = {
             "registered_sources": list(self.sources.keys()),
-            "database_stats": self.database.get_database_stats(),
+            "database_stats": db_stats,
             "vector_store_stats": self.vector_store.get_stats(),
-            "pending_embeddings": len(self.database.get_pending_embeddings(limit=1000))
+            "pending_embeddings": len(pending_items)
         }
         
         # Add per-source stats
         source_stats = {}
         for namespace in self.sources.keys():
-            items = self.database.get_data_items_by_namespace(namespace, limit=1)
+            items = await self.database.async_get_data_items_by_namespace(namespace, limit=1)
+            last_sync = await self.database.async_get_setting(f"{namespace}_last_sync")
             source_stats[namespace] = {
                 "source_type": self.sources[namespace].get_source_type(),
                 "has_data": len(items) > 0,
-                "last_sync": self.database.get_setting(f"{namespace}_last_sync")
+                "last_sync": last_sync
             }
         
         status["source_stats"] = source_stats
         
         return status
+    
+    def get_ingestion_status(self) -> Dict[str, Any]:
+        """Sync wrapper for async_get_ingestion_status() - handles event loop properly"""
+        import asyncio
+        
+        try:
+            # Check if we're already in a running event loop
+            loop = asyncio.get_running_loop()
+            # We're in an async context, this should not be called from here
+            logger.warning("get_ingestion_status() called from async context. Use async_get_ingestion_status() instead.")
+            # Return minimal status to avoid crash
+            return {
+                "registered_sources": list(self.sources.keys()),
+                "error": "Called from async context - use async_get_ingestion_status()"
+            }
+        except RuntimeError:
+            # No running loop, safe to create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(self.async_get_ingestion_status())
+            finally:
+                loop.close()
     
     def _extract_days_date(self, item: DataItem) -> Optional[str]:
         """Extract days_date from DataItem for calendar support"""

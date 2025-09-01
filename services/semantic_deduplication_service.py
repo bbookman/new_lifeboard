@@ -259,7 +259,7 @@ class SemanticDeduplicationService:
         """Fetch conversations from database as DataItem objects"""
         
         limit = max_items or 1000  # Default reasonable limit
-        raw_items = self.database.get_data_items_by_namespace(namespace, limit=limit)
+        raw_items = await self.database.async_get_data_items_by_namespace(namespace, limit=limit)
         
         # Convert to DataItem objects
         data_items = []
@@ -310,7 +310,7 @@ class SemanticDeduplicationService:
         item_id = f"{item.namespace}:{item.source_id}"
         days_date = self._extract_days_date(item)
         
-        self.database.store_data_item(
+        await self.database.async_store_data_item(
             id=item_id,
             namespace=item.namespace,
             source_id=item.source_id,
@@ -332,8 +332,8 @@ class SemanticDeduplicationService:
                 return await self._update_existing_cluster(cluster_id, cluster_data)
             
             # Insert new cluster
-            with self.database.get_connection() as conn:
-                conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                await conn.execute("""
                     INSERT INTO semantic_clusters 
                     (id, theme, canonical_line, confidence_score, frequency_count)
                     VALUES (?, ?, ?, ?, ?)
@@ -349,7 +349,7 @@ class SemanticDeduplicationService:
                 item_id = f"{source_item.namespace}:{source_item.source_id}"
                 
                 # Store canonical line
-                conn.execute("""
+                await conn.execute("""
                     INSERT INTO line_cluster_mapping 
                     (data_item_id, line_content, cluster_id, similarity_score, 
                      speaker, line_timestamp, is_canonical)
@@ -366,7 +366,7 @@ class SemanticDeduplicationService:
                 
                 # Store variations
                 for variation in cluster_data.get('variations', []):
-                    conn.execute("""
+                    await conn.execute("""
                         INSERT INTO line_cluster_mapping 
                         (data_item_id, line_content, cluster_id, similarity_score, 
                          speaker, line_timestamp, is_canonical)
@@ -381,7 +381,7 @@ class SemanticDeduplicationService:
                         False
                     ))
                 
-                conn.commit()
+                await conn.commit()
             
             logger.debug(f"Stored cluster {cluster_id} with {len(cluster_data.get('variations', []))} variations")
             return True
@@ -393,21 +393,22 @@ class SemanticDeduplicationService:
     async def _cluster_exists(self, cluster_id: str) -> bool:
         """Check if a cluster already exists"""
         
-        with self.database.get_connection() as conn:
-            cursor = conn.execute(
+        async with self.database.get_async_connection() as conn:
+            async with conn.execute(
                 "SELECT COUNT(*) FROM semantic_clusters WHERE id = ?",
                 (cluster_id,)
-            )
-            count = cursor.fetchone()[0]
-            return count > 0
+            ) as cursor:
+                row = await cursor.fetchone()
+                count = row[0]
+                return count > 0
     
     async def _update_existing_cluster(self, cluster_id: str, cluster_data: Dict[str, Any]) -> bool:
         """Update an existing cluster with new data"""
         
         try:
-            with self.database.get_connection() as conn:
+            async with self.database.get_async_connection() as conn:
                 # Update cluster metadata
-                conn.execute("""
+                await conn.execute("""
                     UPDATE semantic_clusters 
                     SET frequency_count = ?, confidence_score = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
@@ -416,7 +417,7 @@ class SemanticDeduplicationService:
                     cluster_data['confidence'],
                     cluster_id
                 ))
-                conn.commit()
+                await conn.commit()
             
             logger.debug(f"Updated existing cluster {cluster_id}")
             return True
@@ -429,47 +430,47 @@ class SemanticDeduplicationService:
         """Load existing semantic clusters from database"""
         
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute("""
                     SELECT id, theme, canonical_line, confidence_score, frequency_count
                     FROM semantic_clusters
                     ORDER BY frequency_count DESC
-                """)
-                
-                clusters = []
-                for row in cursor.fetchall():
-                    # Load variations for this cluster
-                    variations_cursor = conn.execute("""
-                        SELECT line_content, speaker, line_timestamp, similarity_score
-                        FROM line_cluster_mapping
-                        WHERE cluster_id = ? AND is_canonical = FALSE
-                    """, (row['id'],))
+                """) as cursor:
                     
-                    variations = []
-                    for var_row in variations_cursor.fetchall():
-                        from sources.semantic_deduplication_processor import LineVariation
-                        variations.append(LineVariation(
-                            original_text=var_row['line_content'],
-                            speaker=var_row['speaker'] or "Unknown",
-                            timestamp=var_row['line_timestamp'] or "",
-                            conversation_id="",  # Not stored in mapping table
-                            similarity_to_canonical=var_row['similarity_score'],
-                            line_hash=""  # Will be generated
-                        ))
+                    clusters = []
+                    async for row in cursor:
+                        # Load variations for this cluster
+                        async with conn.execute("""
+                            SELECT line_content, speaker, line_timestamp, similarity_score
+                            FROM line_cluster_mapping
+                            WHERE cluster_id = ? AND is_canonical = FALSE
+                        """, (row['id'],)) as variations_cursor:
+                            
+                            variations = []
+                            async for var_row in variations_cursor:
+                                from sources.semantic_deduplication_processor import LineVariation
+                                variations.append(LineVariation(
+                                    original_text=var_row['line_content'],
+                                    speaker=var_row['speaker'] or "Unknown",
+                                    timestamp=var_row['line_timestamp'] or "",
+                                    conversation_id="",  # Not stored in mapping table
+                                    similarity_to_canonical=var_row['similarity_score'],
+                                    line_hash=""  # Will be generated
+                                ))
                     
-                    from sources.semantic_deduplication_processor import SemanticCluster
-                    cluster = SemanticCluster(
-                        cluster_id=row['id'],
-                        theme=row['theme'],
-                        canonical_line=row['canonical_line'],
-                        canonical_hash="",  # Will be generated
-                        variations=variations,
-                        confidence_score=row['confidence_score'],
-                        frequency_count=row['frequency_count']
-                    )
-                    clusters.append(cluster)
-                
-                return clusters
+                        from sources.semantic_deduplication_processor import SemanticCluster
+                        cluster = SemanticCluster(
+                            cluster_id=row['id'],
+                            theme=row['theme'],
+                            canonical_line=row['canonical_line'],
+                            canonical_hash="",  # Will be generated
+                            variations=variations,
+                            confidence_score=row['confidence_score'],
+                            frequency_count=row['frequency_count']
+                        )
+                        clusters.append(cluster)
+                    
+                    return clusters
                 
         except Exception as e:
             logger.error(f"Error loading existing clusters: {e}")
@@ -479,34 +480,37 @@ class SemanticDeduplicationService:
         """Get statistics about stored semantic clusters"""
         
         try:
-            with self.database.get_connection() as conn:
+            async with self.database.get_async_connection() as conn:
                 # Basic cluster stats
-                cursor = conn.execute("""
+                async with conn.execute("""
                     SELECT 
                         COUNT(*) as total_clusters,
                         AVG(frequency_count) as avg_frequency,
                         MAX(frequency_count) as max_frequency,
                         AVG(confidence_score) as avg_confidence
                     FROM semantic_clusters
-                """)
-                stats = dict(cursor.fetchone())
+                """) as cursor:
+                    row = await cursor.fetchone()
+                    stats = dict(row)
                 
                 # Theme distribution
-                cursor = conn.execute("""
+                async with conn.execute("""
                     SELECT theme, COUNT(*) as count
                     FROM semantic_clusters
                     GROUP BY theme
                     ORDER BY count DESC
                     LIMIT 10
-                """)
-                theme_distribution = [dict(row) for row in cursor.fetchall()]
+                """) as cursor:
+                    rows = await cursor.fetchall()
+                    theme_distribution = [dict(row) for row in rows]
                 
                 # Line mapping stats
-                cursor = conn.execute("""
+                async with conn.execute("""
                     SELECT COUNT(*) as total_mappings
                     FROM line_cluster_mapping
-                """)
-                mapping_stats = dict(cursor.fetchone())
+                """) as cursor:
+                    row = await cursor.fetchone()
+                    mapping_stats = dict(row)
                 
                 return {
                     "cluster_stats": stats,

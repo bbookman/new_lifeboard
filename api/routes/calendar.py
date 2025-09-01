@@ -508,34 +508,15 @@ async def fetch_limitless_for_date(
             logger.error(f"[OnDemandFetch] Error calculating date range: {e}")
             raise HTTPException(status_code=500, detail="Error calculating date range")
         
-        # Fetch data from Limitless API for the specific date range
-        logger.info(f"[OnDemandFetch] Fetching data from Limitless API for date range")
+        # Fetch data from Limitless API for the specific date
+        logger.info(f"[OnDemandFetch] Fetching data from Limitless API for date: {date}")
         items_fetched = []
         
         try:
-            # Use the existing fetch_items method with since parameter
-            # Note: Limitless API might not support end date filtering, so we'll filter afterwards
-            async for item in limitless_source.fetch_items(since=start_utc, limit=1000):
-                # Filter items that fall within our target date
-                if item.created_at:
-                    item_date_utc = item.created_at
-                    if item_date_utc.tzinfo is None:
-                        item_date_utc = item_date_utc.replace(tzinfo=timezone.utc)
-                    
-                    # Check if item falls within our target date range
-                    if start_utc <= item_date_utc <= end_utc:
-                        items_fetched.append(item)
-                        logger.debug(f"[OnDemandFetch] Item {item.source_id} matches date range")
-                    elif item_date_utc > end_utc:
-                        # We've moved past our target date, stop fetching
-                        logger.debug(f"[OnDemandFetch] Item {item.source_id} past target date, stopping fetch")
-                        break
-                    else:
-                        logger.debug(f"[OnDemandFetch] Item {item.source_id} before target date, continuing")
-                else:
-                    # If no created_at, include it (fallback)
-                    items_fetched.append(item)
-                    logger.debug(f"[OnDemandFetch] Item {item.source_id} has no created_at, including")
+            # Use the date-specific fetch method instead of since parameter
+            async for item in limitless_source.fetch_items_for_date(date, limit=1000):
+                items_fetched.append(item)
+                logger.debug(f"[OnDemandFetch] Item {item.source_id} fetched for date {date}")
             
             logger.info(f"[OnDemandFetch] Fetched {len(items_fetched)} items for {date}")
             

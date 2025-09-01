@@ -104,7 +104,7 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
     try {
       // Check if LLM is configured by checking system settings
       // This is more reliable than health endpoints that might have dependency issues
-      const response = await fetch('http://localhost:8000/api/system/settings');
+      const response = await fetch('http://localhost:8000/api/settings/');
       
       if (response.ok) {
         const settings = await response.json();

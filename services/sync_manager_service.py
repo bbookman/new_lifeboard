@@ -454,7 +454,7 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         from datetime import datetime, timezone, timedelta
         
         # Get the last sync time from database
-        last_sync_setting = self.ingestion_service.database.get_setting(f"{namespace}_last_sync")
+        last_sync_setting = await self.ingestion_service.database.async_get_setting(f"{namespace}_last_sync")
         if not last_sync_setting:
             # Never synced before, should sync
             logger.info(f"Source {namespace} has never been synced, triggering startup sync")

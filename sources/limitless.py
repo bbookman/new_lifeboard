@@ -149,6 +149,69 @@ class LimitlessSource(BaseSource, HTTPClientMixin):
         except Exception:
             return None
     
+    async def fetch_items_for_date(self, date: str, limit: int = 100) -> AsyncIterator[DataItem]:
+        """Fetch lifelogs for a specific date using the Limitless API date parameter"""
+        if not self._api_key_configured:
+            logger.warning("LIMITLESS_API_KEY is not configured in .env file. Skipping data fetch. Please set a valid API key.")
+            return
+        
+        client = await self._ensure_client()
+        cursor = None
+        fetched_count = 0
+        
+        logger.info(f"[LimitlessSource] Fetching items for specific date: {date}")
+        
+        while fetched_count < limit:
+            # Calculate remaining items to fetch
+            remaining = min(10, limit - fetched_count)  # Limitless API max is 10 per request
+            
+            # Build request parameters with date parameter for specific date fetch
+            params = {
+                "date": date,  # Use date parameter instead of start/since
+                "limit": remaining,
+                "includeMarkdown": True,
+                "includeHeadings": True,
+                "timezone": self.config.timezone
+            }
+            
+            if cursor:
+                params["cursor"] = cursor
+            
+            logger.debug(f"[LimitlessSource] API request params: {params}")
+            
+            # Make API request with retries
+            response = await self._make_request_with_retry(client, "/v1/lifelogs", params)
+            
+            if not response:
+                break
+            
+            data = response.json()
+            lifelogs = data.get("data", {}).get("lifelogs", [])
+            
+            logger.info(f"[LimitlessSource] Received {len(lifelogs)} lifelogs from API for date {date}")
+            
+            if not lifelogs:
+                break
+            
+            # Yield DataItems that will go through unified processing pipeline
+            for lifelog in lifelogs:
+                data_item = self._transform_lifelog(lifelog)
+                yield data_item
+                fetched_count += 1
+                logger.debug(f"[LimitlessSource] Yielded item: {data_item.source_id}")
+                
+                if fetched_count >= limit:
+                    break
+            
+            # Check for next page
+            next_cursor = data.get("meta", {}).get("lifelogs", {}).get("nextCursor")
+            if not next_cursor:
+                logger.debug(f"[LimitlessSource] No more pages available")
+                break
+            
+            cursor = next_cursor
+            logger.debug(f"[LimitlessSource] Continuing with cursor: {cursor}")
+    
     def _transform_lifelog(self, lifelog: Dict[str, Any]) -> DataItem:
         """Transform Limitless lifelog to standardized DataItem"""
         # Extract searchable content

@@ -78,6 +78,10 @@ class LoggingConfig:
             # Set logging level
             root_logger.setLevel(getattr(logging, self.log_level))
             
+            # Suppress verbose aiosqlite DEBUG logging
+            aiosqlite_logger = logging.getLogger('aiosqlite')
+            aiosqlite_logger.setLevel(logging.INFO)
+            
             # Create formatter
             formatter = logging.Formatter(
                 fmt=self.log_format,

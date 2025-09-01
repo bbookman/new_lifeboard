@@ -145,7 +145,7 @@ class WebSocketManager:
 
         # Close WebSocket connection if not already closed/closing
         try:
-            if connection.websocket.client_state not in {WebSocketState.CLOSING, WebSocketState.CLOSED, WebSocketState.DISCONNECTED}:
+            if connection.websocket.client_state not in {WebSocketState.DISCONNECTED}:
                 await connection.websocket.close(reason=reason)
         except Exception as e:
             logger.debug(f"Error closing WebSocket for client {client_id}: {e}")
@@ -309,7 +309,7 @@ class WebSocketManager:
         connection = self.connections[client_id]
 
         # Check if WebSocket connection is still valid
-        if connection.websocket.client_state in {WebSocketState.DISCONNECTED, WebSocketState.CLOSING, WebSocketState.CLOSED}:
+        if connection.websocket.client_state in {WebSocketState.DISCONNECTED}:
             logger.debug(f"Cannot send to client {client_id}: WebSocket is not open (state: {connection.websocket.client_state})")
             # Remove the closed connection
             await self.disconnect_client(client_id, "websocket_not_open")

@@ -127,15 +127,16 @@ class CleanUpCrewService:
     async def get_day_status(self, days_date: str) -> ProcessingStatus:
         """Get processing status for a specific day"""
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute("""
                     SELECT semantic_status, COUNT(*) as count
                     FROM data_items 
                     WHERE days_date = ? AND namespace = 'limitless'
                     GROUP BY semantic_status
-                """, (days_date,))
-                
-                status_counts = {row['semantic_status']: row['count'] for row in cursor.fetchall()}
+                """, (days_date,)) as cursor:
+                    
+                    rows = await cursor.fetchall()
+                    status_counts = {row['semantic_status']: row['count'] for row in rows}
                 
                 if not status_counts:
                     return ProcessingStatus.PENDING
@@ -162,22 +163,23 @@ class CleanUpCrewService:
     async def get_processing_queue_status(self) -> Dict[str, Any]:
         """Get comprehensive status of the processing queue"""
         try:
-            with self.database.get_connection() as conn:
+            async with self.database.get_async_connection() as conn:
                 # Get status breakdown by day
-                cursor = conn.execute("""
+                async with conn.execute("""
                     SELECT days_date, semantic_status, COUNT(*) as count
                     FROM data_items 
                     WHERE namespace = 'limitless'
                     GROUP BY days_date, semantic_status
                     ORDER BY days_date DESC
-                """)
-                
-                day_status = {}
-                for row in cursor.fetchall():
-                    days_date = row['days_date']
-                    if days_date not in day_status:
-                        day_status[days_date] = {}
-                    day_status[days_date][row['semantic_status']] = row['count']
+                """) as cursor:
+                    
+                    rows = await cursor.fetchall()
+                    day_status = {}
+                    for row in rows:
+                        days_date = row['days_date']
+                        if days_date not in day_status:
+                            day_status[days_date] = {}
+                        day_status[days_date][row['semantic_status']] = row['count']
                 
                 # Calculate summary statistics
                 total_days = len(day_status)
@@ -280,9 +282,9 @@ class CleanUpCrewService:
     async def get_processing_statistics(self) -> ProcessingStats:
         """Get comprehensive processing statistics"""
         try:
-            with self.database.get_connection() as conn:
+            async with self.database.get_async_connection() as conn:
                 # Basic statistics
-                cursor = conn.execute("""
+                async with conn.execute("""
                     SELECT 
                         COUNT(DISTINCT days_date) as total_days,
                         COUNT(*) as total_items,
@@ -290,12 +292,13 @@ class CleanUpCrewService:
                     FROM data_items 
                     WHERE namespace = 'limitless'
                     GROUP BY semantic_status
-                """)
-                
-                status_stats = {row['semantic_status']: {
-                    'days': row['total_days'], 
-                    'items': row['total_items']
-                } for row in cursor.fetchall()}
+                """) as cursor:
+                    
+                    rows = await cursor.fetchall()
+                    status_stats = {row['semantic_status']: {
+                        'days': row['total_days'], 
+                        'items': row['total_items']
+                    } for row in rows}
                 
                 # Calculate totals and success rate
                 total_items = sum(stats['items'] for stats in status_stats.values())
@@ -303,8 +306,9 @@ class CleanUpCrewService:
                 success_rate = completed_items / total_items if total_items > 0 else 0
                 
                 # Get cluster statistics
-                cursor = conn.execute("SELECT COUNT(*) as cluster_count FROM semantic_clusters")
-                cluster_count = cursor.fetchone()['cluster_count']
+                async with conn.execute("SELECT COUNT(*) as cluster_count FROM semantic_clusters") as cursor:
+                    row = await cursor.fetchone()
+                    cluster_count = row['cluster_count']
                 
                 return ProcessingStats(
                     total_days_processed=sum(stats['days'] for stats in status_stats.values()),
@@ -427,7 +431,7 @@ class CleanUpCrewService:
     async def _get_pending_days(self, limit: Optional[int] = None) -> List[str]:
         """Get list of days with pending semantic processing"""
         try:
-            with self.database.get_connection() as conn:
+            async with self.database.get_async_connection() as conn:
                 query = """
                     SELECT DISTINCT days_date
                     FROM data_items 
@@ -439,8 +443,9 @@ class CleanUpCrewService:
                 if limit:
                     query += f" LIMIT {limit}"
                 
-                cursor = conn.execute(query)
-                return [row['days_date'] for row in cursor.fetchall()]
+                async with conn.execute(query) as cursor:
+                    rows = await cursor.fetchall()
+                    return [row['days_date'] for row in rows]
                 
         except Exception as e:
             logger.error(f"Error getting pending days: {e}")
@@ -449,15 +454,16 @@ class CleanUpCrewService:
     async def _get_day_items(self, days_date: str) -> List[Dict[str, Any]]:
         """Get all data items for a specific day"""
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute("""
                     SELECT id, namespace, source_id, content, metadata, created_at, updated_at
                     FROM data_items
                     WHERE days_date = ? AND namespace = 'limitless'
                     ORDER BY created_at
-                """, (days_date,))
-                
-                return [dict(row) for row in cursor.fetchall()]
+                """, (days_date,)) as cursor:
+                    
+                    rows = await cursor.fetchall()
+                    return [dict(row) for row in rows]
                 
         except Exception as e:
             logger.error(f"Error getting items for day {days_date}: {e}")
@@ -466,13 +472,13 @@ class CleanUpCrewService:
     async def _update_day_items_status(self, days_date: str, status: ProcessingStatus):
         """Update semantic_status for all items in a day"""
         try:
-            with self.database.get_connection() as conn:
-                conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                await conn.execute("""
                     UPDATE data_items 
                     SET semantic_status = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE days_date = ? AND namespace = 'limitless'
                 """, (status.value, days_date))
-                conn.commit()
+                await conn.commit()
                 
                 logger.debug(f"Updated {days_date} items to status: {status.value}")
                 
@@ -488,14 +494,14 @@ class CleanUpCrewService:
                        f"{queue_status['completed_days']} completed days")
             
             # Reset any items stuck in 'processing' state (from previous crash/restart)
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute("""
                     UPDATE data_items 
                     SET semantic_status = 'pending', updated_at = CURRENT_TIMESTAMP
                     WHERE semantic_status = 'processing' AND namespace = 'limitless'
-                """)
-                reset_count = cursor.rowcount
-                conn.commit()
+                """) as cursor:
+                    reset_count = cursor.rowcount
+                await conn.commit()
                 
                 if reset_count > 0:
                     logger.info(f"Reset {reset_count} items from 'processing' to 'pending' status")

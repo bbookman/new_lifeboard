@@ -404,7 +404,7 @@ async def count_documents(
 ) -> Dict[str, int]:
     """Fast document count for performance optimization - returns count without loading full documents"""
     try:
-        count = document_service.count_documents(
+        count = await document_service.count_documents(
             document_type=document_type,
             folder_path=folder_path
         )

@@ -88,7 +88,7 @@ class TestLLMServiceSummaryWorkflow:
             }
         }
 
-    def test_generate_daily_summary_with_user_defined_prompt(self, mock_dependencies, sample_multi_namespace_data):
+    async def test_generate_daily_summary_with_user_defined_prompt(self, mock_dependencies, sample_multi_namespace_data):
         """Test complete summary generation with user-defined prompt and multi-namespace data"""
         database, document_service, config, mock_cursor = mock_dependencies
         
@@ -156,7 +156,7 @@ class TestLLMServiceSummaryWorkflow:
         call_args = mock_llm_provider.generate_response.call_args[0][0]
         assert "Create a comprehensive daily summary for 2024-01-15" in call_args
 
-    def test_generate_daily_summary_no_llm_provider_configured(self, mock_dependencies):
+    async def test_generate_daily_summary_no_llm_provider_configured(self, mock_dependencies):
         """Test summary generation when no LLM provider is configured"""
         database, document_service, config, mock_cursor = mock_dependencies
         
@@ -173,7 +173,7 @@ class TestLLMServiceSummaryWorkflow:
         assert result.content == ""
         assert result.generation_time == 0
 
-    def test_generate_daily_summary_no_data_available(self, mock_dependencies):
+    async def test_generate_daily_summary_no_data_available(self, mock_dependencies):
         """Test summary generation when no data exists for the given date"""
         database, document_service, config, mock_cursor = mock_dependencies
         
@@ -224,7 +224,7 @@ class TestLLMServiceSummaryWorkflow:
         assert "No significant data available" in result.content
         assert "quiet day" in result.content
 
-    def test_generate_daily_summary_no_prompt_defined(self, mock_dependencies):
+    async def test_generate_daily_summary_no_prompt_defined(self, mock_dependencies):
         """Test summary generation when user has not defined a summary prompt"""
         database, document_service, config, mock_cursor = mock_dependencies
         
@@ -247,7 +247,7 @@ class TestLLMServiceSummaryWorkflow:
         assert result.success is False
         assert "No summary prompt configured" in result.error_message or "prompt" in result.error_message.lower()
 
-    def test_cached_summary_retrieval_and_storage(self, mock_dependencies):
+    async def test_cached_summary_retrieval_and_storage(self, mock_dependencies):
         """Test caching behavior for generated summaries"""
         database, document_service, config, mock_cursor = mock_dependencies
         
@@ -271,7 +271,7 @@ class TestLLMServiceSummaryWorkflow:
         
         assert cached_miss is None
 
-    def test_generate_daily_summary_with_force_regenerate(self, mock_dependencies, sample_multi_namespace_data):
+    async def test_generate_daily_summary_with_force_regenerate(self, mock_dependencies, sample_multi_namespace_data):
         """Test force regeneration bypasses cache and creates new summary"""
         database, document_service, config, mock_cursor = mock_dependencies
         
@@ -323,7 +323,7 @@ class TestLLMServiceSummaryWorkflow:
         # Verify LLM was called for generation
         mock_llm_provider.generate_response.assert_called_once()
 
-    def test_generate_daily_summary_llm_error_handling(self, mock_dependencies):
+    async def test_generate_daily_summary_llm_error_handling(self, mock_dependencies):
         """Test handling of LLM generation errors"""
         database, document_service, config, mock_cursor = mock_dependencies
         
@@ -363,7 +363,7 @@ class TestLLMServiceSummaryWorkflow:
         assert result.success is False
         assert "timeout" in result.error_message.lower() or "error" in result.error_message.lower()
 
-    def test_build_daily_context_multi_namespace_aggregation(self, mock_dependencies, sample_multi_namespace_data):
+    async def test_build_daily_context_multi_namespace_aggregation(self, mock_dependencies, sample_multi_namespace_data):
         """Test _build_daily_context correctly aggregates data from all namespaces"""
         database, document_service, config, mock_cursor = mock_dependencies
         
@@ -392,7 +392,7 @@ class TestLLMServiceSummaryWorkflow:
         assert "partly cloudy" in context
         assert "22" in context
 
-    def test_summary_storage_after_generation(self, mock_dependencies):
+    async def test_summary_storage_after_generation(self, mock_dependencies):
         """Test that generated summaries are properly stored in database"""
         database, document_service, config, mock_cursor = mock_dependencies
         
@@ -465,7 +465,7 @@ class TestLLMServicePromptManagement:
         
         return database, document_service, config, mock_cursor
 
-    def test_prompt_setting_retrieval(self, mock_dependencies):
+    async def test_prompt_setting_retrieval(self, mock_dependencies):
         """Test retrieval of user-defined prompt settings"""
         database, document_service, config, mock_cursor = mock_dependencies
         

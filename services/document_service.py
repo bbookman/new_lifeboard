@@ -111,7 +111,7 @@ class DocumentService(BaseService):
         )
         
         # Store in database
-        self._store_document(document)
+        await self._store_document(document)
         
         # Create vector embeddings if content is not empty
         if content_md.strip():
@@ -132,7 +132,7 @@ class DocumentService(BaseService):
         logger.info(f"[DEBUG] update_document called with: doc_id={doc_id}, title={title}, document_type={document_type}")
         
         # Get existing document
-        document = self.get_document(doc_id)
+        document = await self.get_document(doc_id)
         if not document:
             raise ValueError(f"Document {doc_id} not found")
         
@@ -173,7 +173,7 @@ class DocumentService(BaseService):
         logger.info(f"[DEBUG] Document before storing: type={document.document_type}, title={document.title}")
         
         # Update in database
-        self._store_document(document)
+        await self._store_document(document)
         
         # Update vector embeddings if content changed
         if content_delta is not None:
@@ -182,28 +182,28 @@ class DocumentService(BaseService):
         logger.info(f"Updated document: {doc_id} - {document.title} (type: {document.document_type})")
         return document
     
-    def get_document(self, doc_id: str) -> Optional[Document]:
+    async def get_document(self, doc_id: str) -> Optional[Document]:
         """Get a document by ID"""
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute("""
                     SELECT id, title, document_type, content_delta, content_md,
                            path, is_folder, url, created_at, updated_at
                     FROM user_documents 
                     WHERE id = ?
-                """, (doc_id,))
-                
-                row = cursor.fetchone()
-                if not row:
-                    return None
-                
-                return self._row_to_document(row)
+                """, (doc_id,)) as cursor:
+                    
+                    row = await cursor.fetchone()
+                    if not row:
+                        return None
+                    
+                    return self._row_to_document(row)
             
         except Exception as e:
             logger.error(f"Error getting document {doc_id}: {e}")
             return None
     
-    def list_documents(self,
+    async def list_documents(self,
                       document_type: Optional[str] = None,
                       limit: int = 50,
                       offset: int = 0) -> List[Document]:
@@ -211,7 +211,7 @@ class DocumentService(BaseService):
         try:
             # Performance optimization: Early exit for empty results
             if offset == 0:  # Only check count for first page
-                count = self.count_documents(document_type=document_type)
+                count = await self.count_documents(document_type=document_type)
                 if count == 0:
                     return []  # Early exit - no documents to load
             
@@ -231,11 +231,11 @@ class DocumentService(BaseService):
             query += " ORDER BY updated_at DESC LIMIT ? OFFSET ?"
             params.extend([limit, offset])
             
-            with self.database.get_connection() as conn:
-                cursor = conn.execute(query, params)
-                rows = cursor.fetchall()
-                
-                return [self._row_to_document(row) for row in rows]
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute(query, params) as cursor:
+                    rows = await cursor.fetchall()
+                    
+                    return [self._row_to_document(row) for row in rows]
             
         except Exception as e:
             logger.error(f"Error listing documents: {e}")
@@ -248,25 +248,25 @@ class DocumentService(BaseService):
             await self._remove_document_embeddings(doc_id)
             
             # Remove from database (FTS5 will be updated by triggers)
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute("""
                     DELETE FROM user_documents 
                     WHERE id = ?
-                """, (doc_id,))
-                
-                if cursor.rowcount > 0:
-                    conn.commit()
-                    logger.info(f"Deleted document: {doc_id}")
-                    return True
-                else:
-                    logger.warning(f"Document {doc_id} not found for deletion")
-                    return False
+                """, (doc_id,)) as cursor:
+                    
+                    if cursor.rowcount > 0:
+                        await conn.commit()
+                        logger.info(f"Deleted document: {doc_id}")
+                        return True
+                    else:
+                        logger.warning(f"Document {doc_id} not found for deletion")
+                        return False
                 
         except Exception as e:
             logger.error(f"Error deleting document {doc_id}: {e}")
             return False
     
-    def search_documents(self,
+    async def search_documents(self,
                         query: str,
                         document_type: Optional[str] = None,
                         limit: int = 20) -> List[Tuple[Document, float]]:
@@ -274,10 +274,10 @@ class DocumentService(BaseService):
         results = []
         
         # 1. FTS5 text search
-        fts_results = self._search_documents_fts(query, document_type, limit)
+        fts_results = await self._search_documents_fts(query, document_type, limit)
         
         # 2. Vector similarity search
-        vector_results = self._search_documents_vector(query, document_type, limit)
+        vector_results = await self._search_documents_vector(query, document_type, limit)
         
         # 3. Merge and deduplicate results
         doc_scores = {}
@@ -319,7 +319,7 @@ class DocumentService(BaseService):
         folder_path = parent_path + name + "/"
         
         # Check if folder already exists
-        if self._path_exists(folder_path):
+        if await self._path_exists(folder_path):
             raise ValueError(f"Folder already exists: {folder_path}")
         
         # Generate folder ID
@@ -340,12 +340,12 @@ class DocumentService(BaseService):
         )
         
         # Store in database
-        self._store_document(folder)
+        await self._store_document(folder)
         
         logger.info(f"Created folder: {folder_path}")
         return folder
     
-    def list_folder_contents(self,
+    async def list_folder_contents(self,
                            folder_path: str = "/",
                            include_folders: bool = True) -> List[Document]:
         """List immediate contents of a folder"""
@@ -357,10 +357,10 @@ class DocumentService(BaseService):
         
         try:
             # Performance optimization: Early exit for empty folders
-            count = self.count_documents(folder_path=folder_path)
+            count = await self.count_documents(folder_path=folder_path)
             if count == 0:
                 return []  # Early exit - no documents in this folder
-            with self.database.get_connection() as conn:
+            async with self.database.get_async_connection() as conn:
                 # Simplified approach: find items whose parent directory matches folder_path
                 # Extract parent directory from path and compare
                 
@@ -409,10 +409,10 @@ class DocumentService(BaseService):
                 
                 query += " ORDER BY is_folder DESC, title ASC"
                 
-                cursor = conn.execute(query, params)
-                rows = cursor.fetchall()
-                
-                return [self._row_to_document(row) for row in rows]
+                async with conn.execute(query, params) as cursor:
+                    rows = await cursor.fetchall()
+                    
+                    return [self._row_to_document(row) for row in rows]
             
         except Exception as e:
             logger.error(f"Error listing folder contents {folder_path}: {e}")
@@ -441,30 +441,30 @@ class DocumentService(BaseService):
                 new_path = new_parent_path + item.title
             
             # Check for conflicts
-            if self._path_exists(new_path):
+            if await self._path_exists(new_path):
                 raise ValueError(f"Item already exists at destination: {new_path}")
             
-            with self.database.get_connection() as conn:
+            async with self.database.get_async_connection() as conn:
                 if item.is_folder:
                     # Move folder and all its contents
                     old_path_prefix = item.path
                     new_path_prefix = new_path
                     
                     # Update all items in the folder
-                    conn.execute("""
+                    await conn.execute("""
                         UPDATE user_documents 
                         SET path = REPLACE(path, ?, ?), updated_at = CURRENT_TIMESTAMP
                         WHERE path LIKE ?
                     """, (old_path_prefix, new_path_prefix, old_path_prefix + "%"))
                 else:
                     # Move single document
-                    conn.execute("""
+                    await conn.execute("""
                         UPDATE user_documents 
                         SET path = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                     """, (new_path, item_id))
                 
-                conn.commit()
+                await conn.commit()
                 logger.info(f"Moved item {item_id} from {item.path} to {new_path}")
                 return True
                 
@@ -483,59 +483,63 @@ class DocumentService(BaseService):
             folder_path += '/'
         
         try:
-            with self.database.get_connection() as conn:
+            async with self.database.get_async_connection() as conn:
                 if recursive:
                     # Delete folder and all contents
-                    cursor = conn.execute("""
+                    async with conn.execute("""
                         DELETE FROM user_documents 
                         WHERE path LIKE ?
-                    """, (folder_path + "%",))
+                    """, (folder_path + "%",)) as cursor:
+                        pass
                 else:
                     # Check if folder is empty
-                    cursor = conn.execute("""
+                    async with conn.execute("""
                         SELECT COUNT(*) as count FROM user_documents 
                         WHERE path LIKE ? AND path != ?
-                    """, (folder_path + "%", folder_path))
-                    
-                    if cursor.fetchone()['count'] > 0:
-                        raise ValueError("Cannot delete non-empty folder. Use recursive=True")
+                    """, (folder_path + "%", folder_path)) as cursor:
+                        row = await cursor.fetchone()
+                        
+                        if row['count'] > 0:
+                            raise ValueError("Cannot delete non-empty folder. Use recursive=True")
                     
                     # Delete empty folder
-                    cursor = conn.execute("""
+                    async with conn.execute("""
                         DELETE FROM user_documents 
                         WHERE path = ? AND is_folder = TRUE
-                    """, (folder_path,))
+                    """, (folder_path,)) as cursor:
+                        pass
                 
-                conn.commit()
+                await conn.commit()
                 logger.info(f"Deleted folder: {folder_path}")
-                return cursor.rowcount > 0
+                return True  # Assume success if no exception
                 
         except Exception as e:
             logger.error(f"Error deleting folder {folder_path}: {e}")
             return False
     
-    def _path_exists(self, path: str) -> bool:
+    async def _path_exists(self, path: str) -> bool:
         """Check if a path already exists"""
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute("""
                     SELECT COUNT(*) as count FROM user_documents 
                     WHERE path = ?
-                """, (path,))
-                
-                return cursor.fetchone()['count'] > 0
+                """, (path,)) as cursor:
+                    
+                    row = await cursor.fetchone()
+                    return row['count'] > 0
         except Exception as e:
             logger.error(f"Error checking path existence {path}: {e}")
             return False
     
-    def title_exists(self, title: str, document_type: str, exclude_id: Optional[str] = None) -> bool:
+    async def title_exists(self, title: str, document_type: str, exclude_id: Optional[str] = None) -> bool:
         """Check if a title already exists for the given document type (excluding links)"""
         # Skip uniqueness check for links
         if document_type == 'link':
             return False
             
         try:
-            with self.database.get_connection() as conn:
+            async with self.database.get_async_connection() as conn:
                 query = """
                     SELECT COUNT(*) as count FROM user_documents 
                     WHERE LOWER(title) = LOWER(?) AND document_type != 'link'
@@ -546,18 +550,19 @@ class DocumentService(BaseService):
                     query += " AND id != ?"
                     params.append(exclude_id)
                 
-                cursor = conn.execute(query, params)
-                return cursor.fetchone()['count'] > 0
+                async with conn.execute(query, params) as cursor:
+                    row = await cursor.fetchone()
+                    return row['count'] > 0
                 
         except Exception as e:
             logger.error(f"Error checking title existence '{title}': {e}")
             return False
     
-    def _store_document(self, document: Document):
+    async def _store_document(self, document: Document):
         """Store document in database"""
         try:
-            with self.database.get_connection() as conn:
-                conn.execute("""
+            async with self.database.get_async_connection() as conn:
+                await conn.execute("""
                     INSERT OR REPLACE INTO user_documents 
                     (id, title, document_type, content_delta, content_md, path, is_folder, url, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -573,7 +578,7 @@ class DocumentService(BaseService):
                     document.created_at.isoformat(),
                     document.updated_at.isoformat()
                 ))
-                conn.commit()
+                await conn.commit()
             
         except Exception as e:
             logger.error(f"Error storing document {document.id}: {e}")
@@ -739,7 +744,7 @@ class DocumentService(BaseService):
         
         return chunks
     
-    def _search_documents_fts(self,
+    async def _search_documents_fts(self,
                              query: str,
                              document_type: Optional[str],
                              limit: int) -> List[Tuple[Document, float]]:
@@ -765,15 +770,15 @@ class DocumentService(BaseService):
             sql += " ORDER BY score LIMIT ?"
             params.append(limit)
             
-            with self.database.get_connection() as conn:
-                cursor = conn.execute(sql, params)
-                rows = cursor.fetchall()
-                
-                results = []
-                for row in rows:
-                    document = self._row_to_document(row)
-                    score = abs(row['score']) if row['score'] else 0.0  # BM25 scores can be negative
-                    results.append((document, score))
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute(sql, params) as cursor:
+                    rows = await cursor.fetchall()
+                    
+                    results = []
+                    for row in rows:
+                        document = self._row_to_document(row)
+                        score = abs(row['score']) if row['score'] else 0.0  # BM25 scores can be negative
+                        results.append((document, score))
             
             return results
             
@@ -781,16 +786,14 @@ class DocumentService(BaseService):
             logger.error(f"Error in FTS search: {e}")
             return []
     
-    def _search_documents_vector(self,
+    async def _search_documents_vector(self,
                                 query: str,
                                 document_type: Optional[str],
                                 limit: int) -> List[Tuple[Document, float]]:
         """Search documents using vector similarity"""
         try:
             # Generate query embedding
-            import asyncio
-            loop = asyncio.get_event_loop()
-            query_embedding = loop.run_until_complete(self.embedding_service.embed_text(query))
+            query_embedding = await self.embedding_service.embed_text(query)
             
             # Search vector store with namespace filter
             vector_results = self.vector_store.search(
@@ -812,7 +815,7 @@ class DocumentService(BaseService):
             # Get documents and apply filters
             results = []
             for doc_id, score in doc_scores.items():
-                document = self.get_document(doc_id)
+                document = await self.get_document(doc_id)
                 if document and (not document_type or document.document_type == document_type):
                     results.append((document, score))
             
@@ -847,7 +850,7 @@ class DocumentService(BaseService):
             self.logger.error(f"Error during DocumentService shutdown: {e}")
             return False
     
-    def count_documents(self,
+    async def count_documents(self,
                        document_type: Optional[str] = None,
                        folder_path: Optional[str] = None) -> int:
         """Fast count of documents for performance optimization"""
@@ -860,7 +863,7 @@ class DocumentService(BaseService):
                 if not folder_path.endswith('/'):
                     folder_path += '/'
                 
-                with self.database.get_connection() as conn:
+                async with self.database.get_async_connection() as conn:
                     if folder_path == '/':
                         # Root folder: count items with no subdirectories
                         query = """
@@ -899,9 +902,9 @@ class DocumentService(BaseService):
                         else:
                             query += " WHERE is_folder = TRUE"
                     
-                    cursor = conn.execute(query, params)
-                    result = cursor.fetchone()
-                    return result['count'] if result else 0
+                    async with conn.execute(query, params) as cursor:
+                        result = await cursor.fetchone()
+                        return result['count'] if result else 0
             else:
                 # Count all documents with optional type filter
                 query = "SELECT COUNT(*) as count FROM user_documents WHERE 1=1"
@@ -911,16 +914,16 @@ class DocumentService(BaseService):
                     query += " AND document_type = ?"
                     params.append(document_type)
                 
-                with self.database.get_connection() as conn:
-                    cursor = conn.execute(query, params)
-                    result = cursor.fetchone()
-                    return result['count'] if result else 0
+                async with self.database.get_async_connection() as conn:
+                    async with conn.execute(query, params) as cursor:
+                        result = await cursor.fetchone()
+                        return result['count'] if result else 0
                     
         except Exception as e:
             logger.error(f"Error counting documents: {e}")
             return 0
     
-    def process_template(self, content: str, target_date: Optional[str] = None) -> str:
+    async def process_template(self, content: str, target_date: Optional[str] = None) -> str:
         """
         Process template variables in content and return resolved version
         
@@ -941,7 +944,7 @@ class DocumentService(BaseService):
             )
             
             # Resolve template
-            result = template_processor.resolve_template(content, target_date)
+            result = await template_processor.resolve_template(content, target_date)
             
             if result.errors:
                 logger.warning(f"Template processing errors: {result.errors}")
@@ -995,11 +998,11 @@ class DocumentService(BaseService):
         try:
             # Check database connectivity
             test_query = "SELECT COUNT(*) as count FROM user_documents"
-            with self.database.get_connection() as conn:
-                cursor = conn.execute(test_query)
-                result = cursor.fetchone()
-                health_info["total_documents"] = result['count'] if result else 0
-                health_info["database_available"] = True
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute(test_query) as cursor:
+                    result = await cursor.fetchone()
+                    health_info["total_documents"] = result['count'] if result else 0
+                    health_info["database_available"] = True
             
             # Check vector store
             vs_stats = self.vector_store.get_stats()
