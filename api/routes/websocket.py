@@ -71,11 +71,21 @@ async def websocket_processing_updates(
             logger.error(f"Client {actual_client_id} not found in connections after connect_client")
             return
         
-        # Auto-subscribe to general processing updates
-        await manager.subscribe_client(actual_client_id, [
-            "processing_updates",
-            "queue_stats"
-        ])
+        # Send connection confirmation
+        confirmation_sent = await manager.confirm_client_connection(actual_client_id)
+        if not confirmation_sent:
+            logger.error(f"Failed to confirm connection for client {actual_client_id}")
+            return
+        
+        # Auto-subscribe to general processing updates after confirmation
+        try:
+            await manager.subscribe_client(actual_client_id, [
+                "processing_updates",
+                "queue_stats"
+            ])
+        except Exception as sub_error:
+            logger.warning(f"Failed to auto-subscribe client {actual_client_id}: {sub_error}")
+            # Continue anyway, client can manually subscribe
         
         # Handle client messages
         while True:

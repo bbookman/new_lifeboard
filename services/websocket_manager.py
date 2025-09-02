@@ -39,18 +39,31 @@ class WebSocketMessage:
             self.message_id = str(uuid.uuid4())
 
 
+class ConnectionState(Enum):
+    """WebSocket client connection states"""
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    CONFIRMED = "confirmed"
+    DISCONNECTING = "disconnecting"
+    DISCONNECTED = "disconnected"
+
+
 @dataclass
 class ClientConnection:
-    """Represents a connected WebSocket client"""
+    """Represents a connected WebSocket client with state tracking"""
     websocket: WebSocket
     client_id: str
     connected_at: datetime
     subscriptions: Set[str]
     last_heartbeat: datetime
+    state: ConnectionState
+    connection_failures: int = 0
     
     def __post_init__(self):
         if not self.subscriptions:
             self.subscriptions = set()
+        if not hasattr(self, 'state'):
+            self.state = ConnectionState.CONNECTING
 
 
 class WebSocketManager:
@@ -106,10 +119,11 @@ class WebSocketManager:
         logger.info("WebSocketManager stopped")
     
     async def connect_client(self, websocket: WebSocket, client_id: str = None) -> str:
-        """Connect a new WebSocket client with improved error handling"""
+        """Connect a new WebSocket client with atomic setup and deferred confirmation"""
         if client_id is None:
             client_id = str(uuid.uuid4())
         
+        connection = None
         try:
             # Accept the WebSocket connection (FastAPI handles state validation)
             await websocket.accept()
@@ -119,56 +133,88 @@ class WebSocketManager:
                 logger.error(f"WebSocket accept succeeded but client_state is {websocket.client_state}")
                 raise ConnectionError(f"WebSocket accept failed - state: {websocket.client_state}")
             
+            # Create connection in CONNECTING state (not CONNECTED yet)
             connection = ClientConnection(
                 websocket=websocket,
                 client_id=client_id,
                 connected_at=datetime.now(timezone.utc),
                 subscriptions=set(),
-                last_heartbeat=datetime.now(timezone.utc)
+                last_heartbeat=datetime.now(timezone.utc),
+                state=ConnectionState.CONNECTING
             )
             
+            # Register connection but don't send confirmation yet
             self.connections[client_id] = connection
-            logger.info(f"Client {client_id} connected. Total connections: {len(self.connections)}")
+            connection.state = ConnectionState.CONNECTED
             
-            # Send connection confirmation with error handling
-            try:
-                await self._send_to_client(client_id, WebSocketMessage(
-                    type=MessageType.HEARTBEAT,
-                    data={"status": "connected", "client_id": client_id}
-                ))
-            except Exception as send_error:
-                logger.warning(f"Failed to send connection confirmation to {client_id}: {send_error}")
-                # Don't fail connection setup for this, client can still receive other messages
+            logger.info(f"Client {client_id} connected. Total connections: {len(self.connections)}")
             
             return client_id
             
         except Exception as e:
             logger.error(f"Failed to connect client {client_id}: {e}")
             # Clean up any partial connection state
-            if client_id in self.connections:
+            if connection and client_id in self.connections:
                 del self.connections[client_id]
             raise
     
+    async def confirm_client_connection(self, client_id: str) -> bool:
+        """Send connection confirmation to a client, marking connection as CONFIRMED"""
+        if client_id not in self.connections:
+            logger.warning(f"Cannot confirm unknown client: {client_id}")
+            return False
+        
+        connection = self.connections[client_id]
+        
+        if connection.state != ConnectionState.CONNECTED:
+            logger.warning(f"Cannot confirm client {client_id} in state {connection.state}")
+            return False
+        
+        try:
+            await self._send_to_client(client_id, WebSocketMessage(
+                type=MessageType.HEARTBEAT,
+                data={"status": "connected", "client_id": client_id}
+            ))
+            connection.state = ConnectionState.CONFIRMED
+            logger.debug(f"Client {client_id} connection confirmed")
+            return True
+            
+        except Exception as send_error:
+            logger.warning(f"Failed to send connection confirmation to {client_id}: {send_error}")
+            # Connection confirmation is critical - disconnect immediately
+            await self.disconnect_client(client_id, f"confirmation_failed: {send_error}")
+            return False
+    
     async def disconnect_client(self, client_id: str, reason: str = "normal_closure"):
-        """Disconnect a WebSocket client"""
+        """Safely disconnect a WebSocket client with improved state handling"""
         if client_id not in self.connections:
             logger.warning(f"Attempted to disconnect unknown client: {client_id}")
             return
 
         connection = self.connections[client_id]
+        
+        # Update connection state to prevent concurrent operations
+        connection.state = ConnectionState.DISCONNECTING
 
         # Remove from all subscriptions
         for topic in list(connection.subscriptions):
             await self._unsubscribe_client_from_topic(client_id, topic)
 
-        # Close WebSocket connection if not already closed/closing
+        # Close WebSocket connection safely
         try:
-            if connection.websocket.client_state not in {WebSocketState.DISCONNECTED}:
+            # Check multiple conditions for safe close
+            websocket_state = connection.websocket.client_state
+            if websocket_state in {WebSocketState.CONNECTED, WebSocketState.CONNECTING}:
                 await connection.websocket.close(reason=reason)
+            elif websocket_state == WebSocketState.DISCONNECTED:
+                logger.debug(f"WebSocket for client {client_id} already disconnected")
+            else:
+                logger.debug(f"WebSocket for client {client_id} in state {websocket_state}, skipping close")
         except Exception as e:
             logger.debug(f"Error closing WebSocket for client {client_id}: {e}")
 
-        # Remove from connections
+        # Update state and remove from connections
+        connection.state = ConnectionState.DISCONNECTED
         del self.connections[client_id]
         logger.info(f"Client {client_id} disconnected ({reason}). Total connections: {len(self.connections)})")
     
@@ -230,7 +276,7 @@ class WebSocketManager:
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            # Handle send failures
+            # Handle send failures with improved error handling
             failed_clients = []
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
@@ -238,9 +284,9 @@ class WebSocketManager:
                     logger.warning(f"Failed to send to client {failed_client}: {result}")
                     failed_clients.append(failed_client)
             
-            # Disconnect failed clients
+            # Handle failed clients with connection failure tracking
             for client_id in failed_clients:
-                await self.disconnect_client(client_id, "send_failure")
+                await self._handle_connection_failure(client_id, "broadcast_send_failure")
     
     async def send_processing_status(self, days_date: str, status: str, progress: Dict[str, Any] = None):
         """Send processing status update for a specific day"""
@@ -320,13 +366,26 @@ class WebSocketManager:
                 await self._send_error_to_client(client_id, f"Message handling error: {e}")
     
     async def get_connection_stats(self) -> Dict[str, Any]:
-        """Get connection and subscription statistics"""
+        """Get comprehensive connection and subscription statistics"""
         topic_stats = {}
         for topic, subscribers in self.subscriptions.items():
             topic_stats[topic] = len(subscribers)
         
+        # Connection state breakdown
+        state_stats = {}
+        for connection in self.connections.values():
+            state = connection.state.value
+            state_stats[state] = state_stats.get(state, 0) + 1
+        
+        # Connection health stats
+        healthy_connections = sum(1 for conn in self.connections.values() if conn.connection_failures == 0)
+        unhealthy_connections = len(self.connections) - healthy_connections
+        
         return {
             "total_connections": len(self.connections),
+            "healthy_connections": healthy_connections,
+            "unhealthy_connections": unhealthy_connections,
+            "connection_states": state_stats,
             "total_topics": len(self.subscriptions),
             "topic_subscribers": topic_stats,
             "heartbeat_interval": self.heartbeat_interval,
@@ -335,18 +394,27 @@ class WebSocketManager:
         }
     
     async def _send_to_client(self, client_id: str, message: WebSocketMessage):
-        """Send a message to a specific client"""
+        """Send a message to a specific client with enhanced error handling"""
         if client_id not in self.connections:
             raise ValueError(f"Client {client_id} not connected")
 
         connection = self.connections[client_id]
 
+        # Check connection state before attempting send
+        if connection.state == ConnectionState.DISCONNECTING:
+            logger.debug(f"Cannot send to client {client_id}: connection is disconnecting")
+            raise ConnectionError(f"Client {client_id} is disconnecting")
+        
+        if connection.state == ConnectionState.DISCONNECTED:
+            logger.debug(f"Cannot send to client {client_id}: connection is disconnected")
+            raise ConnectionError(f"Client {client_id} is disconnected")
+
         # Check if WebSocket connection is still valid
-        if connection.websocket.client_state != WebSocketState.CONNECTED:
-            logger.debug(f"Cannot send to client {client_id}: WebSocket is not open (state: {connection.websocket.client_state})")
-            # Remove the closed connection
-            await self.disconnect_client(client_id, "websocket_not_open")
-            raise ConnectionError(f"WebSocket for client {client_id} is not open (state: {connection.websocket.client_state})")
+        websocket_state = connection.websocket.client_state
+        if websocket_state != WebSocketState.CONNECTED:
+            logger.debug(f"Cannot send to client {client_id}: WebSocket is not open (state: {websocket_state})")
+            # Don't immediately disconnect - let the calling code handle it
+            raise ConnectionError(f"WebSocket for client {client_id} is not open (state: {websocket_state})")
 
         try:
             message_json = json.dumps({
@@ -357,15 +425,33 @@ class WebSocketManager:
             })
 
             await connection.websocket.send_text(message_json)
+            
+            # Reset failure count on successful send
+            connection.connection_failures = 0
 
         except Exception as e:
-            logger.error(f"Error sending message to client {client_id}: {e}")
-            # If send fails, likely the connection is dead - disconnect client
-            try:
-                await self.disconnect_client(client_id, f"send_error: {e}")
-            except Exception as close_error:
-                logger.debug(f"Error during disconnect after send failure for client {client_id}: {close_error}")
-            raise
+            # Increment failure count
+            connection.connection_failures += 1
+            logger.error(f"Error sending message to client {client_id} (failure #{connection.connection_failures}): {e}")
+            
+            # Don't automatically disconnect - let calling code decide
+            # This prevents cascading disconnect errors
+            raise ConnectionError(f"Failed to send message to client {client_id}: {e}")
+    
+    async def _handle_connection_failure(self, client_id: str, reason: str):
+        """Handle connection failure with circuit breaker pattern"""
+        if client_id not in self.connections:
+            return
+        
+        connection = self.connections[client_id]
+        connection.connection_failures += 1
+        
+        # Implement circuit breaker - disconnect after multiple failures
+        if connection.connection_failures >= 3:
+            logger.warning(f"Client {client_id} has {connection.connection_failures} failures, disconnecting")
+            await self.disconnect_client(client_id, f"too_many_failures: {reason}")
+        else:
+            logger.debug(f"Client {client_id} failure #{connection.connection_failures}: {reason}")
     
     async def _send_error_to_client(self, client_id: str, error_message: str):
         """Send error message to client"""

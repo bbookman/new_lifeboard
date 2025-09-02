@@ -66,6 +66,26 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     initializeServerToday();
   }, []);
   
+  // Calculate date range for calendar view (includes prev/next month dates)
+  const getCalendarDateRange = (year: number, month: number) => {
+    const firstDayOfMonth = new Date(year, month, 1);
+    const firstDayOfWeek = firstDayOfMonth.getDay();
+    
+    // Calculate start date (previous month's trailing days)
+    const startDate = new Date(year, month, 1 - firstDayOfWeek);
+    
+    // Calculate end date (6 weeks from start = 42 days)
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 41);
+    
+    return {
+      startYear: startDate.getFullYear(),
+      startMonth: startDate.getMonth() + 1,
+      endYear: endDate.getFullYear(),
+      endMonth: endDate.getMonth() + 1
+    };
+  };
+
   // Fetch days with data from the API
   const fetchDaysWithData = async (year: number, month: number, signal?: AbortSignal) => {
     console.log(`[CALENDAR] Fetching data for ${year}-${month + 1}`);
@@ -73,46 +93,99 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     try {
       setLoading(true);
       
-      const apiUrl = `http://localhost:8000/calendar/days-with-data?year=${year}&month=${month + 1}`;
-      const response = await fetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        mode: 'cors',
-        signal,
-        // Add timeout and retry-friendly settings
-        cache: 'no-cache',
+      const { startYear, startMonth, endYear, endMonth } = getCalendarDateRange(year, month);
+      console.log(`[CALENDAR] Date range: ${startYear}-${startMonth} to ${endYear}-${endMonth}`);
+      
+      // Fetch data for all months that appear in the calendar view
+      const monthsToFetch = new Set<string>();
+      
+      // Add start month
+      monthsToFetch.add(`${startYear}-${startMonth}`);
+      
+      // Add current month
+      monthsToFetch.add(`${year}-${month + 1}`);
+      
+      // Add end month if different
+      if (endYear !== startYear || endMonth !== startMonth) {
+        monthsToFetch.add(`${endYear}-${endMonth}`);
+      }
+      
+      console.log(`[CALENDAR] Fetching data for months: ${Array.from(monthsToFetch).join(', ')}`);
+      
+      // Fetch data for each month and combine results
+      const allDataSets: DaysWithDataResponse[] = [];
+      
+      for (const monthKey of monthsToFetch) {
+        const [fetchYear, fetchMonth] = monthKey.split('-').map(Number);
+        const apiUrl = `http://localhost:8000/calendar/days-with-data?year=${fetchYear}&month=${fetchMonth}`;
+        
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          mode: 'cors',
+          signal,
+          cache: 'no-cache',
+        });
+        
+        if (response.ok) {
+          const monthData: DaysWithDataResponse = await response.json();
+          allDataSets.push(monthData);
+        } else {
+          console.error(`[CALENDAR] HTTP Error for ${monthKey}:`, response.status, response.statusText);
+        }
+      }
+      
+      if (allDataSets.length === 0) {
+        throw new Error('No data retrieved from any month');
+      }
+      
+      // Combine all data from different months
+      const combinedData: { [key: string]: string[] } = {
+        all: [],
+        news: [],
+        limitless: [],
+        twitter: []
+      };
+      
+      let latestSyncStatus: SyncStatus | null = null;
+      
+      for (const dataSet of allDataSets) {
+        if (dataSet.data) {
+          Object.keys(dataSet.data).forEach(key => {
+            if (!combinedData[key]) {
+              combinedData[key] = [];
+            }
+            combinedData[key] = [...combinedData[key], ...dataSet.data[key]];
+          });
+        }
+        
+        // Use the most recent sync status
+        if (dataSet.sync_status) {
+          latestSyncStatus = dataSet.sync_status;
+        }
+      }
+      
+      // Remove duplicates from combined data
+      Object.keys(combinedData).forEach(key => {
+        combinedData[key] = [...new Set(combinedData[key])];
       });
       
-      if (response.ok) {
-        const responseData: DaysWithDataResponse = await response.json();
-        console.log(`[CALENDAR] Received data for ${Object.keys(responseData.data || {}).length} namespaces`);
+      console.log(`[CALENDAR] Combined data: all=${combinedData.all?.length || 0}, news=${combinedData.news?.length || 0}, limitless=${combinedData.limitless?.length || 0}, twitter=${combinedData.twitter?.length || 0}`);
+      
+      if (!signal?.aborted) {
+        setAllDaysWithData(new Set(combinedData.all || []));
+        setNewsDaysWithData(new Set(combinedData.news || []));
+        setLimitlessDaysWithData(new Set(combinedData.limitless || []));
+        setTwitterDaysWithData(new Set(combinedData.twitter || []));
         
-        if (!signal?.aborted) {
-          const data = responseData.data || {};
-          setAllDaysWithData(new Set(data.all || []));
-          setNewsDaysWithData(new Set(data.news || []));
-          setLimitlessDaysWithData(new Set(data.limitless || []));
-          setTwitterDaysWithData(new Set(data.twitter || []));
-          
-          // Update sync status
-          setSyncStatus(responseData.sync_status || null);
-          
-          if (responseData.sync_status) {
-            console.log(`[CALENDAR] Sync status: ${responseData.sync_status.completed_sources}/${responseData.sync_status.total_sources} complete`);
-          }
-        }
-      } else {
-        console.error(`[CALENDAR] HTTP Error:`, response.status, response.statusText);
-        // Set empty data sets as fallback for HTTP errors too
-        if (!signal?.aborted) {
-          setAllDaysWithData(new Set());
-          setNewsDaysWithData(new Set());
-          setLimitlessDaysWithData(new Set());
-          setTwitterDaysWithData(new Set());
-          setSyncStatus(null);
+        // Update sync status
+        setSyncStatus(latestSyncStatus);
+        
+        if (latestSyncStatus) {
+          console.log(`[CALENDAR] Sync status: ${latestSyncStatus.completed_sources}/${latestSyncStatus.total_sources} complete`);
         }
       }
     } catch (error) {
@@ -241,11 +314,26 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     
     // Previous month's trailing days
     const prevMonth = new Date(year, month - 1, 0);
+    const prevMonthYear = month === 0 ? year - 1 : year;
+    const prevMonthMonth = month === 0 ? 11 : month - 1;
+    
     for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+      const dayNumber = prevMonth.getDate() - i;
+      const dateString = `${prevMonthYear}-${String(prevMonthMonth + 1).padStart(2, '0')}-${String(dayNumber).padStart(2, '0')}`;
+      
+      const hasEvents = allDaysWithData.has(dateString);
+      const hasNewsEvents = newsDaysWithData.has(dateString);
+      const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
+      const hasTwitterEvents = twitterDaysWithData.has(dateString);
+      
       days.push({
-        date: prevMonth.getDate() - i,
+        date: dayNumber,
         isCurrentMonth: false,
-        isToday: false
+        isToday: false,
+        hasEvents,
+        hasNewsEvents,
+        hasLimitlessEvents,
+        hasTwitterEvents
       });
     }
     
@@ -272,11 +360,25 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     
     // Next month's leading days
     const remainingDays = 42 - days.length; // 6 weeks * 7 days
+    const nextMonthYear = month === 11 ? year + 1 : year;
+    const nextMonthMonth = month === 11 ? 0 : month + 1;
+    
     for (let day = 1; day <= remainingDays; day++) {
+      const dateString = `${nextMonthYear}-${String(nextMonthMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      
+      const hasEvents = allDaysWithData.has(dateString);
+      const hasNewsEvents = newsDaysWithData.has(dateString);
+      const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
+      const hasTwitterEvents = twitterDaysWithData.has(dateString);
+      
       days.push({
         date: day,
         isCurrentMonth: false,
-        isToday: false
+        isToday: false,
+        hasEvents,
+        hasNewsEvents,
+        hasLimitlessEvents,
+        hasTwitterEvents
       });
     }
     
@@ -295,12 +397,20 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     });
   };
 
-  const handleDayClick = (day: CalendarDay) => {
-    // Only handle clicks for current month days that have events
-    if (day.isCurrentMonth && day.hasEvents && onDateSelect) {
+  const handleDayClick = (day: CalendarDay, dayIndex: number) => {
+    // Handle clicks for any day that has events (including prev/next month)
+    if (day.hasEvents && onDateSelect) {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
-      const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day.date).padStart(2, '0')}`;
+      
+      // Calculate the actual date based on position in the calendar
+      const firstDayOfMonth = new Date(year, month, 1);
+      const firstDayOfWeek = firstDayOfMonth.getDay();
+      const startDate = new Date(year, month, 1 - firstDayOfWeek);
+      const targetDate = new Date(startDate);
+      targetDate.setDate(startDate.getDate() + dayIndex);
+      
+      const dateString = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
       console.log('[CALENDAR] Day clicked:', dateString);
       onDateSelect(dateString);
     }
@@ -468,15 +578,15 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
                     className={`calendar-day ${
                       day.isCurrentMonth ? 'current-month' : 'other-month'
                     } ${day.isToday ? 'today' : ''} ${day.hasEvents ? 'has-events' : ''} ${
-                      day.isCurrentMonth && day.hasEvents ? 'clickable' : ''
+                      day.hasEvents ? 'clickable' : ''
                     }`}
-                    onClick={() => handleDayClick(day)}
+                    onClick={() => handleDayClick(day, index)}
                     style={{
-                      cursor: day.isCurrentMonth && day.hasEvents ? 'pointer' : 'default'
+                      cursor: day.hasEvents ? 'pointer' : 'default'
                     }}
                   >
                     <span className="calendar-day-number">{day.date}</span>
-                    {day.isCurrentMonth && (day.hasNewsEvents || day.hasLimitlessEvents || day.hasTwitterEvents) && (
+                    {(day.hasNewsEvents || day.hasLimitlessEvents || day.hasTwitterEvents) && (
                       <div className="calendar-icons-container">
                         {day.hasLimitlessEvents && (
                           <img src="/src/assets/limitless-logo.svg" alt="Limitless Data" className="calendar-icon limitless-icon" />

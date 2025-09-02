@@ -17,6 +17,7 @@ from services.websocket_manager import (
     MessageType, 
     WebSocketMessage, 
     ClientConnection,
+    ConnectionState,
     get_websocket_manager,
     set_websocket_manager,
     clear_websocket_manager
@@ -108,7 +109,8 @@ class TestClientConnection:
             client_id="test-client",
             connected_at=now,
             subscriptions={"topic1", "topic2"},
-            last_heartbeat=now
+            last_heartbeat=now,
+            state=ConnectionState.CONNECTED
         )
         
         assert connection.websocket == mock_websocket
@@ -127,7 +129,8 @@ class TestClientConnection:
             client_id="test-client",
             connected_at=now,
             subscriptions=None,
-            last_heartbeat=now
+            last_heartbeat=now,
+            state=ConnectionState.CONNECTED
         )
         
         assert connection.subscriptions == set()
