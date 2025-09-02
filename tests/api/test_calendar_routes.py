@@ -169,7 +169,7 @@ class TestCalendarRoutes:
         ]
         sample_markdown = "# Sample Day\n\nSample content here."
         
-        mock_database_service.get_data_items_by_date.return_value = sample_items
+        mock_database_service.async_get_data_items_by_date.return_value = sample_items
         mock_database_service.get_markdown_by_date.return_value = sample_markdown
         
         with patch('api.routes.calendar.get_config') as mock_config:
@@ -254,8 +254,8 @@ class TestCalendarRoutes:
         mock_startup_service.database = mock_database_service
         
         # Mock the actual database methods to raise exceptions
-        mock_database_service.get_days_with_data.side_effect = Exception("Database connection failed")
-        mock_database_service.get_all_namespaces.return_value = []
+        mock_database_service.async_get_days_with_data.side_effect = Exception("Database connection failed")
+        mock_database_service.async_get_all_namespaces.return_value = []
         
         with patch('api.routes.calendar.get_config') as mock_config, \
              patch('api.routes.calendar.get_sync_status_service') as mock_sync_service:
@@ -358,7 +358,7 @@ class TestCalendarRoutes:
                 "metadata": {"title": "Work Meeting", "category": "work"}
             }
         ]
-        mock_database_service.get_data_items_by_date.return_value = sample_items
+        mock_database_service.async_get_data_items_by_date.return_value = sample_items
         mock_database_service.get_markdown_by_date.return_value = "# Work Meeting\n\nWork meeting content"
         
         with patch('api.routes.calendar.get_config') as mock_config:
