@@ -21,6 +21,7 @@ from tests.fixtures.database_fixtures import *
 from tests.fixtures.api_fixtures import *
 from tests.fixtures.service_fixtures import *
 from tests.fixtures.data_fixtures import *
+from tests.fixtures.twitter_fixtures import *
 
 # Configure asyncio for async tests
 @pytest.fixture(scope="session")

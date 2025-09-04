@@ -363,12 +363,13 @@ class TwitterSource(BaseSource):
         if not self.config.is_configured():
             return False
         
-        # If API is configured, test the connection
+        # If API is configured, test the connection by attempting to fetch tweets
         if self.config.is_api_configured():
             try:
                 async with self.api_service:
-                    user_id = await self.api_service.get_user_id(self.config.username)
-                    logger.info(f"[TWITTER IMPORT] Twitter API connection test successful. User ID: {user_id}")
+                    # Test the connection using the actual production API call
+                    await self.api_service.fetch_user_tweets_today()
+                    logger.info(f"[TWITTER IMPORT] Twitter API connection test successful using configured user_id: {self.config.user_id}")
                     return True
             except Exception as e:
                 logger.error(f"[TWITTER IMPORT] Twitter API connection test failed: {e}")

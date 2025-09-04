@@ -5,7 +5,7 @@ from datetime import datetime
 from sources.twitter import TwitterSource
 from config.models import TwitterConfig
 from core.database import DatabaseService
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
 @pytest.fixture
 def sample_twitter_export(tmp_path):
@@ -115,6 +115,7 @@ async def test_twitter_source_test_connection_with_api_success():
         enabled=True,
         bearer_token="test_token",
         username="testuser",
+        user_id="123456789",
         max_retries=3,
         retry_delay=1.0,
         request_timeout=30.0
@@ -124,9 +125,9 @@ async def test_twitter_source_test_connection_with_api_success():
     source = TwitterSource(real_config, mock_db_service)
     
     # Mock the API service context manager and method
-    with patch.object(source.api_service, '__aenter__', return_value=source.api_service):
-        with patch.object(source.api_service, '__aexit__', return_value=None):
-            with patch.object(source.api_service, 'get_user_id', return_value="123456789"):
+    with patch.object(source.api_service, '__aenter__', new=AsyncMock(return_value=source.api_service)):
+        with patch.object(source.api_service, '__aexit__', new=AsyncMock(return_value=None)):
+            with patch.object(source.api_service, 'fetch_user_tweets_today', return_value=[]):
                 result = await source.test_connection()
                 assert result is True
 
@@ -135,14 +136,65 @@ async def test_twitter_source_test_connection_with_api_failure():
     mock_config = MagicMock(spec=TwitterConfig)
     mock_config.is_configured.return_value = True
     mock_config.is_api_configured.return_value = True
-    mock_config.username = "testuser"
+    mock_config.user_id = "123456789"
     mock_db_service = MagicMock(spec=DatabaseService)
     
     source = TwitterSource(mock_config, mock_db_service)
     
     # Mock API failure
-    with patch.object(source.api_service, '__aenter__', return_value=source.api_service):
-        with patch.object(source.api_service, '__aexit__', return_value=None):
-            with patch.object(source.api_service, 'get_user_id', side_effect=Exception("API Error")):
+    with patch.object(source.api_service, '__aenter__', new=AsyncMock(return_value=source.api_service)):
+        with patch.object(source.api_service, '__aexit__', new=AsyncMock(return_value=None)):
+            with patch.object(source.api_service, 'fetch_user_tweets_today', side_effect=Exception("API Error")):
                 result = await source.test_connection()
                 assert result is False
+
+@pytest.mark.asyncio
+async def test_twitter_source_api_not_configured_missing_user_id():
+    """Test that TwitterSource handles missing user_id appropriately"""
+    config = TwitterConfig(
+        enabled=True,
+        bearer_token="valid_token",
+        user_id=None  # Missing user_id
+    )
+    mock_db_service = MagicMock(spec=DatabaseService)
+    source = TwitterSource(config, mock_db_service)
+    
+    # API should not be considered configured
+    assert not config.is_api_configured()
+    
+    # Connection test should still pass (for archive mode)
+    assert await source.test_connection()
+
+@pytest.mark.asyncio
+async def test_api_service_not_invoked_when_user_id_missing():
+    """Test that API service methods are not invoked when user_id is missing"""
+    config = TwitterConfig(
+        enabled=True,
+        bearer_token="valid_token",
+        user_id=None  # Missing user_id makes API invalid
+    )
+    mock_db_service = MagicMock(spec=DatabaseService)
+    mock_db_service.get_data_items_by_namespace.return_value = []  # Empty database
+    mock_ingestion_service = MagicMock()
+    
+    source = TwitterSource(config, mock_db_service, mock_ingestion_service)
+    
+    # Mock the API service methods to track if they're called
+    with patch.object(source.api_service, '__aenter__', new=AsyncMock()) as mock_aenter:
+        with patch.object(source.api_service, '__aexit__', new=AsyncMock()) as mock_aexit:
+            with patch.object(source.api_service, 'fetch_user_tweets_today') as mock_fetch:
+                with patch.object(source, 'fetch_today_tweets') as mock_fetch_today:
+                    
+                    # Call fetch_items - should not invoke API when user_id is missing
+                    items = []
+                    async for item in source.fetch_items():
+                        items.append(item)
+                    
+                    # Verify API methods were not called since user_id is missing
+                    mock_aenter.assert_not_called()
+                    mock_aexit.assert_not_called() 
+                    mock_fetch.assert_not_called()
+                    mock_fetch_today.assert_not_called()
+                    
+                    # Should return empty list (no database items, no API calls)
+                    assert len(items) == 0

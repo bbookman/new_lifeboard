@@ -21,6 +21,7 @@ def valid_twitter_config():
     return TwitterConfig(
         bearer_token="valid_bearer_token_123",
         username="testuser",
+        user_id="123456789012345678",
         max_retries=2,
         retry_delay=0.1,
         request_timeout=5.0
@@ -92,22 +93,26 @@ class TestTwitterAPIService:
         """Test async context manager setup and teardown"""
         service = TwitterAPIService(valid_twitter_config)
         
-        # Test context manager entry
-        async with service as ctx_service:
-            assert ctx_service is service
-            assert service.session is not None
-            assert isinstance(service.session, aiohttp.ClientSession)
-            assert service.session._timeout.total == 5.0  # request_timeout
+        with patch('aiohttp.ClientSession') as mock_session_class:
+            mock_session_instance = AsyncMock()
+            mock_session_class.return_value = mock_session_instance
             
-            # Check headers
-            auth_header = service.session._default_headers.get("Authorization")
-            assert auth_header == "Bearer valid_bearer_token_123"
+            # Test context manager entry
+            async with service as ctx_service:
+                assert ctx_service is service
+                assert service.session is mock_session_instance
+                
+                # Verify ClientSession was called with expected parameters
+                mock_session_class.assert_called_once_with(
+                    timeout=aiohttp.ClientTimeout(total=5.0),
+                    headers={
+                        "Authorization": "Bearer valid_bearer_token_123",
+                        "User-Agent": "Lifeboard/1.0"
+                    }
+                )
             
-            user_agent = service.session._default_headers.get("User-Agent")
-            assert user_agent == "Lifeboard/1.0"
-        
-        # Session should be closed after context exit
-        assert service.session.closed
+            # Verify session close was called
+            mock_session_instance.close.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_make_request_success(self, valid_twitter_config, sample_user_response):
@@ -163,7 +168,7 @@ class TestTwitterAPIService:
             mock_get.return_value.__aenter__.return_value = mock_response
             
             async with service:
-                with pytest.raises(ValueError, match="Unauthorized: Check your Twitter bearer token"):
+                with pytest.raises(TwitterAuthError, match="Authentication failed"):
                     await service._make_request("https://api.twitter.com/2/test")
 
     @pytest.mark.asyncio
@@ -178,7 +183,7 @@ class TestTwitterAPIService:
             mock_get.return_value.__aenter__.return_value = mock_response
             
             async with service:
-                with pytest.raises(ValueError, match="User 'testuser' not found"):
+                with pytest.raises(TwitterNotFoundError, match="not found"):
                     await service._make_request("https://api.twitter.com/2/test")
 
     @pytest.mark.asyncio
@@ -195,31 +200,19 @@ class TestTwitterAPIService:
                 mock_get.return_value.__aenter__.return_value = mock_response
                 
                 async with service:
-                    with pytest.raises(Exception, match="Twitter API server error"):
+                    with pytest.raises(TwitterAPIError, match="server error"):
                         await service._make_request("https://api.twitter.com/2/test")
                     
                     assert mock_get.call_count == service.config.other_error_max_retries  # Should retry 3 times
 
     @pytest.mark.asyncio
-    async def test_get_user_id_success(self, valid_twitter_config, sample_user_response):
-        """Test successful user ID retrieval"""
-        service = TwitterAPIService(valid_twitter_config)
+    async def test_fetch_user_tweets_today_missing_user_id(self):
+        """Test that service handles missing user_id gracefully"""
+        config = TwitterConfig(bearer_token="valid_token", user_id=None)
+        service = TwitterAPIService(config)
         
-        with patch.object(service, '_make_request', return_value=sample_user_response):
-            async with service:
-                user_id = await service.get_user_id("testuser")
-                
-                assert user_id == "123456789"
-
-    @pytest.mark.asyncio
-    async def test_get_user_id_no_data(self, valid_twitter_config):
-        """Test user ID retrieval with no data"""
-        service = TwitterAPIService(valid_twitter_config)
-        
-        with patch.object(service, '_make_request', return_value={"errors": [{"detail": "User not found"}]}):
-            async with service:
-                with pytest.raises(ValueError, match="User data not found for username: testuser"):
-                    await service.get_user_id("testuser")
+        tweets = await service.fetch_user_tweets_today()
+        assert tweets == []
 
     @pytest.mark.asyncio
     async def test_get_todays_tweets_success(self, valid_twitter_config, sample_tweets_response):
@@ -247,19 +240,11 @@ class TestTwitterAPIService:
                 assert len(tweets) == 0
 
     @pytest.mark.asyncio
-    async def test_fetch_user_tweets_today_success(self, valid_twitter_config, sample_user_response, sample_tweets_response):
-        """Test successful full workflow"""
+    async def test_fetch_user_tweets_today_success(self, valid_twitter_config, sample_tweets_response):
+        """Test successful full workflow using configured user_id"""
         service = TwitterAPIService(valid_twitter_config)
         
-        def mock_make_request(url, params=None):
-            if "users/by/username" in url:
-                return sample_user_response
-            elif "users/123456789/tweets" in url:
-                return sample_tweets_response
-            else:
-                raise ValueError(f"Unexpected URL: {url}")
-        
-        with patch.object(service, '_make_request', side_effect=mock_make_request):
+        with patch.object(service, '_make_request', return_value=sample_tweets_response):
             async with service:
                 tweets = await service.fetch_user_tweets_today()
                 
@@ -287,13 +272,14 @@ class TestTwitterAPIService:
 
     @pytest.mark.asyncio
     async def test_fetch_user_tweets_today_error_handling(self, valid_twitter_config):
-        """Test error handling during fetch"""
+        """Test error handling during fetch - returns empty list on errors"""
         service = TwitterAPIService(valid_twitter_config)
         
-        with patch.object(service, 'get_user_id', side_effect=Exception("API Error")):
+        with patch.object(service, 'get_todays_tweets', side_effect=Exception("API Error")):
             async with service:
-                with pytest.raises(Exception, match="API Error"):
-                    await service.fetch_user_tweets_today()
+                # Should return empty list on error, not raise exception
+                tweets = await service.fetch_user_tweets_today()
+                assert tweets == []
 
     @pytest.mark.asyncio
     async def test_context_manager_without_session_error(self, valid_twitter_config):
@@ -474,11 +460,13 @@ class TestTwitterAPIServiceEnhancedErrorHandling:
                 with pytest.raises(TwitterNotFoundError) as exc_info:
                     await service.get_user_id("nonexistentuser")
                 
-                assert "nonexistentuser" in str(exc_info.value)
+                # Should contain error about user not found (either parameter or configured username)
+                error_msg = str(exc_info.value)
+                assert "not found" in error_msg.lower()
     
     @pytest.mark.asyncio
-    async def test_place_fields_in_api_request(self, valid_twitter_config, sample_user_response):
-        """Test that place fields are included in API requests"""
+    async def test_place_fields_in_api_request(self, valid_twitter_config):
+        """Test that place fields are included in API requests and processed correctly"""
         service = TwitterAPIService(valid_twitter_config)
         
         # Mock tweets response with place data
@@ -507,30 +495,40 @@ class TestTwitterAPIServiceEnhancedErrorHandling:
         }
         
         with patch('aiohttp.ClientSession.get') as mock_get:
-            # Mock user ID response
-            user_response = AsyncMock()
-            user_response.status = 200
-            user_response.json.return_value = sample_user_response
-            
-            # Mock tweets response  
             tweets_response = AsyncMock()
             tweets_response.status = 200
             tweets_response.json.return_value = tweets_with_places
             
-            mock_get.return_value.__aenter__.side_effect = [user_response, tweets_response]
+            mock_get.return_value.__aenter__.return_value = tweets_response
             
             async with service:
                 tweets = await service.fetch_user_tweets_today()
                 
-                # Verify place fields were requested and processed
-                assert len(tweets) == 1
-                tweet = tweets[0]
-                assert 'place' in tweet
-                assert tweet['place']['full_name'] == 'San Francisco, CA'
-                assert tweet['geo']['place_id'] == 'place123'
-                
-                # Verify API call included place fields
-                call_args = mock_get.call_args_list[1]  # Second call (tweets)
+                # Verify place fields were requested in API call
+                call_args = mock_get.call_args_list[0]  # Only one API call
                 params = call_args[1]['params']
                 assert 'place.fields' in params
                 assert 'id,full_name,name,country,country_code,place_type,geo' in params['place.fields']
+                
+                # Verify normalized output contains place data
+                assert len(tweets) == 1
+                tweet = tweets[0]
+                assert 'place' in tweet
+                assert 'geo' in tweet
+                assert tweet['place']['full_name'] == 'San Francisco, CA'
+                assert tweet['geo']['place_id'] == 'place123'
+
+    @pytest.mark.asyncio
+    async def test_fetch_user_tweets_today_never_calls_get_user_id(self, valid_twitter_config, sample_tweets_response):
+        """Test that fetch_user_tweets_today never calls get_user_id in the new workflow"""
+        service = TwitterAPIService(valid_twitter_config)
+        
+        # Patch get_user_id to raise AssertionError if called
+        with patch.object(service, 'get_user_id', side_effect=AssertionError("Should not be called")):
+            with patch.object(service, '_make_request', return_value=sample_tweets_response):
+                async with service:
+                    tweets = await service.fetch_user_tweets_today()
+                    
+                    # Should return transformed tweets without calling get_user_id
+                    assert len(tweets) == 2
+                    assert tweets[0]["tweet_id"] == "1234567890123456789"

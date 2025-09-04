@@ -11,6 +11,7 @@ import pytest
 import zipfile
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
+from api.routes.settings import get_twitter_source
 
 # We create our own test app with dependency overrides
 
@@ -425,6 +426,89 @@ class TestTwitterUploadAPI:
             
             result = get_twitter_source()
             assert result is mock_twitter_source
+
+    def test_twitter_configuration_status_reporting(self, client, mock_startup_service):
+        """Test that API endpoints can report Twitter configuration status including user_id."""
+        from sources.twitter import TwitterSource
+        from config.models import TwitterConfig
+        
+        # Test with API enabled configuration (with user_id)
+        api_enabled_config = TwitterConfig(
+            enabled=True,
+            bearer_token="valid_token",
+            username="testuser",
+            user_id="123456789012345678"
+        )
+        
+        mock_twitter_source = MagicMock(spec=TwitterSource)
+        mock_twitter_source.config = api_enabled_config
+        mock_startup_service.ingestion_service.sources["twitter"] = mock_twitter_source
+        
+        with patch('api.routes.settings.get_dependency_registry') as mock_registry:
+            mock_registry.return_value.get_startup_service.return_value = mock_startup_service
+            
+            # API should be able to access configuration status
+            twitter_source = get_twitter_source()
+            
+            # Verify configuration reporting
+            assert twitter_source.config.is_api_configured() is True
+            assert twitter_source.config.user_id == "123456789012345678"
+            
+        # Test with missing user_id configuration
+        api_disabled_config = TwitterConfig(
+            enabled=True,
+            bearer_token="valid_token",
+            username="testuser",
+            user_id=None  # Missing user_id
+        )
+        
+        mock_twitter_source.config = api_disabled_config
+        
+        with patch('api.routes.settings.get_dependency_registry') as mock_registry:
+            mock_registry.return_value.get_startup_service.return_value = mock_startup_service
+            
+            twitter_source = get_twitter_source()
+            
+            # Should report API as not configured due to missing user_id
+            assert twitter_source.config.is_api_configured() is False
+            assert twitter_source.config.user_id is None
+
+    def test_upload_twitter_with_invalid_user_id(self, client, sample_twitter_zip, mock_startup_service):
+        """Test upload works for archive imports even with invalid user_id."""
+        from sources.twitter import TwitterSource
+        from config.models import TwitterConfig
+        
+        # Configuration with invalid user_id (missing)
+        config_with_invalid_user_id = TwitterConfig(
+            enabled=True,
+            bearer_token="valid_token",
+            username="testuser",
+            user_id=None  # Missing user_id makes API invalid
+        )
+        
+        mock_twitter_source = MagicMock(spec=TwitterSource)
+        mock_twitter_source.config = config_with_invalid_user_id
+        mock_twitter_source.import_from_zip = AsyncMock(return_value={
+            "success": True,
+            "imported_count": 2,
+            "message": "Twitter archive imported successfully. 2 tweets imported."
+        })
+        
+        mock_startup_service.ingestion_service.sources["twitter"] = mock_twitter_source
+        
+        with patch('api.routes.settings.get_dependency_registry') as mock_registry:
+            mock_registry.return_value.get_startup_service.return_value = mock_startup_service
+            
+            files = {"file": ("twitter-archive.zip", sample_twitter_zip, "application/zip")}
+            response = client.post("/api/settings/upload/twitter", files=files)
+        
+        # Archive upload should succeed even with invalid user_id
+        assert response.status_code == 200
+        data = response.json()
+        assert "imported successfully" in data["message"].lower()
+        
+        # Verify API is not considered configured
+        assert mock_twitter_source.config.is_api_configured() is False
 
 
 class TestTwitterUploadIntegration:

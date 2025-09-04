@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 # Twitter API configuration - you'll need to set these
 BEARER_TOKEN = "YOUR_BEARER_TOKEN_HERE"  # Replace with your actual bearer token
-USERNAME = "YOUR_USERNAME_HERE"  # Replace with your actual username
+USER_ID = "YOUR_USER_ID_HERE"  # Replace with your actual user ID
 
 class DirectTwitterTester:
     """Direct Twitter API tester bypassing all rate limiting"""
 
-    def __init__(self, bearer_token: str, username: str):
+    def __init__(self, bearer_token: str, user_id: str):
         self.bearer_token = bearer_token
-        self.username = username
+        self.user_id = user_id
         self.base_url = "https://api.twitter.com/2"
         self.session = None
 
@@ -40,39 +40,26 @@ class DirectTwitterTester:
         if self.session:
             await self.session.close()
 
-    async def test_user_lookup(self):
-        """Test basic user lookup"""
-        logger.info("🔍 [DIRECT TEST] Testing user lookup...")
-        url = f"{self.base_url}/users/by/username/{self.username}"
+    async def test_user_id_validation(self):
+        """Test that the configured user_id is valid"""
+        logger.info("🔍 [DIRECT TEST] Testing user ID validation...")
+        
+        if not self.user_id.isdigit():
+            logger.error(f"❌ [DIRECT TEST] Invalid user ID format: {self.user_id}")
+            return False
+            
+        logger.info(f"✅ [DIRECT TEST] User ID validation successful: {self.user_id}")
+        return True
 
-        try:
-            logger.info(f"🔍 [DIRECT TEST] Making request to: {url}")
-            async with self.session.get(url) as response:
-                logger.info(f"📊 [DIRECT TEST] Response status: {response.status}")
-                response_data = await response.json()
-                logger.info(f"📊 [DIRECT TEST] Response data: {json.dumps(response_data, indent=2)}")
-
-                if response.status == 200 and 'data' in response_data:
-                    user_id = response_data['data']['id']
-                    logger.info(f"✅ [DIRECT TEST] User lookup successful! User ID: {user_id}")
-                    return user_id
-                else:
-                    logger.error(f"❌ [DIRECT TEST] User lookup failed: {response_data}")
-                    return None
-
-        except Exception as e:
-            logger.error(f"❌ [DIRECT TEST] User lookup error: {e}")
-            return None
-
-    async def test_tweets_fetch(self, user_id: str):
-        """Test tweets fetching for a user"""
-        logger.info(f"🔍 [DIRECT TEST] Testing tweets fetch for user {user_id}...")
+    async def test_tweets_fetch(self):
+        """Test tweets fetching for the configured user"""
+        logger.info(f"🔍 [DIRECT TEST] Testing tweets fetch for user {self.user_id}...")
 
         # Get last 5 days
         now = datetime.now(timezone.utc)
         start_time = (now - timedelta(days=5)).replace(hour=0, minute=0, second=0, microsecond=0)
 
-        url = f"{self.base_url}/users/{user_id}/tweets"
+        url = f"{self.base_url}/users/{self.user_id}/tweets"
         params = {
             'start_time': start_time.isoformat(),
             'end_time': now.isoformat(),
@@ -121,24 +108,26 @@ async def main():
     logger.info("🚀 [DIRECT TEST] ===== STARTING DIRECT TWITTER API TEST =====")
 
     # Check if tokens are configured
-    if BEARER_TOKEN == "YOUR_BEARER_TOKEN_HERE" or USERNAME == "YOUR_USERNAME_HERE":
-        logger.error("❌ [DIRECT TEST] Please configure BEARER_TOKEN and USERNAME in the script")
+    if BEARER_TOKEN == "YOUR_BEARER_TOKEN_HERE" or USER_ID == "YOUR_USER_ID_HERE":
+        logger.error("❌ [DIRECT TEST] Please configure BEARER_TOKEN and USER_ID in the script")
+        logger.info("ℹ️ [DIRECT TEST] Run tools/get_twitter_user_id.sh to get your user ID")
         return
 
-    async with DirectTwitterTester(BEARER_TOKEN, USERNAME) as tester:
-        # Test 1: User lookup
-        user_id = await tester.test_user_lookup()
-        if not user_id:
-            logger.error("❌ [DIRECT TEST] User lookup failed, cannot proceed with tweets test")
+    async with DirectTwitterTester(BEARER_TOKEN, USER_ID) as tester:
+        # Test 1: User ID validation
+        user_id_valid = await tester.test_user_id_validation()
+        if not user_id_valid:
+            logger.error("❌ [DIRECT TEST] User ID validation failed, cannot proceed with tweets test")
             return
 
-        # Test 2: Tweets fetch
-        tweets = await tester.test_tweets_fetch(user_id)
+        # Test 2: Tweets fetch (directly using configured user_id)
+        tweets = await tester.test_tweets_fetch()
 
         # Summary
         logger.info("🚀 [DIRECT TEST] ===== TEST SUMMARY =====")
-        logger.info(f"📊 [DIRECT TEST] User lookup: {'✅ SUCCESS' if user_id else '❌ FAILED'}")
+        logger.info(f"📊 [DIRECT TEST] User ID validation: {'✅ SUCCESS' if user_id_valid else '❌ FAILED'}")
         logger.info(f"📊 [DIRECT TEST] Tweets fetch: {'✅ SUCCESS' if tweets else '❌ FAILED'} ({len(tweets)} tweets)")
+        logger.info(f"📊 [DIRECT TEST] Using user_id: {USER_ID}")
         logger.info("🚀 [DIRECT TEST] ===== DIRECT TEST COMPLETED =====")
 
 if __name__ == "__main__":

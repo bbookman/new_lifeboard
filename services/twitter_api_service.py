@@ -131,8 +131,15 @@ class TwitterAPIService:
                         print("Check your API access level and token permissions")
                         raise TwitterPermissionError(full_error_msg, status_code=403, response_data=response_data)
                     elif response.status == 404:
-                        resource_type = "user" if "/users/" in url else "resource"
-                        resource_id = self.config.username if "/users/" in url else "unknown"
+                        if "/users/by/username/" in url:
+                            resource_type = "user"
+                            resource_id = self.config.username
+                        elif "/users/" in url:
+                            resource_type = "user"
+                            resource_id = self.config.user_id
+                        else:
+                            resource_type = "resource"
+                            resource_id = "unknown"
                         error_msg = f"Twitter {resource_type} '{resource_id}' not found. This could mean the account doesn't exist, is suspended, or is private."
                         logger.error(error_msg)
                         print(f"Twitter Not Found Error: {error_msg}")
@@ -170,7 +177,15 @@ class TwitterAPIService:
                 await asyncio.sleep(self.config.retry_delay * (2 ** (other_error_attempts - 1)))  # Exponential backoff
     
     async def get_user_id(self, username: str) -> str:
-        """Get user ID for a given username"""
+        """
+        LEGACY: Get user ID for a given username
+        
+        This method is deprecated in favor of configuring user_id directly 
+        via TWITTER_USER_ID environment variable. New code should use
+        self.config.user_id instead of calling this method.
+        
+        Kept for backwards compatibility and testing purposes.
+        """
         url = f"{self.base_url}/users/by/username/{username}"
         logger.info(f"Fetching user ID for username: {username}")
         logger.info(f"Request URL: {url}")
@@ -199,9 +214,13 @@ class TwitterAPIService:
             logger.error(f"Unexpected error in get_user_id for username '{username}': {str(e)}", exc_info=True)
             raise TwitterAPIError(f"Failed to get user ID for '{username}': {str(e)}")
     
-    async def get_todays_tweets(self, user_id: str) -> List[Dict[str, Any]]:
+    async def get_todays_tweets(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get tweets from 5 days prior to today until now for a user"""
         from datetime import timedelta
+        user_id = user_id or self.config.user_id
+        if not user_id or not str(user_id).strip():
+            logger.error("[Twitter] user_id is not configured. Please run tools/get_twitter_user_id.sh to obtain your user ID and set TWITTER_USER_ID in your .env file.")
+            return []
         # Get UTC timestamps
         now = datetime.now(timezone.utc)
         start_time = (now - timedelta(days=5)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -249,32 +268,20 @@ class TwitterAPIService:
             logger.error("[Twitter] API Configuration validation failed:")
             logger.error(f"[Twitter] Bearer token present: {bool(self.config.bearer_token)}")
             logger.error(f"[Twitter] Bearer token format valid: {len(self.config.bearer_token or '') > 0}")
-            logger.error(f"[Twitter] Username present: {bool(self.config.username)}")
-            logger.error(f"[Twitter] Username: {self.config.username}")
+            logger.error(f"[Twitter] User ID present: {bool(self.config.user_id)}")
+            logger.error(f"[Twitter] User ID: {self.config.user_id}")
             logger.error(f"[Twitter] API configured check result: {self.config.is_api_configured()}")
             return []
-            
+        
         logger.info("[Twitter] Configuration validated successfully")
-        logger.info(f"[Twitter] Will fetch tweets for user: {self.config.username}")
+        logger.info(f"[Twitter] Will fetch tweets for user_id: {self.config.user_id}")
         try:
-            print(f"[fetch_user_tweets_today] Getting user ID for {self.config.username}")
-            # Get user ID
-            user_id = await self.get_user_id(self.config.username)
-            print(f"[fetch_user_tweets_today] Got user ID: {user_id}")
-            
-            # Add inter-call delay to prevent rate limiting
-            if self.config.inter_call_delay > 0:
-                logger.info(f"[Twitter] Adding {self.config.inter_call_delay}s delay between API calls")
-                print(f"[fetch_user_tweets_today] Waiting {self.config.inter_call_delay}s between API calls...")
-                await asyncio.sleep(self.config.inter_call_delay)
-            
-            # Get today's tweets
-            tweets = await self.get_todays_tweets(user_id)
+            tweets = await self.get_todays_tweets()
             print(f"[fetch_user_tweets_today] Got {len(tweets)} tweets")
             # Transform tweets to match expected format
             transformed_tweets = []
             logger.info(f"[Twitter] Processing {len(tweets)} tweets")
-            
+
             for tweet in tweets:
                 try:
                     created_at = datetime.fromisoformat(tweet['created_at'].replace('Z', '+00:00'))

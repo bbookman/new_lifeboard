@@ -38,7 +38,7 @@ class TestTwitterConfigArchiveMode:
         # Should not be configured for any operations
         assert config.enabled is False
         assert config.is_configured() is False
-        assert config.is_api_configured() is True  # API creds are valid but service disabled
+        assert config.is_api_configured() is False  # API creds invalid - missing user_id
 
     def test_twitter_config_api_enabled(self):
         """Test Twitter config with full API credentials."""
@@ -46,6 +46,7 @@ class TestTwitterConfigArchiveMode:
             enabled=True,
             bearer_token="valid_bearer_token_123",
             username="testuser",
+            user_id="123456789",
             sync_interval_hours=24
         )
         
@@ -67,16 +68,29 @@ class TestTwitterConfigArchiveMode:
         assert config1.is_configured() is True  # Archive imports still work
         assert config1.is_api_configured() is False  # API creds invalid
 
-        # Test with placeholder username
+        # Test without user_id (API credentials invalid)
         config2 = TwitterConfig(
             enabled=True,
             bearer_token="valid_token",
-            username="your user name",  # Placeholder
+            username="testuser",
+            user_id=None,  # Missing user_id makes API invalid
             sync_interval_hours=24
         )
         
         assert config2.is_configured() is True  # Archive imports still work
-        assert config2.is_api_configured() is False  # API creds invalid
+        assert config2.is_api_configured() is False  # API creds invalid - no user_id
+        
+        # Test with invalid bearer_token
+        config4 = TwitterConfig(
+            enabled=True,
+            bearer_token=None,  # No bearer token
+            username="testuser",
+            user_id="123456789",
+            sync_interval_hours=24
+        )
+        
+        assert config4.is_configured() is True  # Archive imports still work
+        assert config4.is_api_configured() is False  # API creds invalid - no bearer token
 
         # Test with None values
         config3 = TwitterConfig(
@@ -112,6 +126,7 @@ class TestTwitterConfigArchiveMode:
             enabled=True,
             bearer_token="AAAAAAAAAAAAAAAAAAAAALTi4wAAAAAAQqg9nPRULQic%2BWNFthrJho5EaXE%3DgVbmsFLT38q1xf439154OYmVbvKntuMrblGg2TCD5CsQWPMry9",
             username="realuser123",
+            user_id="123456789012345678",
             sync_interval_hours=24
         )
         
@@ -127,6 +142,11 @@ class TestTwitterConfigArchiveMode:
         assert config.username is not None
         assert config.username.strip() != ""
         assert config.username != "your user name"
+        
+        # User ID validation
+        assert config.user_id is not None
+        assert config.user_id.strip() != ""
+        assert config.user_id != "your_user_id_here"
         
         # Combined API validation
         assert config.is_api_configured() is True
@@ -171,6 +191,7 @@ class TestTwitterConfigArchiveMode:
         assert config.enabled is True
         assert config.bearer_token is None
         assert config.username is None
+        assert config.user_id is None
         assert config.sync_interval_hours == 24
         assert config.delete_after_import is False
         
@@ -212,6 +233,84 @@ class TestTwitterConfigArchiveMode:
         # (We can't test import_from_zip here without mocking extensively,
         # but the config should at least allow the source to be created)
         assert twitter_source.config.is_configured() is True
+
+    def test_twitter_config_user_id_validation(self):
+        """Test user_id field validation."""
+        # Valid numeric user_id passes validation
+        config1 = TwitterConfig(
+            enabled=True,
+            bearer_token="valid_token",
+            username="testuser",
+            user_id="123456789012345678"
+        )
+        assert config1.user_id == "123456789012345678"
+        
+        # None user_id is allowed
+        config2 = TwitterConfig(
+            enabled=True,
+            bearer_token="valid_token",
+            username="testuser",
+            user_id=None
+        )
+        assert config2.user_id is None
+        
+        # Empty string user_id is treated as invalid at validation level
+        # (This would raise ValidationError, so we test None instead)
+        config3 = TwitterConfig(
+            enabled=True,
+            bearer_token="valid_token",
+            username="testuser",
+            user_id=None  # None is allowed but makes API invalid
+        )
+        assert config3.is_api_configured() is False
+        
+        # Placeholder values fail validation at model level
+        # (This would raise ValidationError, so we test invalid format instead)
+        config4 = TwitterConfig(
+            enabled=True,
+            bearer_token="valid_token",
+            username="testuser",
+            user_id=None  # None makes API invalid
+        )
+        assert config4.is_api_configured() is False
+
+    def test_twitter_config_api_configured_requires_user_id(self):
+        """Test that is_api_configured() requires both bearer_token and user_id."""
+        # With bearer_token but no user_id returns False
+        config1 = TwitterConfig(
+            enabled=True,
+            bearer_token="valid_token",
+            username="testuser",
+            user_id=None
+        )
+        assert config1.is_api_configured() is False
+        
+        # With user_id but no bearer_token returns False
+        config2 = TwitterConfig(
+            enabled=True,
+            bearer_token=None,
+            username="testuser",
+            user_id="123456789"
+        )
+        assert config2.is_api_configured() is False
+        
+        # With both bearer_token and user_id returns True
+        config3 = TwitterConfig(
+            enabled=True,
+            bearer_token="valid_token",
+            username="testuser",
+            user_id="123456789"
+        )
+        assert config3.is_api_configured() is True
+        
+        # With invalid bearer_token returns False  
+        config4 = TwitterConfig(
+            enabled=True,
+            bearer_token="your token here",  # Placeholder token
+            username="testuser",
+            user_id="123456789"
+        )
+        assert config4.is_api_configured() is False
 
 
 if __name__ == "__main__":

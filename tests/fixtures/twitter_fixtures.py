@@ -12,6 +12,7 @@ def twitter_config_api_enabled():
         enabled=True,
         bearer_token="REMOVED",
         username="testuser123",
+        user_id="123456789012345678",
         max_retries=3,
         retry_delay=1.0,
         request_timeout=30.0,
@@ -26,6 +27,7 @@ def twitter_config_api_disabled():
         enabled=True,
         bearer_token=None,
         username=None,
+        user_id=None,
         sync_interval_hours=24,
         delete_after_import=False
     )
@@ -37,6 +39,7 @@ def twitter_config_disabled():
         enabled=False,
         bearer_token="valid_token",
         username="testuser",
+        user_id="123456789012345678",
         sync_interval_hours=24,
         delete_after_import=False
     )
@@ -269,3 +272,49 @@ def twitter_archive_sample_data(tmp_path):
         f.write(f"window.YTD.tweets.part0 = {json.dumps(tweets_data)}")
 
     return tmp_path
+
+@pytest.fixture
+def twitter_config_invalid_user_id():
+    """Twitter configuration with missing user_id (makes API invalid but allows archive imports)"""
+    return TwitterConfig(
+        enabled=True,
+        bearer_token="valid_bearer_token_123",
+        username="testuser123",
+        user_id=None,  # Missing user_id makes API invalid
+        sync_interval_hours=24,
+        delete_after_import=False
+    )
+
+@pytest.fixture
+def twitter_config_sync_route_valid():
+    """Twitter configuration for sync route tests with valid API setup"""
+    return TwitterConfig(
+        enabled=True,
+        bearer_token="valid_token",
+        username="testuser",
+        user_id="123456789012345678"
+    )
+
+@pytest.fixture
+def twitter_config_sync_route_invalid():
+    """Twitter configuration for sync route tests with missing user_id"""
+    return TwitterConfig(
+        enabled=True,
+        bearer_token="valid_token",
+        username="testuser",
+        user_id=None  # Missing user_id
+    )
+
+@pytest.fixture
+def mock_twitter_source_valid(twitter_config_sync_route_valid):
+    """Mock Twitter source with valid API configuration"""
+    mock_source = MagicMock()
+    mock_source.config = twitter_config_sync_route_valid
+    return mock_source
+
+@pytest.fixture
+def mock_twitter_source_invalid(twitter_config_sync_route_invalid):
+    """Mock Twitter source with invalid API configuration (missing user_id)"""
+    mock_source = MagicMock()
+    mock_source.config = twitter_config_sync_route_invalid
+    return mock_source

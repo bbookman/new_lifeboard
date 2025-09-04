@@ -12,9 +12,9 @@ from config.models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
     LimitlessConfig, SearchConfig, SchedulerConfig, LoggingConfig,
     LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig,
-    InsightsConfig, EnhancementConfig
+    InsightsConfig, EnhancementConfig, TwitterConfig
 )
-from config.factory import create_test_config, create_production_config
+from config.factory import create_test_config, create_production_config, get_config
 
 
 class TestDatabaseConfig:
@@ -605,3 +605,112 @@ class TestAppConfigPhase6:
         assert config.chat.enabled is False
         assert config.insights.schedule == "weekly"
         assert config.enhancement.batch_size == 50
+
+
+class TestTwitterConfigFactoryIntegration:
+    """Test TwitterConfig integration with config factory"""
+    
+    def test_twitter_config_user_id_from_env(self):
+        """Test that TwitterConfig loads user_id from TWITTER_USER_ID environment variable"""
+        original_user_id = os.environ.get("TWITTER_USER_ID")
+        
+        try:
+            # Set test TWITTER_USER_ID
+            os.environ["TWITTER_USER_ID"] = "123456789012345678"
+            
+            # Create config through factory
+            config = get_config()
+            
+            # Verify user_id is loaded from environment
+            assert config.twitter.user_id == "123456789012345678"
+            
+        finally:
+            # Restore original environment
+            if original_user_id is not None:
+                os.environ["TWITTER_USER_ID"] = original_user_id
+            elif "TWITTER_USER_ID" in os.environ:
+                del os.environ["TWITTER_USER_ID"]
+    
+    def test_twitter_config_user_id_required_for_api(self):
+        """Test that is_api_configured requires both bearer_token and user_id"""
+        original_user_id = os.environ.get("TWITTER_USER_ID")
+        original_bearer_token = os.environ.get("TWITTER_BEARER_TOKEN")
+        
+        try:
+            # Test with both set
+            os.environ["TWITTER_USER_ID"] = "123456789012345678"
+            os.environ["TWITTER_BEARER_TOKEN"] = "test_bearer_token_abc123"
+            
+            config = get_config()
+            assert config.twitter.is_api_configured() is True
+            
+            # Test with missing user_id
+            del os.environ["TWITTER_USER_ID"]
+            
+            config = get_config()
+            assert config.twitter.is_api_configured() is False
+            
+            # Test with missing bearer_token
+            os.environ["TWITTER_USER_ID"] = "123456789012345678"
+            del os.environ["TWITTER_BEARER_TOKEN"]
+            
+            config = get_config()
+            assert config.twitter.is_api_configured() is False
+            
+        finally:
+            # Restore original environment
+            if original_user_id is not None:
+                os.environ["TWITTER_USER_ID"] = original_user_id
+            elif "TWITTER_USER_ID" in os.environ:
+                del os.environ["TWITTER_USER_ID"]
+                
+            if original_bearer_token is not None:
+                os.environ["TWITTER_BEARER_TOKEN"] = original_bearer_token
+            elif "TWITTER_BEARER_TOKEN" in os.environ:
+                del os.environ["TWITTER_BEARER_TOKEN"]
+    
+    def test_twitter_config_production_config(self):
+        """Test that production config properly creates TwitterConfig"""
+        original_user_id = os.environ.get("TWITTER_USER_ID")
+        
+        try:
+            # Set test TWITTER_USER_ID
+            os.environ["TWITTER_USER_ID"] = "987654321098765432"
+            
+            config = create_production_config()
+            
+            # Verify twitter config exists and has user_id
+            assert hasattr(config, 'twitter')
+            assert isinstance(config.twitter, TwitterConfig)
+            assert config.twitter.user_id == "987654321098765432"
+            
+        finally:
+            # Restore original environment
+            if original_user_id is not None:
+                os.environ["TWITTER_USER_ID"] = original_user_id
+            elif "TWITTER_USER_ID" in os.environ:
+                del os.environ["TWITTER_USER_ID"]
+    
+    def test_twitter_config_field_env_binding(self):
+        """Test that user_id field has proper env binding"""
+        # Create a TwitterConfig directly to test field binding
+        original_user_id = os.environ.get("TWITTER_USER_ID")
+        
+        try:
+            # Set environment variable
+            os.environ["TWITTER_USER_ID"] = "555666777888999000"
+            
+            # Create config - should pick up env var
+            config = TwitterConfig()
+            assert config.user_id == "555666777888999000"
+            
+            # Test override with explicit value
+            config = TwitterConfig(user_id="111222333444555666")
+            assert config.user_id == "111222333444555666"
+            
+        finally:
+            # Restore original environment
+            if original_user_id is not None:
+                os.environ["TWITTER_USER_ID"] = original_user_id
+            elif "TWITTER_USER_ID" in os.environ:
+                del os.environ["TWITTER_USER_ID"]

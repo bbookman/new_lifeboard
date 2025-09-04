@@ -101,130 +101,88 @@ class TestTwitterDataIngestionSequence:
     and can retrieve at least one tweet for today when API credentials are configured.
     """
 
-    async def test_complete_ingestion_sequence_with_timing(self, twitter_source, real_ingestion_service, real_database, real_twitter_config):
+    async def test_complete_ingestion_sequence_single_request(self, twitter_source, real_ingestion_service, real_database, real_twitter_config):
         """
-        Test the complete Twitter data ingestion sequence with database storage.
+        Test the complete Twitter data ingestion sequence with single request flow.
 
-        Uses the TWITTER_INTER_CALL_DELAY from .env to wait for rate limit reset.
         Tests the full pipeline:
         1. Configuration validation
         2. Rate limit checking  
-        3. API call execution
+        3. Single API request execution using user_id
         4. Tweet processing and ingestion
         5. Database storage verification
         6. At least one tweet stored in database for today
         """
         # Skip test if Twitter API is not configured
         if not real_twitter_config.is_api_configured():
-            pytest.skip("Twitter API not configured - set TWITTER_BEARER_TOKEN and TWITTER_USER_NAME")
+            pytest.skip("Twitter API not configured - set TWITTER_BEARER_TOKEN and TWITTER_USER_ID")
 
-        # Use the configured inter-call delay from .env
-        inter_call_delay = real_twitter_config.inter_call_delay
-        max_wait_time = inter_call_delay + 60  # Wait time + 1 minute buffer
-        check_interval = 30  # Check every 30 seconds
-
-        print(f"\n🕐 Starting Twitter ingestion sequence test at {datetime.now()}")
-        print(f"⏱️  Using TWITTER_INTER_CALL_DELAY: {inter_call_delay} seconds ({inter_call_delay/60:.1f} minutes)")
-        print(f"⏱️  Will wait up to {max_wait_time/60:.1f} minutes for rate limit reset")
+        print(f"\n🕐 Starting single-request Twitter ingestion test at {datetime.now()}")
+        print(f"🔧 Using user_id: {real_twitter_config.user_id}")
 
         # Check initial database state
         initial_twitter_count = len(real_database.get_data_items_by_namespace("twitter"))
         print(f"📊 Initial Twitter items in database: {initial_twitter_count}")
 
-        start_time = time.time()
-        attempt = 0
-        max_attempts = 3
+        try:
+            # Step 1: Check rate limit status (basic rate limit guard)
+            can_fetch, minutes_until = await twitter_source.rate_limit_service.can_fetch_now()
+            
+            if not can_fetch:
+                pytest.skip(f"Rate limited for {minutes_until} more minutes - try again later")
 
-        while attempt < max_attempts:
-            attempt += 1
-            elapsed_time = time.time() - start_time
-            print(f"\n🔄 Attempt {attempt}/{max_attempts} - Elapsed: {elapsed_time:.1f}s")
-
-            try:
-                # Step 1: Check rate limit status
-                can_fetch, minutes_until = await twitter_source.rate_limit_service.can_fetch_now()
+            # Step 2: Fetch items from Twitter source (single request using user_id)
+            print("📡 Fetching items from TwitterSource using configured user_id...")
+            items = []
+            async for item in twitter_source.fetch_items():
+                items.append(item)
+                print(f"📝 Fetched item: {item.source_id}")
+            
+            print(f"📊 Items fetched: {len(items)}")
+            
+            if items:
+                # Step 3: Ingest items through IngestionService
+                print("💾 Ingesting items through IngestionService...")
+                result = await real_ingestion_service.ingest_items(items)
+                print(f"📊 Ingestion result: {result.items_stored} stored, {len(result.errors)} errors")
                 
-                if not can_fetch:
-                    remaining_seconds = minutes_until * 60
-                    print(f"⏳ Rate limited for {remaining_seconds:.0f} more seconds ({minutes_until:.1f} minutes)")
-                    
-                    # If this is our last attempt and we're still rate limited, wait for it
-                    if attempt == max_attempts and remaining_seconds <= max_wait_time:
-                        print(f"⏳ Waiting {remaining_seconds:.0f} seconds for rate limit to reset...")
-                        await asyncio.sleep(remaining_seconds + 5)  # +5 second buffer
-                        print("✅ Rate limit should be reset, trying fetch...")
-                    elif attempt < max_attempts:
-                        print(f"⏭️  Rate limited, trying again on next attempt...")
-                        await asyncio.sleep(check_interval)
-                        continue
-                    else:
-                        print(f"⏭️  Rate limited beyond test timeout, skipping...")
-                        break
-
-                # Step 2: Fetch items from Twitter source
-                print("📡 Fetching items from TwitterSource...")
-                items = []
-                async for item in twitter_source.fetch_items():
-                    items.append(item)
-                    print(f"📝 Fetched item: {item.source_id}")
+                if result.errors:
+                    print("❌ Ingestion errors:")
+                    for error in result.errors:
+                        print(f"  - {error}")
                 
-                print(f"📊 Items fetched: {len(items)}")
+                # Step 4: Verify database storage
+                final_count = len(real_database.get_data_items_by_namespace("twitter"))
+                new_items = final_count - initial_twitter_count
+                print(f"📊 Final Twitter items: {final_count}")
+                print(f"📈 New items added: {new_items}")
                 
-                if items:
-                    # Step 3: Ingest items through IngestionService
-                    print("💾 Ingesting items through IngestionService...")
-                    result = await real_ingestion_service.ingest_items(items)
-                    print(f"📊 Ingestion result: {result.items_stored} stored, {len(result.errors)} errors")
+                if new_items > 0:
+                    print("✅ SUCCESS: Twitter data was stored in database!")
                     
-                    if result.errors:
-                        print("❌ Ingestion errors:")
-                        for error in result.errors:
-                            print(f"  - {error}")
+                    # Verify stored tweet properties
+                    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+                    recent_items = real_database.get_data_items_by_namespace("twitter")[-new_items:]
                     
-                    # Step 4: Verify database storage
-                    final_count = len(real_database.get_data_items_by_namespace("twitter"))
-                    new_items = final_count - initial_twitter_count
-                    print(f"📊 Final Twitter items: {final_count}")
-                    print(f"📈 New items added: {new_items}")
+                    for item in recent_items:
+                        print(f"📝 Stored: {item.source_id[:50]}... Date: {item.days_date}")
+                        assert item.namespace == "twitter"
+                        assert item.source_id
+                        assert item.content
+                        assert item.days_date == today
                     
-                    if new_items > 0:
-                        print("✅ SUCCESS: Twitter data was stored in database!")
-                        
-                        # Verify stored tweet properties
-                        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-                        recent_items = real_database.get_data_items_by_namespace("twitter")[-new_items:]
-                        
-                        for item in recent_items:
-                            print(f"📝 Stored: {item.source_id[:50]}... Date: {item.days_date}")
-                            assert item.namespace == "twitter"
-                            assert item.source_id
-                            assert item.content
-                            assert item.days_date == today
-                        
-                        print("✅ All assertions passed - Twitter ingestion working correctly")
-                        return  # Test passed
-                    else:
-                        print("❌ FAILURE: Items fetched but not stored in database!")
-                        return
-                
+                    print("✅ All assertions passed - Twitter ingestion working correctly")
                 else:
-                    print("⚠️  No items fetched - checking if this is expected...")
-                    # Even if no items, this might be normal (no new tweets today)
-                    if attempt == max_attempts:
-                        print("⚠️  No Twitter data found after all attempts")
-                        return
+                    print("❌ FAILURE: Items fetched but not stored in database!")
+                    pytest.fail("Items fetched but not stored in database")
+            
+            else:
+                print("⚠️  No items fetched - may be normal (no new tweets today)")
+                # No items fetched is acceptable (no new tweets today)
 
-            except Exception as e:
-                print(f"❌ Error during attempt {attempt}: {e}")
-                if attempt == max_attempts:
-                    raise
-                await asyncio.sleep(check_interval)
-
-        # If we get here, the test timed out
-        final_count = len(real_database.get_data_items_by_namespace("twitter"))
-        pytest.fail(f"Test timed out after {max_wait_time/60:.1f} minutes. "
-                   f"Initial: {initial_twitter_count}, Final: {final_count}, New: {final_count - initial_twitter_count}. "
-                   f"Check Twitter API configuration and rate limits.")
+        except Exception as e:
+            print(f"❌ Error during ingestion: {e}")
+            raise
 
     async def test_database_diagnostic(self, real_database):
         """Diagnostic test to check current database state"""
@@ -243,6 +201,13 @@ class TestTwitterDataIngestionSequence:
         # Check today's date format
         today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         print(f"📅 Today's date: {today}")
+        
+        # Add user_id configuration status
+        twitter_config = get_config().twitter
+        if twitter_config.user_id:
+            print(f"🔧 User ID configured: {twitter_config.user_id}")
+        else:
+            print("⚠️  User ID not configured - API calls will not work")
         
         # Check for today's Twitter items specifically
         today_twitter = [item for item in twitter_items if item.days_date == today]
@@ -269,7 +234,7 @@ class TestTwitterDataIngestionSequence:
     async def test_single_ingestion_attempt(self, twitter_source, real_ingestion_service, real_database, real_twitter_config):
         """Test a single ingestion attempt to see what happens"""
         if not real_twitter_config.is_api_configured():
-            pytest.skip("Twitter API not configured - set TWITTER_BEARER_TOKEN and TWITTER_USER_NAME")
+            pytest.skip("Twitter API not configured - set TWITTER_BEARER_TOKEN, TWITTER_USER_NAME, and TWITTER_USER_ID")
         
         print("\n🧪 SINGLE INGESTION ATTEMPT TEST:")
         
@@ -340,6 +305,12 @@ class TestTwitterDataIngestionSequence:
         # Test API configuration check
         is_api_configured = real_twitter_config.is_api_configured()
         print(f"🔧 API configured: {is_api_configured}")
+        
+        # Add user_id validation
+        if real_twitter_config.user_id:
+            print(f"🔧 User ID configured: {real_twitter_config.user_id}")
+        else:
+            print("⚠️  User ID not configured")
 
         # Test connection test
         connection_ok = await twitter_source.test_connection()

@@ -17,6 +17,7 @@ def api_enabled_config():
         enabled=True,
         bearer_token="valid_bearer_token_123",
         username="testuser",
+        user_id="123456789012345678",
         max_retries=2,
         retry_delay=0.1,
         request_timeout=5.0
@@ -28,7 +29,8 @@ def api_disabled_config():
     return TwitterConfig(
         enabled=True,
         bearer_token=None,
-        username=None
+        username=None,
+        user_id=None
     )
 
 @pytest.fixture
@@ -253,9 +255,9 @@ class TestTwitterSourceAPIIntegration:
         """Test connection test with successful API"""
         source = TwitterSource(api_enabled_config, mock_database_service)
         
-        with patch.object(source.api_service, 'get_user_id', return_value="123456789"):
-            with patch.object(source.api_service, '__aenter__', return_value=source.api_service):
-                with patch.object(source.api_service, '__aexit__', return_value=None):
+        with patch.object(source.api_service, 'fetch_user_tweets_today', return_value=[]):
+                with patch.object(source.api_service, '__aenter__', new=AsyncMock(return_value=source.api_service)):
+                    with patch.object(source.api_service, '__aexit__', new=AsyncMock(return_value=None)):
                     result = await source.test_connection()
                     
                     assert result is True
@@ -265,9 +267,9 @@ class TestTwitterSourceAPIIntegration:
         """Test connection test with failed API"""
         source = TwitterSource(api_enabled_config, mock_database_service)
         
-        with patch.object(source.api_service, 'get_user_id', side_effect=Exception("API Error")):
-            with patch.object(source.api_service, '__aenter__', return_value=source.api_service):
-                with patch.object(source.api_service, '__aexit__', return_value=None):
+        with patch.object(source.api_service, 'fetch_user_tweets_today', side_effect=Exception("API Error")):
+                with patch.object(source.api_service, '__aenter__', new=AsyncMock(return_value=source.api_service)):
+                    with patch.object(source.api_service, '__aexit__', new=AsyncMock(return_value=None)):
                     result = await source.test_connection()
                     
                     assert result is False
@@ -386,3 +388,19 @@ class TestTwitterSourceAPIIntegration:
             assert item.content == "Test tweet with metrics"
             assert item.metadata["source_type"] == "twitter_api"
             assert item.metadata["days_date"] == "2024-01-15"
+
+    @pytest.mark.asyncio
+    async def test_fetch_items_missing_user_id(self, mock_database_service):
+        """Test behavior when user_id is not configured"""
+        config = TwitterConfig(enabled=True, bearer_token="valid_token", user_id=None)
+        source = TwitterSource(config, mock_database_service)
+        
+        mock_database_service.get_data_items_by_namespace.return_value = []
+        
+        items = []
+        async for item in source.fetch_items():
+            items.append(item)
+        
+        # Should only return existing database items, no API calls
+        assert len(items) == 0
+        mock_database_service.get_data_items_by_namespace.assert_called_once_with("twitter", limit=None)

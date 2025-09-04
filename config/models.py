@@ -439,6 +439,7 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
     delete_after_import: bool = False
     bearer_token: Optional[str] = None
     username: Optional[str] = None
+    user_id: Optional[str] = Field(None, env='TWITTER_USER_ID')
     max_retries: int = 3
     retry_delay: float = 1.0
     request_timeout: float = 30.0
@@ -461,12 +462,38 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
             return StringValidator.validate_non_empty_string(v, "Twitter Username")
         return v
     
+
+    @field_validator('user_id')
+    @classmethod
+    def validate_user_id(cls, v):
+        # Allow None, but if present, must be a non-empty string of digits and not a placeholder
+        if v is None:
+            return v
+        v = v.strip()
+        placeholders = {"your_user_id_here", "your twitter user id - see readme", ""}
+        if v in placeholders:
+            raise ValueError("Twitter user_id must not be a placeholder value")
+        if not v.isdigit():
+            raise ValueError("Twitter user_id must be a non-empty string of digits")
+        return v
+
+    def _is_valid_user_id(self) -> bool:
+        if self.user_id is None:
+            return False
+        v = str(self.user_id).strip()
+        placeholders = {"your_user_id_here", "your twitter user id - see readme", ""}
+        if v in placeholders:
+            return False
+        if not v.isdigit():
+            return False
+        return True
+
     @field_validator('max_retries', 'sync_interval_hours', 'other_error_max_retries')
     @classmethod
     def validate_positive_ints(cls, v, info):
         field_name = info.field_name.replace('_', ' ').title()
         return NumericValidator.validate_positive_int(v, field_name)
-    
+
     @field_validator('retry_delay', 'request_timeout', 'inter_call_delay')
     @classmethod
     def validate_positive_floats(cls, v, info):
@@ -475,12 +502,13 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
 
     def is_api_configured(self) -> bool:
         """Check if Twitter API credentials are properly configured"""
-        return (super().is_api_key_configured(
+        # Only require bearer_token and valid user_id
+        bearer_ok = super().is_api_key_configured(
             self.bearer_token,
             additional_placeholders={"your token here", "your-token-here", "twitter_bearer_token_here"}
-        ) and self.username is not None and
-        self.username.strip() != "" and
-        self.username != "your user name")
+        )
+        user_id_ok = self._is_valid_user_id()
+        return bearer_ok and user_id_ok
 
     def is_configured(self) -> bool:
         """Check if Twitter source is properly configured (archive or API)"""

@@ -42,6 +42,7 @@ class TestTwitterArchiveImport:
             enabled=True,
             bearer_token=None,  # No API needed for archive import
             username=None,
+            user_id=None,  # No API needed for archive import
             delete_after_import=False,
             sync_interval_hours=24,
             max_retries=3,
@@ -127,6 +128,7 @@ class TestTwitterArchiveImport:
         # API-only operations should fail gracefully
         assert twitter_config.bearer_token is None
         assert twitter_config.username is None
+        assert twitter_config.user_id is None
 
     @pytest.mark.asyncio  
     async def test_parse_real_twitter_archive(self, twitter_source, real_twitter_archive):
@@ -280,7 +282,8 @@ class TestTwitterArchiveImport:
         disabled_config = TwitterConfig(
             enabled=False,  # Disabled
             bearer_token=None,
-            username=None 
+            username=None,
+            user_id=None
         )
         
         twitter_source = TwitterSource(disabled_config, temp_db, mock_ingestion_service)
@@ -464,6 +467,7 @@ class TestTwitterImportEndToEnd:
             enabled=True,
             bearer_token=None,
             username=None,
+            user_id=None,
             delete_after_import=True,  # Test cleanup
             sync_interval_hours=24
         )
