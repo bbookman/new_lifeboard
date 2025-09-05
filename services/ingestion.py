@@ -119,6 +119,11 @@ class IngestionService(BaseService, ServiceDebugMixin):
         result = IngestionResult()
         result.start_time = datetime.now(timezone.utc)
         
+        # Twitter-specific trace logging
+        if namespace == 'twitter':
+            logger.info(f"[TWITTER TRACE] ingest_from_source starting at {result.start_time.isoformat()}")
+            logger.info(f"[TWITTER TRACE] Parameters: force_full_sync={force_full_sync}, limit={limit}, mode={ingestion_mode}")
+        
         try:
             logger.info(f"Starting ingestion from {namespace}")
             
@@ -148,19 +153,44 @@ class IngestionService(BaseService, ServiceDebugMixin):
             
             # Collect items for batch processing
             items = []
+            
+            # Twitter-specific trace logging for fetch operation
+            if namespace == 'twitter':
+                logger.info(f"[TWITTER TRACE] DB last_sync (system_settings): {last_sync}")
+                logger.info(f"[TWITTER TRACE] Parsed since: {since.isoformat() if since else 'None (full sync)'}")
+                logger.info(f"[TWITTER TRACE] Starting Twitter source fetch operation with since={since}, limit={limit}")
+                fetch_start_time = time.time()
+            
             async for item in source.fetch_items(since=since, limit=limit):
                 items.append(item)
                 result.items_processed += 1
+            
+            # Twitter-specific trace logging for collection results
+            if namespace == 'twitter':
+                fetch_duration = (time.time() - fetch_start_time) * 1000
+                logger.info(f"[TWITTER TRACE] Collected {len(items)} items from Twitter source in {fetch_duration:.2f}ms")
+                logger.info(f"[TWITTER TRACE] Twitter fetch operation completed, proceeding to processing phase")
             
             # Process items - use batch processing for namespace with batch-capable processors
             if items:
                 processor = self.processors.get(namespace, self.default_processor)
                 
+                # Twitter-specific trace logging for processing phase
+                if namespace == 'twitter':
+                    processing_start_time = time.time()
+                    logger.info(f"[TWITTER TRACE] Starting Twitter processing phase with {len(items)} items")
+                    logger.info(f"[TWITTER TRACE] Using processor: {type(processor).__name__}")
+                
                 # Check if processor supports batch processing (has process_batch method)
                 if hasattr(processor, 'process_batch') and callable(getattr(processor, 'process_batch')):
                     logger.info(f"Using batch processing for {namespace} with {len(items)} items")
+                    if namespace == 'twitter':
+                        logger.info(f"[TWITTER TRACE] Twitter batch processing enabled")
                     try:
                         processed_items = await processor.process_batch(items)
+                        
+                        if namespace == 'twitter':
+                            logger.info(f"[TWITTER TRACE] Twitter batch processing completed, got {len(processed_items)} processed items")
                         
                         # Store each processed item
                         for processed_item in processed_items:
@@ -168,15 +198,26 @@ class IngestionService(BaseService, ServiceDebugMixin):
                             
                     except Exception as e:
                         logger.error(f"Batch processing failed for {namespace}: {e}")
+                        if namespace == 'twitter':
+                            logger.error(f"[TWITTER TRACE] Twitter batch processing failed: {e}")
                         # Fall back to individual processing
                         logger.info(f"Falling back to individual processing for {namespace}")
+                        if namespace == 'twitter':
+                            logger.info(f"[TWITTER TRACE] Twitter falling back to individual processing")
                         for item in items:
                             await self._process_and_store_item(item, result)
                 else:
                     # Use individual processing for processors that don't support batching
                     logger.debug(f"Using individual processing for {namespace} (no batch support)")
+                    if namespace == 'twitter':
+                        logger.info(f"[TWITTER TRACE] Twitter using individual processing (no batch support)")
                     for item in items:
                         await self._process_and_store_item(item, result)
+                
+                # Twitter-specific trace logging for processing completion
+                if namespace == 'twitter':
+                    processing_duration = (time.time() - processing_start_time) * 1000
+                    logger.info(f"[TWITTER TRACE] Twitter processing phase completed in {processing_duration:.2f}ms")
             
             # Update last sync time after successful processing
             await self.database.async_set_setting(
@@ -192,6 +233,28 @@ class IngestionService(BaseService, ServiceDebugMixin):
         finally:
             result.end_time = datetime.now(timezone.utc)
             logger.info(f"Ingestion completed for {namespace}: {result.to_dict()}")
+            
+            # Twitter-specific comprehensive lifecycle reporting
+            if namespace == 'twitter':
+                total_duration = (result.end_time - result.start_time).total_seconds() * 1000
+                logger.info(f"[TWITTER TRACE] Twitter ingestion lifecycle completed in {total_duration:.2f}ms")
+                logger.info(f"[TWITTER TRACE] Twitter data flow metrics: received={result.items_processed}, stored={result.items_stored}, errors={len(result.errors)}")
+                if result.errors:
+                    logger.error(f"[TWITTER TRACE] Twitter ingestion errors: {result.errors}")
+                else:
+                    logger.info(f"[TWITTER TRACE] Twitter ingestion completed successfully with no errors")
+                
+                # Query database for Twitter data_items to verify storage
+                try:
+                    query_start_time = time.time()
+                    twitter_items = await self.database.async_get_data_items_by_namespace('twitter', limit=5)
+                    query_duration = (time.time() - query_start_time) * 1000
+                    total_count = len(twitter_items)
+                    sample_ids = [item.get('id', item.get('source_id', 'unknown'))[:20] for item in twitter_items[:3]]
+                    logger.info(f"[TWITTER TRACE] Database verification query completed in {query_duration:.2f}ms: found {total_count} total Twitter items")
+                    logger.info(f"[TWITTER TRACE] Sample Twitter item IDs: {sample_ids}")
+                except Exception as e:
+                    logger.error(f"[TWITTER TRACE] Database verification query failed: {e}")
             
             # Send WebSocket notifications for complete ingestions
             if ingestion_mode == 'complete' and result.success and result.items_stored > 0:
@@ -211,6 +274,12 @@ class IngestionService(BaseService, ServiceDebugMixin):
             # Extract days_date for calendar support
             days_date = self._extract_days_date(processed_item)
             
+            # Twitter-specific trace logging for database storage
+            if processed_item.namespace == 'twitter':
+                storage_start_time = time.time()
+                content_length = len(processed_item.content) if processed_item.content else 0
+                logger.info(f"[TWITTER TRACE] Starting Twitter database storage: id={namespaced_id}, content_length={content_length}, days_date={days_date}")
+            
             # Store in database
             await self.database.async_store_data_item(
                 id=namespaced_id,
@@ -224,17 +293,37 @@ class IngestionService(BaseService, ServiceDebugMixin):
             result.items_stored += 1
             logger.debug(f"Stored batch-processed item: {namespaced_id}")
             
+            # Twitter-specific trace logging for storage success
+            if processed_item.namespace == 'twitter':
+                storage_duration = (time.time() - storage_start_time) * 1000
+                logger.info(f"[TWITTER TRACE] Twitter database storage completed successfully in {storage_duration:.2f}ms for {namespaced_id}")
+            
         except Exception as e:
             error_msg = f"Error storing processed item {processed_item.source_id}: {str(e)}"
             logger.error(error_msg)
+            if processed_item.namespace == 'twitter':
+                logger.error(f"[TWITTER TRACE] Twitter database storage failed for {processed_item.source_id}: {str(e)}")
+                logger.error(f"[TWITTER TRACE] Twitter storage error context: namespaced_id={namespaced_id if 'namespaced_id' in locals() else 'not_created'}")
             result.errors.append(error_msg)
     
     async def _process_and_store_item(self, item: DataItem, result: IngestionResult):
         """Process and store a single data item"""
-        try:            
+        try:
+            # Twitter-specific trace logging for DataItem processing
+            if item.namespace == 'twitter':
+                content_length = len(item.content) if item.content else 0
+                metadata_keys = list(item.metadata.keys()) if item.metadata else []
+                logger.info(f"[TWITTER TRACE] Processing Twitter DataItem: source_id={item.source_id}, content_length={content_length}")
+                logger.info(f"[TWITTER TRACE] Twitter DataItem metadata keys: {metadata_keys}")
+                processing_start_time = time.time()
+            
             # Select the correct processor for the namespace
             processor = self.processors.get(item.namespace, self.default_processor)
             processed_item = processor.process(item)
+            
+            if item.namespace == 'twitter':
+                processing_duration = (time.time() - processing_start_time) * 1000
+                logger.info(f"[TWITTER TRACE] Twitter DataItem processing completed in {processing_duration:.2f}ms")
             
             # Store the processed item
             await self._store_processed_item(processed_item, result)
@@ -242,6 +331,9 @@ class IngestionService(BaseService, ServiceDebugMixin):
         except Exception as e:
             error_msg = f"Error processing item {item.source_id}: {str(e)}"
             logger.error(error_msg)
+            if item.namespace == 'twitter':
+                logger.error(f"[TWITTER TRACE] Twitter DataItem processing failed for {item.source_id}: {str(e)}")
+                logger.error(f"[TWITTER TRACE] Twitter error context: namespace={item.namespace}, content_available={item.content is not None}")
             result.errors.append(error_msg)
     
     async def process_pending_embeddings(self, batch_size: int = 32) -> Dict[str, Any]:
@@ -368,22 +460,51 @@ class IngestionService(BaseService, ServiceDebugMixin):
         
         logger.info(f"Ingesting {len(data_items)} items for namespace: {namespace}")
         
+        # Twitter-specific trace logging for batch ingestion
+        if namespace == 'twitter':
+            logger.info(f"[TWITTER TRACE] Twitter batch ingestion starting at {result.start_time.isoformat()}")
+            logger.info(f"[TWITTER TRACE] Processing {len(data_items)} Twitter DataItems")
+            twitter_batch_start_time = time.time()
+        
         try:
             # Process each item using the standard processing method
             for item in data_items:
                 logger.debug(f"Processing item: {item.source_id}")
+                
+                # Twitter-specific validation logging
+                if namespace == 'twitter' and item.namespace == 'twitter':
+                    logger.info(f"[TWITTER TRACE] Validating Twitter DataItem: {item.source_id}")
+                    if not item.content:
+                        logger.warning(f"[TWITTER TRACE] Twitter DataItem {item.source_id} has no content")
+                    if not item.metadata:
+                        logger.warning(f"[TWITTER TRACE] Twitter DataItem {item.source_id} has no metadata")
+                
                 await self._process_and_store_item(item, result)
                 result.items_processed += 1
                 logger.debug(f"Successfully processed item: {item.source_id}")
+                
+                # Twitter-specific success logging
+                if namespace == 'twitter' and item.namespace == 'twitter':
+                    logger.info(f"[TWITTER TRACE] Twitter DataItem {item.source_id} processed and stored successfully")
             
             result.end_time = datetime.now(timezone.utc)
             
             logger.info(f"Ingestion completed for {namespace}: {result.items_processed} processed, "
                        f"{result.items_stored} stored, {len(result.errors)} errors")
             
+            # Twitter-specific batch completion logging
+            if namespace == 'twitter':
+                twitter_batch_duration = (time.time() - twitter_batch_start_time) * 1000
+                logger.info(f"[TWITTER TRACE] Twitter batch ingestion completed in {twitter_batch_duration:.2f}ms")
+                logger.info(f"[TWITTER TRACE] Twitter batch results: {result.items_processed} processed, {result.items_stored} stored")
+                if result.errors:
+                    logger.error(f"[TWITTER TRACE] Twitter batch ingestion errors: {result.errors}")
+            
         except Exception as e:
             error_msg = f"Error during batch ingestion for {namespace}: {str(e)}"
             logger.error(error_msg)
+            if namespace == 'twitter':
+                logger.error(f"[TWITTER TRACE] Twitter batch ingestion failed: {str(e)}")
             result.errors.append(error_msg)
             result.end_time = datetime.now(timezone.utc)
         

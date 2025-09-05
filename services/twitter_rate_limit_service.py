@@ -32,7 +32,7 @@ class TwitterRateLimitService:
             last_fetch_time = await self._get_last_fetch_time()
             
             if not last_fetch_time:
-                logger.info("[TwitterRateLimit] No previous fetch found, allowing fetch")
+                logger.info("[TWITTER TRACE] No previous fetch found, allowing fetch")
                 return True, 0
             
             # Calculate time elapsed since last fetch
@@ -40,16 +40,21 @@ class TwitterRateLimitService:
             elapsed_seconds = (now - last_fetch_time).total_seconds()
             elapsed_minutes = elapsed_seconds / 60
             
+            # Log the DB-stored last fetch timestamp
+            last_fetch_iso = last_fetch_time.isoformat() if last_fetch_time else 'None'
+            logger.info(f"[TWITTER TRACE] Last successful fetch (DB): {last_fetch_iso}")
+            logger.info(f"[TWITTER TRACE] Elapsed minutes: {elapsed_minutes:.1f}, minutes remaining: {max(0, self.rate_limit_minutes - elapsed_minutes):.1f}")
+            
             if elapsed_minutes >= self.rate_limit_minutes:
-                logger.info(f"[TwitterRateLimit] {elapsed_minutes:.1f} minutes elapsed, allowing fetch")
+                logger.info(f"[TWITTER TRACE] {elapsed_minutes:.1f} minutes elapsed, allowing fetch")
                 return True, 0
             else:
                 minutes_remaining = int(self.rate_limit_minutes - elapsed_minutes) + 1
-                logger.info(f"[TwitterRateLimit] Rate limited, {minutes_remaining} minutes remaining")
+                logger.info(f"[TWITTER TRACE] Rate limited, {minutes_remaining} minutes remaining")
                 return False, minutes_remaining
                 
         except Exception as e:
-            logger.error(f"[TwitterRateLimit] Error checking rate limit: {e}")
+            logger.error(f"[TWITTER TRACE] Error checking rate limit: {e}")
             # On error, allow the fetch to proceed
             return True, 0
     
@@ -63,13 +68,14 @@ class TwitterRateLimitService:
         """
         try:
             if success:
-                await self._update_last_fetch_time(datetime.utcnow())
-                logger.info("[TwitterRateLimit] Recorded successful fetch")
+                now = datetime.utcnow()
+                await self._update_last_fetch_time(now)
+                logger.info(f"[TWITTER TRACE] Recorded successful fetch at {now.isoformat()}")
             else:
-                logger.info("[TwitterRateLimit] Failed fetch not recorded for rate limiting")
+                logger.info("[TWITTER TRACE] Failed fetch not recorded for rate limiting")
                 
         except Exception as e:
-            logger.error(f"[TwitterRateLimit] Error recording fetch attempt: {e}")
+            logger.error(f"[TWITTER TRACE] Error recording fetch attempt: {e}")
     
     async def get_status_for_day(self, days_date: str) -> Optional[Dict[str, str]]:
         """
@@ -120,7 +126,7 @@ class TwitterRateLimitService:
             }
             
         except Exception as e:
-            logger.error(f"[TwitterRateLimit] Error getting status for day {days_date}: {e}")
+            logger.error(f"[TWITTER TRACE] Error getting status for day {days_date}: {e}")
             return None
     
     async def _get_last_fetch_time(self) -> Optional[datetime]:
@@ -138,7 +144,7 @@ class TwitterRateLimitService:
             return None
             
         except Exception as e:
-            logger.error(f"[TwitterRateLimit] Error getting last fetch time: {e}")
+            logger.error(f"[TWITTER TRACE] Error getting last fetch time: {e}")
             return None
     
     async def _update_last_fetch_time(self, fetch_time: datetime) -> None:
@@ -155,7 +161,7 @@ class TwitterRateLimitService:
             )
             
         except Exception as e:
-            logger.error(f"[TwitterRateLimit] Error updating last fetch time: {e}")
+            logger.error(f"[TWITTER TRACE] Error updating last fetch time: {e}")
             raise
     
     def _format_time_ago(self, time: datetime) -> str:
@@ -179,5 +185,5 @@ class TwitterRateLimitService:
                 return f"{days}d ago"
                 
         except Exception as e:
-            logger.error(f"[TwitterRateLimit] Error formatting time ago: {e}")
+            logger.error(f"[TWITTER TRACE] Error formatting time ago: {e}")
             return "unknown"

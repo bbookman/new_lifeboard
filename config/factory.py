@@ -159,6 +159,7 @@ def create_production_config() -> AppConfig:
             sync_interval_hours=int(os.getenv("TWITTER_SYNC_INTERVAL_HOURS", "24")),
             bearer_token=os.getenv("TWITTER_BEARER_TOKEN"),
             username=os.getenv("TWITTER_USER_NAME"),
+            user_id=os.getenv("TWITTER_USER_ID"),
             max_retries=int(os.getenv("TWITTER_MAX_RETRIES", "3")),
             retry_delay=float(os.getenv("TWITTER_RETRY_DELAY", "1.0")),
             request_timeout=float(os.getenv("TWITTER_REQUEST_TIMEOUT", "30.0")),

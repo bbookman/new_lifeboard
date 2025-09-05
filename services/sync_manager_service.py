@@ -48,6 +48,11 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         """Register a source for automatic scheduled syncing"""
         namespace = source.namespace
         
+        # Add Twitter-specific logging
+        if isinstance(source, TwitterSource):
+            logger.info(f"[TWITTER TRACE] Registering Twitter source for auto-sync at {datetime.now(timezone.utc).isoformat()}")
+            logger.info(f"[TWITTER TRACE] Twitter source type: {type(source).__name__}, force_full_sync: {force_full_sync}")
+        
         self.log_service_call("register_source_for_auto_sync", {
             "namespace": namespace,
             "source_type": type(source).__name__,
@@ -75,7 +80,8 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
             # Twitter Basic plan rate limit: 1 request per 15 minutes
             interval_hours = 0.25  # 15 minutes in hours
             interval_seconds = 15 * 60  # 15 minutes in seconds
-            logger.info(f"Twitter source configured for 15-minute sync interval due to API rate limits")
+            logger.info(f"[TWITTER TRACE] Twitter source configured for 15-minute sync interval due to API rate limits")
+            logger.info(f"[TWITTER TRACE] Twitter sync interval: {interval_hours} hours ({interval_seconds} seconds)")
         else:
             # Default sync interval for other sources
             interval_hours = 24
@@ -88,6 +94,13 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
             import traceback
             
             try:
+                # Add Twitter-specific logging
+                if namespace == "twitter":
+                    current_timestamp = datetime.now(timezone.utc).isoformat()
+                    logger.info(f"[TWITTER TRACE] Twitter sync job starting at {current_timestamp}")
+                    logger.info(f"[TWITTER TRACE] Twitter sync function initialized, force_full_sync: {force_full_sync}")
+                    logger.info(f"[TWITTER TRACE] Active asyncio tasks before Twitter sync: {len(asyncio.all_tasks())}")
+                
                 logger.info(f"SYNC_FUNCTION: Starting scheduled sync for {namespace}")
                 logger.info(f"SYNC_FUNCTION: Current asyncio tasks before sync: {len(asyncio.all_tasks())}")
                 
@@ -102,6 +115,10 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                 # Add timeout protection - longer timeout for Twitter due to rate limiting
                 timeout_seconds = 1200.0 if namespace == "twitter" else 300.0  # 20 minutes for Twitter, 5 minutes for others
                 
+                if namespace == "twitter":
+                    logger.info(f"[TWITTER TRACE] Twitter ingestion timeout set to {timeout_seconds} seconds ({timeout_seconds/60:.1f} minutes)")
+                    logger.info(f"[TWITTER TRACE] Calling ingestion service for Twitter with parameters: force_full_sync={force_full_sync}, limit=1000, mode=complete")
+                
                 try:
                     result = await asyncio.wait_for(
                         self.ingestion_service.ingest_from_source(
@@ -114,6 +131,13 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                     )
                     
                     sync_duration = (time.time() - sync_start_time) * 1000
+                    
+                    if namespace == "twitter":
+                        logger.info(f"[TWITTER TRACE] Twitter sync completed successfully in {sync_duration:.2f}ms")
+                        logger.info(f"[TWITTER TRACE] Twitter sync results: {result.items_processed} processed, {result.items_stored} stored, {result.errors} errors")
+                        logger.info(f"[TWITTER TRACE] Active asyncio tasks after Twitter sync: {len(asyncio.all_tasks())}")
+                        if result.errors:
+                            logger.info(f"[TWITTER TRACE] Twitter sync errors: {result.errors}")
                     
                     logger.info(f"SYNC_FUNCTION: Scheduled sync completed for {namespace}: "
                                f"{result.items_processed} processed, "
@@ -134,6 +158,11 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                 except asyncio.TimeoutError as timeout_error:
                     sync_duration = (time.time() - sync_start_time) * 1000
                     timeout_minutes = timeout_seconds / 60
+                    
+                    if namespace == "twitter":
+                        logger.error(f"[TWITTER TRACE] Twitter sync timed out after {timeout_minutes} minutes ({sync_duration:.2f}ms)")
+                        logger.error(f"[TWITTER TRACE] Twitter sync timeout error: {timeout_error}")
+                    
                     logger.error(f"SYNC_FUNCTION: Sync for {namespace} timed out after {timeout_minutes} minutes")
                     
                     # Log timeout error
@@ -147,6 +176,12 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                     return {"success": False, "error": "timeout", "items_processed": 0, "items_stored": 0}
                 except Exception as sync_error:
                     sync_duration = (time.time() - sync_start_time) * 1000
+                    
+                    if namespace == "twitter":
+                        logger.error(f"[TWITTER TRACE] Twitter sync operation failed after {sync_duration:.2f}ms: {sync_error}")
+                        logger.error(f"[TWITTER TRACE] Twitter sync error type: {type(sync_error).__name__}")
+                        logger.error(f"[TWITTER TRACE] Twitter sync full traceback: {traceback.format_exc()}")
+                    
                     logger.error(f"SYNC_FUNCTION: Sync operation failed for {namespace}: {sync_error}")
                     logger.error(f"SYNC_FUNCTION: Exception type: {type(sync_error).__name__}")
                     logger.error(f"SYNC_FUNCTION: Full traceback: {traceback.format_exc()}")
@@ -162,6 +197,11 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                     return {"success": False, "error": str(sync_error), "items_processed": 0, "items_stored": 0}
                 
             except Exception as e:
+                if namespace == "twitter":
+                    logger.error(f"[TWITTER TRACE] Twitter scheduled sync failed with outer exception: {e}")
+                    logger.error(f"[TWITTER TRACE] Twitter outer exception type: {type(e).__name__}")
+                    logger.error(f"[TWITTER TRACE] Twitter outer exception traceback: {traceback.format_exc()}")
+                
                 logger.error(f"SYNC_FUNCTION: Scheduled sync failed for {namespace}: {e}")
                 logger.error(f"SYNC_FUNCTION: Exception type: {type(e).__name__}")
                 logger.error(f"SYNC_FUNCTION: Full traceback: {traceback.format_exc()}")
@@ -183,6 +223,11 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         
         # Track the mapping
         self.source_job_mapping[namespace] = job_id
+        
+        if isinstance(source, TwitterSource):
+            logger.info(f"[TWITTER TRACE] Twitter sync job created successfully with job_id: {job_id}")
+            logger.info(f"[TWITTER TRACE] Twitter job configuration: interval={interval_seconds}s, max_retries=3, timeout={self.config.scheduler.job_timeout_minutes * 60}s")
+            logger.info(f"[TWITTER TRACE] Twitter source registration completed successfully")
         
         logger.info(f"Registered {namespace} for auto-sync every {interval_hours} hours (job_id: {job_id})")
         return True
@@ -225,12 +270,25 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
     
     async def trigger_scheduled_job(self, namespace: str) -> bool:
         """Trigger the scheduled job for a namespace immediately"""
+        if namespace == "twitter":
+            logger.info(f"[TWITTER TRACE] Manual trigger requested for Twitter sync job")
+        
         job_id = self.source_job_mapping.get(namespace)
         if not job_id:
+            if namespace == "twitter":
+                logger.warning(f"[TWITTER TRACE] No scheduled Twitter job found for manual trigger")
             logger.warning(f"No scheduled job found for {namespace}")
             return False
         
-        return await self.scheduler.trigger_job(job_id)
+        if namespace == "twitter":
+            logger.info(f"[TWITTER TRACE] Triggering Twitter job {job_id} manually")
+        
+        result = await self.scheduler.trigger_job(job_id)
+        
+        if namespace == "twitter":
+            logger.info(f"[TWITTER TRACE] Twitter manual trigger result: {result}")
+        
+        return result
     
     def pause_source_sync(self, namespace: str) -> bool:
         """Pause automatic syncing for a source"""
@@ -345,13 +403,21 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
             logger.info("Weather source not available for auto-sync (disabled or missing API key)")
         
         # Check Twitter source (if configured)
+        logger.info(f"[TWITTER TRACE] Checking Twitter source availability for auto-discovery")
         if "twitter" in self.ingestion_service.sources:
+            logger.info(f"[TWITTER TRACE] Twitter source found in ingestion service sources")
             twitter_source = self.ingestion_service.sources["twitter"]
+            logger.info(f"[TWITTER TRACE] Twitter source type: {type(twitter_source).__name__}")
+            
             success = await self.register_source_for_auto_sync(twitter_source)
             if success:
                 registered_sources.append("twitter")
+                logger.info(f"[TWITTER TRACE] Twitter source auto-registration successful")
                 logger.info("Auto-registered Twitter source for scheduled sync")
+            else:
+                logger.error(f"[TWITTER TRACE] Twitter source auto-registration failed")
         else:
+            logger.info(f"[TWITTER TRACE] Twitter source not found in ingestion service sources")
             logger.info("Twitter source not available for auto-sync (not configured)")
         
         # Future: Add other source types here

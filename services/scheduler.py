@@ -169,14 +169,27 @@ class AsyncScheduler:
                 
                 job = self.jobs.get(job_id)
                 if job:
+                    completion_timestamp = datetime.now(timezone.utc)
+                    execution_duration = None
+                    if job.last_run:
+                        execution_duration = (completion_timestamp - job.last_run).total_seconds()
+                    
                     try:
                         result = await task
                         job.last_result = result
                         job.status = JobStatus.COMPLETED
-                        job.last_run = datetime.now(timezone.utc)
+                        job.last_run = completion_timestamp
                         job.calculate_next_run()
                         self.stats["total_jobs_executed"] += 1
-                        logger.info(f"Job {job_id} completed successfully")
+                        
+                        if job.namespace == 'twitter':
+                            logger.info(f"[TWITTER TRACE] Twitter sync job {job_id} completed successfully at {completion_timestamp.isoformat()}")
+                            if execution_duration:
+                                logger.info(f"[TWITTER TRACE] Twitter job execution duration: {execution_duration:.2f}s")
+                            logger.info(f"[TWITTER TRACE] Twitter job result: {result}")
+                            logger.info(f"[TWITTER TRACE] Twitter job next execution scheduled for: {job.next_run.isoformat() if job.next_run else 'None'}")
+                        else:
+                            logger.info(f"Job {job_id} completed successfully")
                         
                     except Exception as e:
                         job.status = JobStatus.FAILED
@@ -184,7 +197,13 @@ class AsyncScheduler:
                         job.last_error = str(e)
                         self.stats["total_jobs_failed"] += 1
                         
-                        logger.error(f"Job {job_id} failed: {e}")
+                        if job.namespace == 'twitter':
+                            logger.error(f"[TWITTER TRACE] Twitter sync job {job_id} failed at {completion_timestamp.isoformat()}: {e}")
+                            if execution_duration:
+                                logger.error(f"[TWITTER TRACE] Twitter job failed after {execution_duration:.2f}s execution")
+                            logger.error(f"[TWITTER TRACE] Twitter job error count: {job.error_count}/{job.max_retries}")
+                        else:
+                            logger.error(f"Job {job_id} failed: {e}")
                         
                         # Schedule retry if applicable
                         if job.should_retry():
@@ -194,17 +213,29 @@ class AsyncScheduler:
                             )
                             job.next_run = datetime.now(timezone.utc) + timedelta(seconds=retry_delay)
                             job.status = JobStatus.PENDING
-                            logger.info(f"Job {job_id} scheduled for retry {job.error_count}/{job.max_retries} in {retry_delay}s")
+                            
+                            if job.namespace == 'twitter':
+                                logger.info(f"[TWITTER TRACE] Twitter job {job_id} scheduled for retry {job.error_count}/{job.max_retries} in {retry_delay}s at {job.next_run.isoformat()}")
+                            else:
+                                logger.info(f"Job {job_id} scheduled for retry {job.error_count}/{job.max_retries} in {retry_delay}s")
                         else:
                             job.status = JobStatus.FAILED
-                            logger.error(f"Job {job_id} failed permanently after {job.error_count} attempts")
+                            
+                            if job.namespace == 'twitter':
+                                logger.error(f"[TWITTER TRACE] Twitter job {job_id} failed permanently after {job.error_count} attempts")
+                            else:
+                                logger.error(f"Job {job_id} failed permanently after {job.error_count} attempts")
                             
                             # For permanently failed jobs, schedule next attempt after the regular interval
                             # This allows recovery if the issue is resolved
                             job.next_run = datetime.now(timezone.utc) + timedelta(seconds=job.interval_seconds)
                             job.error_count = 0  # Reset error count for fresh start
                             job.status = JobStatus.PENDING
-                            logger.info(f"Job {job_id} reset for next regular cycle in {job.interval_seconds}s")
+                            
+                            if job.namespace == 'twitter':
+                                logger.info(f"[TWITTER TRACE] Twitter job {job_id} reset for next regular cycle in {job.interval_seconds}s at {job.next_run.isoformat()}")
+                            else:
+                                logger.info(f"Job {job_id} reset for next regular cycle in {job.interval_seconds}s")
         
         # Remove completed tasks
         for job_id in completed_jobs:
@@ -223,7 +254,14 @@ class AsyncScheduler:
     
     async def _execute_job(self, job: ScheduledJob):
         """Execute a scheduled job"""
-        logger.info(f"Executing job: {job.id} ({job.name})")
+        execution_timestamp = datetime.now(timezone.utc).isoformat()
+        
+        if job.namespace == 'twitter':
+            logger.info(f"[TWITTER TRACE] Executing Twitter sync job {job.id} at {execution_timestamp}")
+            logger.info(f"[TWITTER TRACE] Twitter job config - timeout: {job.timeout_seconds}s, max_retries: {job.max_retries}, interval: {job.interval_seconds}s")
+            logger.info(f"[TWITTER TRACE] Twitter job execution context - error_count: {job.error_count}, last_run: {job.last_run}")
+        else:
+            logger.info(f"Executing job: {job.id} ({job.name})")
         
         job.status = JobStatus.RUNNING
         
@@ -243,6 +281,7 @@ class AsyncScheduler:
                 timeout_seconds: int = 1800) -> str:
         """Add a new scheduled job"""
         job_id = str(uuid.uuid4())
+        creation_timestamp = datetime.now(timezone.utc).isoformat()
         
         job = ScheduledJob(
             id=job_id,
@@ -255,7 +294,14 @@ class AsyncScheduler:
         )
         
         self.jobs[job_id] = job
-        logger.info(f"Added job: {job_id} ({name}) - interval: {interval_seconds}s")
+        
+        if namespace == 'twitter':
+            logger.info(f"[TWITTER TRACE] Added Twitter sync job {job_id} at {creation_timestamp}")
+            logger.info(f"[TWITTER TRACE] Twitter job configuration - name: {name}, interval: {interval_seconds}s, timeout: {timeout_seconds}s, max_retries: {max_retries}")
+            logger.info(f"[TWITTER TRACE] Twitter job first execution scheduled for: {job.next_run.isoformat() if job.next_run else 'immediate'}")
+            logger.info(f"[TWITTER TRACE] Twitter job lifecycle - created_at: {job.created_at.isoformat()}, status: {job.status.value}")
+        else:
+            logger.info(f"Added job: {job_id} ({name}) - interval: {interval_seconds}s")
         
         return job_id
     
@@ -301,15 +347,29 @@ class AsyncScheduler:
         if not job:
             return False
         
+        trigger_timestamp = datetime.now(timezone.utc).isoformat()
+        
         if job.id in self.running_jobs:
-            logger.warning(f"Job {job_id} is already running")
+            if job.namespace == 'twitter':
+                logger.warning(f"[TWITTER TRACE] Twitter job {job_id} is already running, cannot trigger at {trigger_timestamp}")
+            else:
+                logger.warning(f"Job {job_id} is already running")
             return False
         
         if len(self.running_jobs) >= self.max_concurrent_jobs:
-            logger.warning("Max concurrent jobs reached, cannot trigger job")
+            if job.namespace == 'twitter':
+                logger.warning(f"[TWITTER TRACE] Max concurrent jobs reached ({len(self.running_jobs)}/{self.max_concurrent_jobs}), cannot trigger Twitter job {job_id} at {trigger_timestamp}")
+            else:
+                logger.warning("Max concurrent jobs reached, cannot trigger job")
             return False
         
-        logger.info(f"Triggering immediate execution of job: {job_id}")
+        if job.namespace == 'twitter':
+            logger.info(f"[TWITTER TRACE] Triggering immediate execution of Twitter job {job_id} at {trigger_timestamp}")
+            logger.info(f"[TWITTER TRACE] Twitter job trigger context - current_status: {job.status.value}, error_count: {job.error_count}, last_run: {job.last_run}")
+            logger.info(f"[TWITTER TRACE] Twitter job execution timing - scheduled_next_run: {job.next_run.isoformat() if job.next_run else 'None'}, manual_trigger: True")
+        else:
+            logger.info(f"Triggering immediate execution of job: {job_id}")
+        
         await self._execute_job(job)
         return True
     

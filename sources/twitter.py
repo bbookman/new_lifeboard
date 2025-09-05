@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import zipfile
+import time
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, AsyncIterator
 
@@ -19,14 +20,15 @@ logger = logging.getLogger(__name__)
 class TwitterSource(BaseSource):
     """Twitter data source"""
 
-    def __init__(self, config: TwitterConfig, db_service: DatabaseService, ingestion_service=None):
+    def __init__(self, config: TwitterConfig, twitter_api_service: TwitterAPIService = None, rate_limit_service: TwitterRateLimitService = None):
         super().__init__("twitter")
         self.config = config
-        self.db_service = db_service
-        self.ingestion_service = ingestion_service
         self.processor = TwitterProcessor()
-        self.api_service = TwitterAPIService(config)
-        self.rate_limit_service = TwitterRateLimitService(db_service)
+        # Initialize a local database service for consistency
+        self.db_service = DatabaseService()
+        # Initialize services in correct order
+        self.rate_limit_service = rate_limit_service or TwitterRateLimitService(self.db_service)
+        self.api_service = twitter_api_service or TwitterAPIService(config)
     
     async def cleanup(self):
         """Clean up resources - TwitterAPIService manages its own session lifecycle via context manager"""
@@ -108,11 +110,15 @@ class TwitterSource(BaseSource):
                     "message": "Twitter archive processed. No new tweets found to import."
                 }
 
-            await self._ingest_tweets(new_tweets)
+            # Transform tweets to DataItems (but don't ingest directly)
+            data_items = self._transform_tweets_to_items(new_tweets, 'twitter_archive')
+            logger.info(f"[TWITTER IMPORT] Transformed {len(data_items)} tweets to DataItems - ready for external ingestion")
+            
             return {
                 "success": True,
                 "imported_count": len(new_tweets),
-                "message": f"Successfully imported {len(new_tweets)} new tweets."
+                "message": f"Successfully imported {len(new_tweets)} new tweets.",
+                "data_items": data_items  # Return the items for external ingestion
             }
         except Exception as e:
             logger.error(f"[TWITTER IMPORT] Error processing Twitter zip import: {e}", exc_info=True)
@@ -160,19 +166,38 @@ class TwitterSource(BaseSource):
 
     async def _get_existing_tweet_ids(self) -> set:
         """Get existing tweet IDs from data_items table"""
+        logger.info(f"[TWITTER TRACE] Querying existing tweets: namespace={self.namespace}, limit=10000")
+        start_time = time.time()
+        
         existing_tweets = await self.db_service.async_get_data_items_by_namespace(self.namespace, limit=10000)
-        return {item['source_id'] for item in existing_tweets}
+        existing_ids = {item['source_id'] for item in existing_tweets}
+        
+        query_duration = (time.time() - start_time) * 1000
+        logger.info(f"[TWITTER TRACE] Database returned {len(existing_ids)} existing tweet IDs in {query_duration:.2f}ms")
+        
+        # Log sample of existing IDs for verification (first 5)
+        if existing_ids:
+            sample_ids = list(existing_ids)[:5]
+            logger.info(f"[TWITTER TRACE] Sample existing tweet IDs: {sample_ids}")
+        
+        return existing_ids
 
-    async def _ingest_tweets(self, tweets: List[Dict[str, Any]]):
-        """Ingest tweets through the ingestion service"""
-        if not tweets or not self.ingestion_service:
-            logger.warning("[TWITTER IMPORT] Cannot ingest tweets: missing tweets or ingestion service")
-            return
+    def _transform_tweets_to_items(self, tweets: List[Dict[str, Any]], source_type: str = 'twitter_archive') -> List[DataItem]:
+        """Transform tweet dicts to DataItem objects and return them"""
+        logger.info(f"[TWITTER TRACE] Transforming {len(tweets)} tweets to DataItems with source_type={source_type}")
+        start_time = time.time()
+        
+        if not tweets:
+            logger.warning(f"[TWITTER TRACE] No tweets to transform")
+            return []
 
         # Convert tweet dicts to DataItem objects
         data_items = []
-        for tweet in tweets:
+        for i, tweet in enumerate(tweets):
             try:
+                tweet_id = tweet.get('tweet_id', 'unknown')
+                logger.debug(f"[TWITTER TRACE] Creating DataItem {i+1}/{len(tweets)} for tweet_id={tweet_id}")
+                
                 # Parse timestamp
                 created_at = None
                 if tweet.get('created_at'):
@@ -181,80 +206,109 @@ class TwitterSource(BaseSource):
                 # Create DataItem
                 data_item = DataItem(
                     namespace=self.namespace,
-                    source_id=tweet['tweet_id'],
+                    source_id=tweet_id,
                     content=tweet['text'] or "",
                     metadata={
                         'media_urls': tweet.get('media_urls', '[]'),
                         'original_created_at': tweet.get('created_at'),
                         'days_date': tweet.get('days_date'),
-                        'source_type': 'twitter_archive'
+                        'source_type': source_type
                     },
                     created_at=created_at,
                     updated_at=datetime.now()
                 )
+
+                logger.debug(f"[TWITTER TRACE] DataItem created: source_id={tweet_id}, content_length={len(data_item.content)}, metadata_keys={list(data_item.metadata.keys())}")
 
                 # Process the item
                 processed_item = self.processor.process(data_item)
                 data_items.append(processed_item)
 
             except Exception as e:
-                logger.error(f"[TWITTER IMPORT] Error creating DataItem for tweet {tweet.get('tweet_id', 'unknown')}: {e}")
+                logger.error(f"[TWITTER TRACE] Error creating DataItem for tweet {tweet.get('tweet_id', 'unknown')}: {e}")
                 continue
 
-        # Ingest through the ingestion service
-        logger.info(f"[TWITTER IMPORT] Ingesting {len(data_items)} tweets through ingestion service")
-        
-        # Process items in batches
-        result = await self.ingestion_service.ingest_items("twitter", data_items)
-        
-        if result.errors:
-            logger.warning(f"[TWITTER IMPORT] Some tweets failed to ingest: {result.errors}")
-        
-        logger.info(f"[TWITTER IMPORT] Ingestion complete: {result.items_stored} stored, {len(result.errors)} errors")
-
-        logger.info(f"[TWITTER IMPORT] Successfully ingested {len(data_items)} tweets")
+        total_duration = (time.time() - start_time) * 1000
+        logger.info(f"[TWITTER TRACE] Tweet transformation complete: {len(data_items)} DataItems created in {total_duration:.2f}ms")
+        return data_items
 
     async def fetch_today_tweets(self) -> List[Dict[str, Any]]:
         """Fetch today's tweets from Twitter API with rate limiting"""
-        logger.info("Starting fetch_today_tweets...")
-        logger.info(f"[TWITTER IMPORT] Twitter config state: enabled={self.config.enabled}")
-        logger.info(f"Bearer token configured: {bool(self.config.bearer_token)}")
-        logger.info(f"Username configured: {bool(self.config.username)}")
-        logger.info(f"Bearer token: {self.config.bearer_token!r}")
-        logger.info(f"Username: {self.config.username!r}")
-        logger.info(f"is_api_configured() result: {self.config.is_api_configured()}")
+        start_time = time.time()
+        logger.info(f"[TWITTER TRACE] fetch_today_tweets starting at {datetime.now().isoformat()}")
+        
+        # Log configuration details
+        logger.info(f"[TWITTER TRACE] Twitter config state: enabled={self.config.enabled}")
+        logger.info(f"[TWITTER TRACE] Bearer token configured: {bool(self.config.bearer_token)}")
+        logger.info(f"[TWITTER TRACE] Username configured: {bool(self.config.username)}")
+        logger.info(f"[TWITTER TRACE] User ID configured: {bool(self.config.user_id)}")
+        logger.info(f"[TWITTER TRACE] is_api_configured() result: {self.config.is_api_configured()}")
         
         if not self.config.is_api_configured():
-            logger.warning("[TWITTER IMPORT] Twitter API not configured. Skipping real-time tweet fetch.")
+            logger.warning("[TWITTER TRACE] Twitter API not configured. Skipping real-time tweet fetch.")
             return []
         
         # Check rate limiting before attempting fetch
+        logger.info("[TWITTER TRACE] Checking rate limiting status...")
+        rate_limit_start = time.time()
         can_fetch, minutes_until = await self.rate_limit_service.can_fetch_now()
+        rate_limit_duration = (time.time() - rate_limit_start) * 1000
+        
+        logger.info(f"[TWITTER TRACE] Rate limit check completed in {rate_limit_duration:.2f}ms: can_fetch={can_fetch}, minutes_until={minutes_until}")
+        
         if not can_fetch:
-            logger.info(f"[TWITTER IMPORT] Rate limited. Next fetch available in {minutes_until} minutes. Returning cached data.")
+            logger.info(f"[TWITTER TRACE] Rate limited. Next fetch available in {minutes_until} minutes. Returning empty list.")
             return []
         
         try:
-            logger.info("Opening API service context...")
+            logger.info("[TWITTER TRACE] Opening API service context manager...")
+            context_start = time.time()
+            
             async with self.api_service:
-                logger.info("Calling fetch_user_tweets_today...")
+                context_duration = (time.time() - context_start) * 1000
+                logger.info(f"[TWITTER TRACE] API service context opened in {context_duration:.2f}ms")
+                
+                api_call_start = time.time()
+                logger.info("[TWITTER TRACE] Calling fetch_user_tweets_today...")
                 tweets = await self.api_service.fetch_user_tweets_today()
-                logger.info(f"[TWITTER IMPORT] Fetched {len(tweets)} tweets from Twitter API")
-                logger.debug(f"Tweet IDs: {[t.get('tweet_id') for t in tweets]}")
+                api_call_duration = (time.time() - api_call_start) * 1000
+                
+                logger.info(f"[TWITTER TRACE] API call completed in {api_call_duration:.2f}ms: fetched {len(tweets)} tweets")
+                
+                if tweets:
+                    tweet_ids = [t.get('tweet_id') for t in tweets]
+                    logger.info(f"[TWITTER TRACE] Tweet IDs fetched: {tweet_ids}")
+                else:
+                    logger.info("[TWITTER TRACE] No tweets returned from API")
                 
                 # Record successful fetch for rate limiting
+                logger.info("[TWITTER TRACE] Recording successful fetch attempt for rate limiting")
                 await self.rate_limit_service.record_fetch_attempt(success=True)
                 
+                total_duration = (time.time() - start_time) * 1000
+                logger.info(f"[TWITTER TRACE] fetch_today_tweets completed successfully in {total_duration:.2f}ms")
                 return tweets
+                
         except Exception as e:
-            logger.error(f"Error fetching tweets from API: {e}", exc_info=True)
+            error_duration = (time.time() - start_time) * 1000
+            logger.error(f"[TWITTER TRACE] Error in fetch_today_tweets after {error_duration:.2f}ms: {e}", exc_info=True)
+            
             # Record failed fetch (doesn't count against rate limit)
+            logger.info("[TWITTER TRACE] Recording failed fetch attempt for rate limiting")
             await self.rate_limit_service.record_fetch_attempt(success=False)
             return []
 
     async def get_data_for_date(self, date: str) -> List[Dict[str, Any]]:
         """Get tweets for a specific date"""
-        return await self.db_service.async_get_data_items_by_date(date, [self.namespace])
+        logger.info(f"[TWITTER TRACE] Getting data for date: {date}, namespace={self.namespace}")
+        start_time = time.time()
+        
+        result = await self.db_service.async_get_data_items_by_date(date, [self.namespace])
+        
+        duration = (time.time() - start_time) * 1000
+        logger.info(f"[TWITTER TRACE] Retrieved {len(result)} items for date {date} in {duration:.2f}ms")
+        
+        return result
     
     async def get_status_for_day(self, days_date: str) -> Optional[Dict[str, str]]:
         """Get Twitter fetch status for a specific day for UI display"""
@@ -264,57 +318,71 @@ class TwitterSource(BaseSource):
 
     async def fetch_items(self, since: Optional[datetime] = None, limit: int = 100) -> AsyncIterator[DataItem]:
         """Fetch data items from the Twitter source"""
+        start_time = time.time()
+        logger.info(f"[TWITTER TRACE] TwitterSource.fetch_items starting at {datetime.now().isoformat()}")
+        logger.info(f"[TWITTER TRACE] Parameters: since={since}, limit={limit}")
+        
+        api_items_yielded = 0
+        db_items_yielded = 0
+        
+        # Check API configuration and decide on flow
+        is_api_configured = self.config.is_api_configured()
+        will_attempt_api_fetch = is_api_configured
+        logger.info(f"[TWITTER TRACE] API configured: {is_api_configured}, will attempt API fetch: {will_attempt_api_fetch}")
+        
         # First, try to fetch new tweets from API if configured and rate limits allow
-        if self.config.is_api_configured():
+        if will_attempt_api_fetch:
             try:
+                api_phase_start = time.time()
+                logger.info("[TWITTER TRACE] Starting API fetch phase...")
+                
                 api_tweets = await self.fetch_today_tweets()  # This now handles rate limiting internally
+                api_fetch_duration = (time.time() - api_phase_start) * 1000
+                logger.info(f"[TWITTER TRACE] API fetch phase completed in {api_fetch_duration:.2f}ms: received {len(api_tweets)} tweets")
+                
                 if api_tweets:
                     # Get existing tweet IDs to avoid duplicates
+                    logger.info("[TWITTER TRACE] Getting existing tweet IDs to filter duplicates...")
                     existing_tweet_ids = await self._get_existing_tweet_ids()
                     
                     # Filter out existing tweets
                     new_tweets = [t for t in api_tweets if t['tweet_id'] not in existing_tweet_ids]
+                    logger.info(f"[TWITTER TRACE] Filtered to {len(new_tweets)} new tweets for ingestion (from {len(api_tweets)} total)")
                     
                     if new_tweets:
-                        logger.info(f"[TWITTER IMPORT] Found {len(new_tweets)} new tweets from API to ingest")
-                        await self._ingest_tweets(new_tweets)
+                        logger.info(f"[TWITTER TRACE] Processing {len(new_tweets)} new tweets from API")
                         
-                        # Yield the new tweets as DataItems
-                        for tweet in new_tweets:
-                            try:
-                                created_at = datetime.fromisoformat(tweet['created_at']) if tweet.get('created_at') else None
-                                
-                                data_item = DataItem(
-                                    namespace=self.namespace,
-                                    source_id=tweet['tweet_id'],
-                                    content=tweet['text'] or "",
-                                    metadata={
-                                        'media_urls': tweet.get('media_urls', '[]'),
-                                        'original_created_at': tweet.get('created_at'),
-                                        'days_date': tweet.get('days_date'),
-                                        'source_type': 'twitter_api',
-                                    },
-                                    created_at=created_at,
-                                    updated_at=datetime.now()
-                                )
-                                
-                                processed_item = self.processor.process(data_item)
-                                yield processed_item
-                                
-                            except Exception as e:
-                                logger.error(f"[TWITTER IMPORT] Error creating DataItem for API tweet {tweet.get('tweet_id', 'unknown')}: {e}")
-                                continue
+                        # Transform tweets to DataItems and yield them (let IngestionService handle storage)
+                        data_items = self._transform_tweets_to_items(new_tweets, 'twitter_api')
+                        for data_item in data_items:
+                            api_items_yielded += 1
+                            logger.debug(f"[TWITTER TRACE] Yielding API tweet DataItem {api_items_yielded}: {data_item.source_id}")
+                            yield data_item
+                    else:
+                        logger.info("[TWITTER TRACE] No new tweets to process from API")
+                else:
+                    logger.info("[TWITTER TRACE] No tweets returned from API fetch")
+                    
             except Exception as e:
-                logger.error(f"[TWITTER IMPORT] Error fetching API tweets: {e}")
+                api_error_duration = (time.time() - start_time) * 1000
+                logger.error(f"[TWITTER TRACE] Error in API fetch phase after {api_error_duration:.2f}ms: {e}")
+        else:
+            logger.info("[TWITTER TRACE] Skipping API fetch phase - API not configured")
         
         # Then get existing Twitter data from the unified data_items table
+        db_phase_start = time.time()
+        logger.info(f"[TWITTER TRACE] Starting database fetch phase: namespace={self.namespace}, limit={limit}")
+        
         items = await self.db_service.async_get_data_items_by_namespace(self.namespace, limit)
+        db_fetch_duration = (time.time() - db_phase_start) * 1000
+        logger.info(f"[TWITTER TRACE] Database fetch completed in {db_fetch_duration:.2f}ms: retrieved {len(items)} items")
         
         for item in items:
             # Filter by since if provided
             if since and item.get('created_at'):
                 item_date = datetime.fromisoformat(item['created_at'])
                 if item_date <= since:
+                    logger.debug(f"[TWITTER TRACE] Skipping item {item['source_id']} - created_at {item_date} <= since {since}")
                     continue
             
             # Parse metadata if it's a string
@@ -324,7 +392,11 @@ class TwitterSource(BaseSource):
                 try:
                     metadata = json.loads(metadata)
                 except (json.JSONDecodeError, TypeError):
+                    logger.warning(f"[TWITTER TRACE] Failed to parse metadata for item {item['source_id']}")
                     metadata = {}
+            
+            db_items_yielded += 1
+            logger.debug(f"[TWITTER TRACE] Yielding database DataItem {db_items_yielded}: {item['source_id']}")
             
             yield DataItem(
                 namespace=item['namespace'],
@@ -334,14 +406,25 @@ class TwitterSource(BaseSource):
                 created_at=datetime.fromisoformat(item['created_at']) if item.get('created_at') else None,
                 updated_at=datetime.fromisoformat(item['updated_at']) if item.get('updated_at') else None
             )
+        
+        total_duration = (time.time() - start_time) * 1000
+        logger.info(f"[TWITTER TRACE] TwitterSource.fetch_items completed in {total_duration:.2f}ms: yielded {api_items_yielded} API items + {db_items_yielded} database items = {api_items_yielded + db_items_yielded} total")
 
     async def get_item(self, source_id: str) -> Optional[DataItem]:
         """Get specific tweet by ID"""
+        logger.info(f"[TWITTER TRACE] Getting specific item: source_id={source_id}")
+        start_time = time.time()
+        
         namespaced_id = f"{self.namespace}:{source_id}"
         items = await self.db_service.async_get_data_items_by_ids([namespaced_id])
         
+        duration = (time.time() - start_time) * 1000
+        
         if not items:
+            logger.info(f"[TWITTER TRACE] Item not found: {source_id} in {duration:.2f}ms")
             return None
+        
+        logger.info(f"[TWITTER TRACE] Item retrieved: {source_id} in {duration:.2f}ms")
         
         item = items[0]
         return DataItem(
@@ -359,21 +442,37 @@ class TwitterSource(BaseSource):
 
     async def test_connection(self) -> bool:
         """Test if Twitter source is accessible"""
+        logger.info("[TWITTER TRACE] Starting connection test")
+        start_time = time.time()
+        
         # Test basic configuration
-        if not self.config.is_configured():
+        is_configured = self.config.is_configured()
+        logger.info(f"[TWITTER TRACE] Basic configuration check: {is_configured}")
+        
+        if not is_configured:
+            logger.info("[TWITTER TRACE] Connection test failed - not configured")
             return False
         
         # If API is configured, test the connection by attempting to fetch tweets
-        if self.config.is_api_configured():
+        is_api_configured = self.config.is_api_configured()
+        logger.info(f"[TWITTER TRACE] API configuration check: {is_api_configured}")
+        
+        if is_api_configured:
             try:
+                logger.info("[TWITTER TRACE] Testing API connection...")
                 async with self.api_service:
                     # Test the connection using the actual production API call
                     await self.api_service.fetch_user_tweets_today()
-                    logger.info(f"[TWITTER IMPORT] Twitter API connection test successful using configured user_id: {self.config.user_id}")
+                    
+                    duration = (time.time() - start_time) * 1000
+                    logger.info(f"[TWITTER TRACE] Twitter API connection test successful in {duration:.2f}ms using configured user_id: {self.config.user_id}")
                     return True
             except Exception as e:
-                logger.error(f"[TWITTER IMPORT] Twitter API connection test failed: {e}")
+                duration = (time.time() - start_time) * 1000
+                logger.error(f"[TWITTER TRACE] Twitter API connection test failed after {duration:.2f}ms: {e}")
                 return False
         
         # If only archive import is configured, return True
+        duration = (time.time() - start_time) * 1000
+        logger.info(f"[TWITTER TRACE] Connection test passed (archive-only mode) in {duration:.2f}ms")
         return True

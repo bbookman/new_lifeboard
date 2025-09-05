@@ -4,6 +4,7 @@ import json
 import os
 import logging
 import re
+import time
 from typing import List, Dict, Optional, Any
 from contextlib import contextmanager, asynccontextmanager
 from datetime import datetime, timezone
@@ -610,16 +611,44 @@ class DatabaseService:
                                   content: str, metadata: Dict = None, days_date: str = None,
                                   ingestion_status: str = 'complete'):
         """Async version of store_data_item"""
+        start_time = time.time()
+        
+        # Twitter-specific logging
+        if namespace == 'twitter':
+            logger.info(f"[TWITTER TRACE] Database storage starting for Twitter item: source_id={source_id}")
+            logger.info(f"[TWITTER TRACE] Twitter data details: content_length={len(content) if content else 0}, "
+                       f"metadata_keys={list(metadata.keys()) if metadata else []}, days_date={days_date}")
+            logger.info(f"[TWITTER TRACE] Twitter storage SQL: INSERT OR REPLACE INTO data_items with id={id}")
+        
         try:
+            serialized_metadata = JSONMetadataParser.serialize_metadata(metadata)
+            
+            if namespace == 'twitter':
+                logger.info(f"[TWITTER TRACE] Twitter metadata serialization: "
+                           f"original_size={len(str(metadata)) if metadata else 0}, "
+                           f"serialized_size={len(serialized_metadata) if serialized_metadata else 0}")
+            
             async with self.get_async_connection() as conn:
                 await conn.execute("""
                     INSERT OR REPLACE INTO data_items 
                     (id, namespace, source_id, content, metadata, days_date, updated_at, ingestion_status)
                     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                 """, (id, namespace, source_id, content, 
-                      JSONMetadataParser.serialize_metadata(metadata), days_date, ingestion_status))
+                      serialized_metadata, days_date, ingestion_status))
                 await conn.commit()
+                
+                execution_time = (time.time() - start_time) * 1000
+                
+                if namespace == 'twitter':
+                    logger.info(f"[TWITTER TRACE] Twitter data storage completed successfully in {execution_time:.2f}ms")
+                    logger.info(f"[TWITTER TRACE] Twitter item stored: id={id}, source_id={source_id}, status={ingestion_status}")
+                    
         except Exception as e:
+            execution_time = (time.time() - start_time) * 1000
+            if namespace == 'twitter':
+                logger.error(f"[TWITTER TRACE] Twitter data storage failed after {execution_time:.2f}ms: {e}")
+                logger.error(f"[TWITTER TRACE] Twitter storage error context: id={id}, source_id={source_id}, "
+                            f"content_length={len(content) if content else 0}")
             logger.error(f"Error in async_store_data_item: {e}")
             raise
     
@@ -648,6 +677,13 @@ class DatabaseService:
 
     async def async_get_data_items_by_namespace(self, namespace: str, limit: int = 100) -> List[Dict]:
         """Async version of get_data_items_by_namespace"""
+        start_time = time.time()
+        
+        # Twitter-specific logging
+        if namespace == 'twitter':
+            logger.info(f"[TWITTER TRACE] Database query starting for Twitter namespace: limit={limit}")
+            logger.info(f"[TWITTER TRACE] Twitter query SQL: SELECT FROM data_items WHERE namespace='twitter'")
+        
         try:
             async with self.get_async_connection() as conn:
                 async with conn.execute("""
@@ -659,10 +695,32 @@ class DatabaseService:
                 """, (namespace, limit)) as cursor:
                     rows = await cursor.fetchall()
                     
-                    return DatabaseRowParser.parse_rows_with_metadata(
+                    execution_time = (time.time() - start_time) * 1000
+                    
+                    if namespace == 'twitter':
+                        logger.info(f"[TWITTER TRACE] Twitter query executed in {execution_time:.2f}ms, returned {len(rows)} rows")
+                        if rows:
+                            sample_row = dict(rows[0])
+                            logger.info(f"[TWITTER TRACE] Twitter sample data: id={sample_row.get('id')}, "
+                                       f"source_id={sample_row.get('source_id')}, "
+                                       f"days_date={sample_row.get('days_date')}")
+                        else:
+                            logger.info(f"[TWITTER TRACE] No Twitter data found in database")
+                    
+                    parsed_rows = DatabaseRowParser.parse_rows_with_metadata(
                         [dict(row) for row in rows]
                     )
+                    
+                    if namespace == 'twitter':
+                        logger.info(f"[TWITTER TRACE] Twitter data parsing completed: {len(parsed_rows)} items processed")
+                    
+                    return parsed_rows
+                    
         except Exception as e:
+            execution_time = (time.time() - start_time) * 1000
+            if namespace == 'twitter':
+                logger.error(f"[TWITTER TRACE] Twitter query failed after {execution_time:.2f}ms: {e}")
+                logger.error(f"[TWITTER TRACE] Twitter query error context: namespace={namespace}, limit={limit}")
             logger.error(f"Error in async_get_data_items_by_namespace: {e}")
             raise
     
@@ -670,6 +728,14 @@ class DatabaseService:
                                                namespaces: Optional[List[str]] = None,
                                                limit: int = 100) -> List[Dict]:
         """Async version of get_data_items_by_date_range"""
+        start_time = time.time()
+        
+        # Twitter-specific logging
+        is_twitter_query = namespaces and 'twitter' in namespaces
+        if is_twitter_query:
+            logger.info(f"[TWITTER TRACE] Database date range query starting for Twitter: "
+                       f"start_date={start_date}, end_date={end_date}, limit={limit}")
+        
         try:
             # Base query
             query = """
@@ -689,20 +755,60 @@ class DatabaseService:
             query += " ORDER BY days_date DESC, updated_at DESC LIMIT ?"
             params.append(limit)
             
+            if is_twitter_query:
+                logger.info(f"[TWITTER TRACE] Twitter date query SQL: {query}")
+                logger.info(f"[TWITTER TRACE] Twitter date query params: {params}")
+            
             async with self.get_async_connection() as conn:
                 async with conn.execute(query, params) as cursor:
                     rows = await cursor.fetchall()
                     
-                    return DatabaseRowParser.parse_rows_with_metadata(
+                    execution_time = (time.time() - start_time) * 1000
+                    
+                    if is_twitter_query:
+                        twitter_rows = [row for row in rows if dict(row).get('namespace') == 'twitter']
+                        logger.info(f"[TWITTER TRACE] Twitter date query executed in {execution_time:.2f}ms")
+                        logger.info(f"[TWITTER TRACE] Twitter date filtering results: total_rows={len(rows)}, "
+                                   f"twitter_rows={len(twitter_rows)}")
+                        
+                        if twitter_rows:
+                            sample_twitter = dict(twitter_rows[0])
+                            logger.info(f"[TWITTER TRACE] Twitter sample from date range: "
+                                       f"id={sample_twitter.get('id')}, days_date={sample_twitter.get('days_date')}")
+                    
+                    parsed_rows = DatabaseRowParser.parse_rows_with_metadata(
                         [dict(row) for row in rows]
                     )
+                    
+                    if is_twitter_query:
+                        twitter_parsed = [item for item in parsed_rows if item.get('namespace') == 'twitter']
+                        logger.info(f"[TWITTER TRACE] Twitter date range parsing completed: {len(twitter_parsed)} Twitter items")
+                    
+                    return parsed_rows
+                    
         except Exception as e:
+            execution_time = (time.time() - start_time) * 1000
+            if is_twitter_query:
+                logger.error(f"[TWITTER TRACE] Twitter date range query failed after {execution_time:.2f}ms: {e}")
+                logger.error(f"[TWITTER TRACE] Twitter date query error context: start_date={start_date}, "
+                            f"end_date={end_date}, namespaces={namespaces}")
             logger.error(f"Error in async_get_data_items_by_date_range: {e}")
             raise
     
     async def async_get_data_items_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> List[Dict]:
         """Async version of get_data_items_by_date"""
-        return await self.async_get_data_items_by_date_range(date, date, namespaces, limit=1000)
+        # Twitter-specific logging
+        is_twitter_query = namespaces and 'twitter' in namespaces
+        if is_twitter_query:
+            logger.info(f"[TWITTER TRACE] Database single date query starting for Twitter: date={date}")
+        
+        result = await self.async_get_data_items_by_date_range(date, date, namespaces, limit=1000)
+        
+        if is_twitter_query:
+            twitter_items = [item for item in result if item.get('namespace') == 'twitter']
+            logger.info(f"[TWITTER TRACE] Twitter single date query completed: {len(twitter_items)} Twitter items for {date}")
+        
+        return result
     
     async def async_get_available_dates(self, namespaces: Optional[List[str]] = None) -> List[str]:
         """Async version of get_available_dates"""
@@ -732,6 +838,13 @@ class DatabaseService:
     
     async def async_get_days_with_data(self, namespaces: Optional[List[str]] = None) -> List[str]:
         """Async version of get_days_with_data"""
+        start_time = time.time()
+        
+        # Twitter-specific logging
+        is_twitter_query = namespaces and 'twitter' in namespaces
+        if is_twitter_query:
+            logger.info(f"[TWITTER TRACE] Database days with data query starting for Twitter")
+        
         try:
             query = """
                 SELECT DISTINCT days_date
@@ -747,11 +860,32 @@ class DatabaseService:
             
             query += " ORDER BY days_date DESC"
             
+            if is_twitter_query:
+                logger.info(f"[TWITTER TRACE] Twitter days query SQL: {query}")
+                logger.info(f"[TWITTER TRACE] Twitter days query params: {params}")
+            
             async with self.get_async_connection() as conn:
                 async with conn.execute(query, params) as cursor:
                     rows = await cursor.fetchall()
-                    return [row['days_date'] for row in rows]
+                    dates = [row['days_date'] for row in rows]
+                    
+                    execution_time = (time.time() - start_time) * 1000
+                    
+                    if is_twitter_query:
+                        logger.info(f"[TWITTER TRACE] Twitter days query executed in {execution_time:.2f}ms")
+                        logger.info(f"[TWITTER TRACE] Twitter data integrity check: found {len(dates)} days with Twitter data")
+                        if dates:
+                            logger.info(f"[TWITTER TRACE] Twitter date range: {dates[-1]} to {dates[0]} ({len(dates)} days)")
+                        else:
+                            logger.warning(f"[TWITTER TRACE] No Twitter data found in database - potential data integrity issue")
+                    
+                    return dates
+                    
         except Exception as e:
+            execution_time = (time.time() - start_time) * 1000
+            if is_twitter_query:
+                logger.error(f"[TWITTER TRACE] Twitter days query failed after {execution_time:.2f}ms: {e}")
+                logger.error(f"[TWITTER TRACE] Twitter days query error context: namespaces={namespaces}")
             logger.error(f"Error in async_get_days_with_data: {e}")
             raise
     
@@ -852,8 +986,31 @@ class DatabaseService:
             logger.error(f"Error in async_update_source_item_count: {e}")
             raise
     
-    async def async_get_database_stats(self) -> Dict[str, Any]:
-        """Async version of get_database_stats"""
+    def __init__(self, db_path: str = "lifeboard.db"):
+        self.db_path = db_path
+        self._init_database()
+        # Initialize cache for database stats
+        self._stats_cache = None
+        self._stats_cache_time = 0
+        self._stats_cache_ttl = 5  # Cache TTL in seconds
+        
+    async def async_get_database_stats(self, force_refresh: bool = False) -> Dict[str, Any]:
+        """
+        Async version of get_database_stats with caching
+        :param force_refresh: If True, bypass the cache and force a fresh query
+        """
+        current_time = time.time()
+        
+        # Return cached results if they are still valid and force_refresh is False
+        if (not force_refresh and 
+            self._stats_cache is not None and 
+            (current_time - self._stats_cache_time) < self._stats_cache_ttl):
+            logger.debug("[TWITTER TRACE] Using cached database statistics")
+            return self._stats_cache.copy()  # Return a copy to prevent cache modification
+            
+        start_time = current_time
+        logger.info(f"[TWITTER TRACE] Database statistics query starting")
+        
         try:
             async with self.get_async_connection() as conn:
                 # Total items
@@ -885,7 +1042,33 @@ class DatabaseService:
                     active_sources_row = await cursor.fetchone()
                     active_sources = active_sources_row['count']
                 
-                return {
+                # Twitter-specific diagnostics
+                twitter_count = namespace_counts.get('twitter', 0)
+                execution_time = (time.time() - start_time) * 1000
+                
+                logger.info(f"[TWITTER TRACE] Database statistics completed in {execution_time:.2f}ms")
+                logger.info(f"[TWITTER TRACE] Twitter data statistics: total_items={twitter_count}, "
+                           f"total_db_items={total_items}")
+                
+                if twitter_count > 0:
+                    # Additional Twitter schema validation
+                    async with conn.execute("""
+                        SELECT COUNT(*) as count FROM data_items 
+                        WHERE namespace = 'twitter' AND days_date IS NOT NULL
+                    """) as cursor:
+                        twitter_with_dates_row = await cursor.fetchone()
+                        twitter_with_dates = twitter_with_dates_row['count']
+                    
+                    logger.info(f"[TWITTER TRACE] Twitter data integrity: items_with_dates={twitter_with_dates}/{twitter_count}")
+                    
+                    if twitter_with_dates < twitter_count:
+                        logger.warning(f"[TWITTER TRACE] Twitter data integrity issue: "
+                                     f"{twitter_count - twitter_with_dates} items missing days_date")
+                else:
+                    logger.warning(f"[TWITTER TRACE] No Twitter data found in database statistics")
+                
+                # Create the stats dictionary
+                stats = {
                     'total_items': total_items,
                     'namespace_counts': namespace_counts,
                     'embedding_status': embedding_status,
@@ -893,7 +1076,16 @@ class DatabaseService:
                     'database_path': self.db_path,
                     'database_size_mb': os.path.getsize(self.db_path) / (1024 * 1024) if os.path.exists(self.db_path) else 0
                 }
+                
+                # Update the cache
+                self._stats_cache = stats.copy()  # Store a copy to prevent cache modification
+                self._stats_cache_time = current_time
+                
+                return stats
+                
         except Exception as e:
+            execution_time = (time.time() - start_time) * 1000
+            logger.error(f"[TWITTER TRACE] Database statistics failed after {execution_time:.2f}ms: {e}")
             logger.error(f"Error in async_get_database_stats: {e}")
             raise
     
@@ -955,6 +1147,14 @@ class DatabaseService:
     
     async def async_update_ingestion_status(self, item_id: str, status: str):
         """Async version of update_ingestion_status"""
+        start_time = time.time()
+        
+        # Check if this is a Twitter item for logging
+        is_twitter_item = item_id.startswith('twitter:') if item_id else False
+        
+        if is_twitter_item:
+            logger.info(f"[TWITTER TRACE] Database ingestion status update starting: item_id={item_id}, status={status}")
+        
         try:
             async with self.get_async_connection() as conn:
                 await conn.execute("""
@@ -963,7 +1163,18 @@ class DatabaseService:
                     WHERE id = ?
                 """, (status, item_id))
                 await conn.commit()
+                
+                execution_time = (time.time() - start_time) * 1000
+                
+                if is_twitter_item:
+                    logger.info(f"[TWITTER TRACE] Twitter ingestion status updated in {execution_time:.2f}ms: "
+                               f"item_id={item_id}, new_status={status}")
+                    
         except Exception as e:
+            execution_time = (time.time() - start_time) * 1000
+            if is_twitter_item:
+                logger.error(f"[TWITTER TRACE] Twitter ingestion status update failed after {execution_time:.2f}ms: {e}")
+                logger.error(f"[TWITTER TRACE] Twitter status update error context: item_id={item_id}, status={status}")
             logger.error(f"Error in async_update_ingestion_status: {e}")
             raise
     

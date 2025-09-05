@@ -448,6 +448,10 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
     # so rate limit retries are handled by TwitterRateLimitService, not here
     other_error_max_retries: int = 3
     inter_call_delay: float = 3.0
+    # Tweet fetching configuration
+    lookback_days: int = 5
+    # Diagnostics configuration
+    diagnostic_mode: bool = False
     
     @field_validator('bearer_token')
     @classmethod
@@ -488,7 +492,7 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
             return False
         return True
 
-    @field_validator('max_retries', 'sync_interval_hours', 'other_error_max_retries')
+    @field_validator('max_retries', 'sync_interval_hours', 'other_error_max_retries', 'lookback_days')
     @classmethod
     def validate_positive_ints(cls, v, info):
         field_name = info.field_name.replace('_', ' ').title()
