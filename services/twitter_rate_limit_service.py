@@ -1,7 +1,7 @@
 """
 Twitter Rate Limit Service
 
-Manages Twitter API rate limiting (15-minute intervals for Basic plan) and provides
+Manages Twitter API rate limiting with configurable intervals and provides
 status information for UI display.
 """
 
@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 
 
 class TwitterRateLimitService:
-    """Service to manage Twitter API rate limiting and status reporting"""
+    """Service to manage Twitter API rate limiting and status reporting with configurable intervals"""
     
-    def __init__(self, db_service: DatabaseService):
+    def __init__(self, db_service: DatabaseService, rate_limit_minutes: float = 15.0):
         self.db_service = db_service
-        self.rate_limit_minutes = 15
+        self.rate_limit_minutes = rate_limit_minutes
         self.twitter_namespace = "twitter"
     
     async def can_fetch_now(self) -> Tuple[bool, int]:
@@ -77,6 +77,10 @@ class TwitterRateLimitService:
         except Exception as e:
             logger.error(f"[TWITTER TRACE] Error recording fetch attempt: {e}")
     
+    async def get_last_fetch_time(self) -> Optional[datetime]:
+        """Get the last successful Twitter fetch time from database"""
+        return await self._get_last_fetch_time()
+    
     async def get_status_for_day(self, days_date: str) -> Optional[Dict[str, str]]:
         """
         Get Twitter fetch status information for a specific day.
@@ -116,7 +120,7 @@ class TwitterRateLimitService:
             if minutes_until > 0:
                 status_text = f"Updated {self._format_time_ago(last_fetch_time)} • Checking for new tweets in {minutes_until} minutes or less"
             else:
-                status_text = f"Updated {self._format_time_ago(last_fetch_time)} • Checking for new tweets in 15 minutes or less"
+                status_text = f"Updated {self._format_time_ago(last_fetch_time)} • Checking for new tweets in {int(self.rate_limit_minutes)} minutes or less"
             
             return {
                 "status": status_text,
@@ -148,16 +152,16 @@ class TwitterRateLimitService:
             return None
     
     async def _update_last_fetch_time(self, fetch_time: datetime) -> None:
-        """Update the last successful Twitter fetch time in database"""
+        """Update the last successful Twitter fetch time in database using upsert"""
         try:
             query = """
-                UPDATE data_sources 
-                SET last_synced = ? 
-                WHERE namespace = ?
+                INSERT INTO data_sources (namespace, last_synced)
+                VALUES (?, ?)
+                ON CONFLICT(namespace) DO UPDATE SET last_synced=excluded.last_synced
             """
             await self.db_service.execute_query(
                 query, 
-                (fetch_time.isoformat(), self.twitter_namespace)
+                (self.twitter_namespace, fetch_time.isoformat())
             )
             
         except Exception as e:

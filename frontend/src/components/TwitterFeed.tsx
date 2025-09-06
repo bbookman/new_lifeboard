@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, memo } from "react";
+import { useEffect, useState, useRef, memo, useCallback } from "react";
 import { 
   Carousel, 
   CarouselContent, 
@@ -7,8 +7,7 @@ import {
 } from "@/components/ui/carousel";
 import { ContentCard, ContentItemData } from "./ContentCard";
 import { fetchTwitterDataItems, DataItem } from "@/lib/api";
-import { useTwitterData } from "../hooks/useTwitterData";
-import { TwitterStatus } from "./TwitterStatus";
+import { TwitterFetchButton } from "./TwitterFetchButton";
 
 interface TwitterFeedProps {
   selectedDate?: string;
@@ -198,14 +197,142 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
   
-  // Use Twitter data hook for auto-fetching
-  const { 
-    loading: autoFetchLoading, 
-    autoFetching, 
-    fetchError, 
-    checkAndFetchData, 
-    resetState 
-  } = useTwitterData();
+  // Fetch tweets function
+  const fetchTweets = useCallback(async () => {
+    console.log(`[TwitterFeed DEBUG] === FETCH START ===`);
+    console.log(`[TwitterFeed DEBUG] useEffect triggered with selectedDate: ${selectedDate}`);
+    
+    if (!selectedDate) {
+      console.log(`[TwitterFeed DEBUG] No selectedDate provided, setting loading to false`);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Fetch the data directly without auto-fetching
+      console.log(`[TwitterFeed] Calling fetchTwitterDataItems for date: ${selectedDate}`);
+      console.log(`[TwitterFeed] API URL will be: /calendar/data_items/${selectedDate}?namespaces=twitter`);
+      
+      const dataItems = await fetchTwitterDataItems(selectedDate);
+      
+      console.log(`[TwitterFeed DEBUG] === API RESPONSE ANALYSIS ===`);
+      console.log(`[TwitterFeed DEBUG] Raw API response:`, dataItems);
+      console.log(`[TwitterFeed DEBUG] Response type:`, typeof dataItems);
+      console.log(`[TwitterFeed DEBUG] Is array:`, Array.isArray(dataItems));
+      console.log(`[TwitterFeed DEBUG] Length:`, dataItems?.length || 0);
+      
+      if (!dataItems) {
+        console.error(`[TwitterFeed DEBUG] API returned null/undefined`);
+        setTwitterData([]);
+        return;
+      }
+
+      if (!Array.isArray(dataItems)) {
+        console.error(`[TwitterFeed DEBUG] API returned non-array:`, dataItems);
+        setTwitterData([]);
+        return;
+      }
+      
+      console.log(`[TwitterFeed DEBUG] Successfully fetched ${dataItems.length} Twitter data items for ${selectedDate}`);
+      
+      // Analyze each raw data item
+      if (dataItems.length > 0) {
+        console.log(`[TwitterFeed DEBUG] === RAW DATA ANALYSIS ===`);
+        dataItems.slice(0, 3).forEach((item, index) => {
+          console.log(`[TwitterFeed DEBUG] Raw Item ${index + 1}:`, {
+            id: item.id,
+            namespace: item.namespace,
+            source_id: item.source_id,
+            content: item.content?.substring(0, 50) + (item.content?.length > 50 ? '...' : ''),
+            contentLength: item.content?.length || 0,
+            days_date: item.days_date,
+            metadataType: typeof item.metadata,
+            metadataKeys: typeof item.metadata === 'object' && item.metadata ? Object.keys(item.metadata) : 'n/a'
+          });
+        });
+      }
+      
+      // Check if we're looking at the right date with media
+      console.log(`[TwitterFeed DEBUG] === MEDIA ANALYSIS ===`);
+      const mediaCount = dataItems.filter(item => {
+        try {
+          let meta = item.metadata;
+          if (typeof meta === 'string') {
+            meta = JSON.parse(meta);
+          }
+          const hasMedia = meta.media?.has_media === true;
+          console.log(`[TwitterFeed DEBUG] Item ${item.id} has media:`, hasMedia, 'media obj:', meta.media);
+          return hasMedia;
+        } catch (e) {
+          console.warn(`[TwitterFeed DEBUG] Error parsing metadata for ${item.id}:`, e);
+          return false;
+        }
+      }).length;
+      console.log(`[TwitterFeed DEBUG] Items with media on ${selectedDate}: ${mediaCount}/${dataItems.length}`);
+      
+      // Convert database items to ContentItemData format
+      console.log(`[TwitterFeed DEBUG] === CONVERSION PROCESS ===`);
+      console.log(`[TwitterFeed DEBUG] Starting conversion of ${dataItems.length} items...`);
+      
+      const contentItems = dataItems.map((item, index) => {
+        console.log(`[TwitterFeed DEBUG] Converting item ${index + 1}/${dataItems.length}: ${item.id}`);
+        const converted = convertDataItemToContentItem(item);
+        console.log(`[TwitterFeed DEBUG] Converted result:`, {
+          id: converted.id,
+          username: converted.username,
+          content: converted.content?.substring(0, 50) + (converted.content?.length > 50 ? '...' : ''),
+          hasMedia: converted.hasMedia,
+          mediaUrl: converted.mediaUrl,
+          timestamp: converted.timestamp
+        });
+        return converted;
+      });
+      
+      console.log(`[TwitterFeed DEBUG] === CONVERSION RESULTS ===`);
+      console.log(`[TwitterFeed DEBUG] Converted to ${contentItems.length} content items`);
+      
+      // Log media information for debugging
+      const mediaItems = contentItems.filter(item => item.hasMedia);
+      console.log(`[TwitterFeed DEBUG] Final items with media: ${mediaItems.length}/${contentItems.length}`);
+      mediaItems.forEach(item => {
+        console.log(`[TwitterFeed DEBUG] Media item:`, {
+          id: item.id,
+          username: item.username,
+          mediaUrl: item.mediaUrl,
+          hasMedia: item.hasMedia
+        });
+      });
+      
+      console.log(`[TwitterFeed DEBUG] === SETTING STATE ===`);
+      console.log(`[TwitterFeed DEBUG] About to set twitterData with ${contentItems.length} items`);
+      setTwitterData(contentItems);
+      console.log(`[TwitterFeed DEBUG] State set successfully`);
+      
+    } catch (err) {
+      console.error('[TwitterFeed DEBUG] === ERROR IN FETCH ===');
+      console.error('[TwitterFeed DEBUG] Error fetching Twitter data items:', err);
+      console.error('[TwitterFeed DEBUG] Error details:', {
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack?.split('\n').slice(0, 5)
+      });
+      setError('Failed to load tweets');
+      setTwitterData([]);
+    } finally {
+      console.log(`[TwitterFeed DEBUG] === FETCH COMPLETE ===`);
+      console.log(`[TwitterFeed DEBUG] Setting loading to false`);
+      setLoading(false);
+    }
+  }, [selectedDate]);
+
+  // Callback for handling fetch completion
+  const handleFetchComplete = () => {
+    // Refresh data after successful fetch
+    fetchTweets();
+  };
   
   // Local loading state for data fetching
   const [loading, setLoading] = useState(true);
@@ -275,143 +402,8 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   };
 
   useEffect(() => {
-    const fetchTweets = async () => {
-      console.log(`[TwitterFeed DEBUG] === FETCH START ===`);
-      console.log(`[TwitterFeed DEBUG] useEffect triggered with selectedDate: ${selectedDate}`);
-      console.log(`[TwitterFeed DEBUG] Current component state - loading: ${loading}, error: ${error}, dataLength: ${twitterData.length}`);
-      
-      if (!selectedDate) {
-        console.log(`[TwitterFeed DEBUG] No selectedDate provided, setting loading to false`);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // First, check and potentially auto-fetch data if none exists
-        console.log(`[TwitterFeed] Checking for existing data and potentially auto-fetching for ${selectedDate}`);
-        await checkAndFetchData(selectedDate);
-        
-        // Then fetch the data (either existing or newly fetched)
-        console.log(`[TwitterFeed] Calling fetchTwitterDataItems for date: ${selectedDate}`);
-        console.log(`[TwitterFeed] API URL will be: /calendar/data_items/${selectedDate}?namespaces=twitter`);
-        
-        const dataItems = await fetchTwitterDataItems(selectedDate);
-        
-        console.log(`[TwitterFeed DEBUG] === API RESPONSE ANALYSIS ===`);
-        console.log(`[TwitterFeed DEBUG] Raw API response:`, dataItems);
-        console.log(`[TwitterFeed DEBUG] Response type:`, typeof dataItems);
-        console.log(`[TwitterFeed DEBUG] Is array:`, Array.isArray(dataItems));
-        console.log(`[TwitterFeed DEBUG] Length:`, dataItems?.length || 0);
-        
-        if (!dataItems) {
-          console.error(`[TwitterFeed DEBUG] API returned null/undefined`);
-          setTwitterData([]);
-          return;
-        }
-
-        if (!Array.isArray(dataItems)) {
-          console.error(`[TwitterFeed DEBUG] API returned non-array:`, dataItems);
-          setTwitterData([]);
-          return;
-        }
-        
-        console.log(`[TwitterFeed DEBUG] Successfully fetched ${dataItems.length} Twitter data items for ${selectedDate}`);
-        
-        // Analyze each raw data item
-        if (dataItems.length > 0) {
-          console.log(`[TwitterFeed DEBUG] === RAW DATA ANALYSIS ===`);
-          dataItems.slice(0, 3).forEach((item, index) => {
-            console.log(`[TwitterFeed DEBUG] Raw Item ${index + 1}:`, {
-              id: item.id,
-              namespace: item.namespace,
-              source_id: item.source_id,
-              content: item.content?.substring(0, 50) + (item.content?.length > 50 ? '...' : ''),
-              contentLength: item.content?.length || 0,
-              days_date: item.days_date,
-              metadataType: typeof item.metadata,
-              metadataKeys: typeof item.metadata === 'object' && item.metadata ? Object.keys(item.metadata) : 'n/a'
-            });
-          });
-        }
-        
-        // Check if we're looking at the right date with media
-        console.log(`[TwitterFeed DEBUG] === MEDIA ANALYSIS ===`);
-        const mediaCount = dataItems.filter(item => {
-          try {
-            let meta = item.metadata;
-            if (typeof meta === 'string') {
-              meta = JSON.parse(meta);
-            }
-            const hasMedia = meta.media?.has_media === true;
-            console.log(`[TwitterFeed DEBUG] Item ${item.id} has media:`, hasMedia, 'media obj:', meta.media);
-            return hasMedia;
-          } catch (e) {
-            console.warn(`[TwitterFeed DEBUG] Error parsing metadata for ${item.id}:`, e);
-            return false;
-          }
-        }).length;
-        console.log(`[TwitterFeed DEBUG] Items with media on ${selectedDate}: ${mediaCount}/${dataItems.length}`);
-        
-        // Convert database items to ContentItemData format
-        console.log(`[TwitterFeed DEBUG] === CONVERSION PROCESS ===`);
-        console.log(`[TwitterFeed DEBUG] Starting conversion of ${dataItems.length} items...`);
-        
-        const contentItems = dataItems.map((item, index) => {
-          console.log(`[TwitterFeed DEBUG] Converting item ${index + 1}/${dataItems.length}: ${item.id}`);
-          const converted = convertDataItemToContentItem(item);
-          console.log(`[TwitterFeed DEBUG] Converted result:`, {
-            id: converted.id,
-            username: converted.username,
-            content: converted.content?.substring(0, 50) + (converted.content?.length > 50 ? '...' : ''),
-            hasMedia: converted.hasMedia,
-            mediaUrl: converted.mediaUrl,
-            timestamp: converted.timestamp
-          });
-          return converted;
-        });
-        
-        console.log(`[TwitterFeed DEBUG] === CONVERSION RESULTS ===`);
-        console.log(`[TwitterFeed DEBUG] Converted to ${contentItems.length} content items`);
-        
-        // Log media information for debugging
-        const mediaItems = contentItems.filter(item => item.hasMedia);
-        console.log(`[TwitterFeed DEBUG] Final items with media: ${mediaItems.length}/${contentItems.length}`);
-        mediaItems.forEach(item => {
-          console.log(`[TwitterFeed DEBUG] Media item:`, {
-            id: item.id,
-            username: item.username,
-            mediaUrl: item.mediaUrl,
-            hasMedia: item.hasMedia
-          });
-        });
-        
-        console.log(`[TwitterFeed DEBUG] === SETTING STATE ===`);
-        console.log(`[TwitterFeed DEBUG] About to set twitterData with ${contentItems.length} items`);
-        setTwitterData(contentItems);
-        console.log(`[TwitterFeed DEBUG] State set successfully`);
-        
-      } catch (err) {
-        console.error('[TwitterFeed DEBUG] === ERROR IN FETCH ===');
-        console.error('[TwitterFeed DEBUG] Error fetching Twitter data items:', err);
-        console.error('[TwitterFeed DEBUG] Error details:', {
-          name: err?.name,
-          message: err?.message,
-          stack: err?.stack?.split('\n').slice(0, 5)
-        });
-        setError('Failed to load tweets');
-        setTwitterData([]);
-      } finally {
-        console.log(`[TwitterFeed DEBUG] === FETCH COMPLETE ===`);
-        console.log(`[TwitterFeed DEBUG] Setting loading to false`);
-        setLoading(false);
-      }
-    };
-
     fetchTweets();
-  }, [selectedDate, checkAndFetchData]);
+  }, [fetchTweets]);
 
   useEffect(() => {
     if (!api) {
@@ -456,51 +448,45 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
   }, [api, isAutoAdvanceEnabled, isPaused, twitterData.length]);
 
   // Debug logging for render state
-  console.log(`[TwitterFeed] Render: date=${selectedDate}, loading=${loading}, autoFetching=${autoFetching}, error=${error}, fetchError=${fetchError}, items=${twitterData.length}`);
+  console.log(`[TwitterFeed] Render: date=${selectedDate}, loading=${loading}, error=${error}, items=${twitterData.length}`);
 
-  // Loading state (either local loading or auto-fetching)
-  if (loading || autoFetching) {
-    // With rate limiting and background fetching, we don't do immediate fetches anymore
-    const loadingMessage = 'Loading tweets...';
+  // Loading state
+  if (loading) {
     return (
       <div className="space-y-4">
         <div>
           <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
-          <TwitterStatus selectedDate={selectedDate || ''} />
+          <TwitterFetchButton selectedDate={selectedDate || ''} onFetchComplete={handleFetchComplete} />
         </div>
         <div className="flex items-center justify-center p-8 min-h-[200px] border border-newspaper-divider rounded-lg">
-          <div className="text-newspaper-byline">{loadingMessage}</div>
+          <div className="text-newspaper-byline">Loading tweets...</div>
         </div>
       </div>
     );
   }
 
-  // Error state (either local error or fetch error)
-  const displayError = error || fetchError;
-  if (displayError) {
+  // Error state
+  if (error) {
     return (
       <div className="space-y-4">
         <div>
           <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
-          <TwitterStatus selectedDate={selectedDate || ''} />
+          <TwitterFetchButton selectedDate={selectedDate || ''} onFetchComplete={handleFetchComplete} />
         </div>
         <div className="flex items-center justify-center p-8 min-h-[200px] border border-newspaper-divider rounded-lg">
-          <div className="text-red-600">Error: {displayError}</div>
+          <div className="text-red-600">Error: {error}</div>
         </div>
       </div>
     );
   }
 
-  // No data state - this is what shows when no twitter data is available in database
+  // No data state
   if (twitterData.length === 0) {
     return (
       <div className="space-y-4">
         <div>
           <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
-          <TwitterStatus selectedDate={selectedDate || ''} />
-        </div>
-        <div className="flex items-center justify-center p-8 min-h-[200px] border border-newspaper-divider rounded-lg">
-          <div className="text-newspaper-byline">No tweets available</div>
+          <TwitterFetchButton selectedDate={selectedDate || ''} onFetchComplete={handleFetchComplete} />
         </div>
       </div>
     );
@@ -513,7 +499,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
     <div className="space-y-4">
       <div>
         <h3 className="text-lg font-semibold text-newspaper-headline">Twitter</h3>
-        <TwitterStatus selectedDate={selectedDate || ''} />
+        <TwitterFetchButton selectedDate={selectedDate || ''} onFetchComplete={handleFetchComplete} />
       </div>
       
       {twitterData.length === 1 ? (

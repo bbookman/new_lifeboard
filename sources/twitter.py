@@ -27,7 +27,7 @@ class TwitterSource(BaseSource):
         # Initialize a local database service for consistency
         self.db_service = DatabaseService()
         # Initialize services in correct order
-        self.rate_limit_service = rate_limit_service or TwitterRateLimitService(self.db_service)
+        self.rate_limit_service = rate_limit_service or TwitterRateLimitService(self.db_service, self.config.rate_limit_minutes)
         self.api_service = twitter_api_service or TwitterAPIService(config)
     
     async def cleanup(self):

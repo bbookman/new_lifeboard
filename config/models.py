@@ -444,10 +444,12 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
     retry_delay: float = 1.0
     request_timeout: float = 30.0
     # Error handling configuration
-    # Note: No rate_limit_max_retries - Twitter Basic plan has 15-minute intervals,
-    # so rate limit retries are handled by TwitterRateLimitService, not here
+    # Note: No rate_limit_max_retries - rate limit retries are handled by TwitterRateLimitService
+    # using the configurable rate_limit_minutes interval, not here
     other_error_max_retries: int = 3
     inter_call_delay: float = 3.0
+    # Rate limiting configuration - configurable interval for API calls
+    rate_limit_minutes: float = Field(default=15.0, env='TWITTER_RATE_LIMIT_IN_MINUTES')
     # Tweet fetching configuration
     lookback_days: int = 5
     # Diagnostics configuration
@@ -479,6 +481,15 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
             raise ValueError("Twitter user_id must not be a placeholder value")
         if not v.isdigit():
             raise ValueError("Twitter user_id must be a non-empty string of digits")
+        return v
+
+    @field_validator('rate_limit_minutes')
+    @classmethod
+    def validate_rate_limit_minutes(cls, v):
+        if not isinstance(v, (int, float)) or v <= 0:
+            raise ValueError("rate_limit_minutes must be a positive number")
+        if v > 1440:  # More than 24 hours seems unreasonable
+            raise ValueError("rate_limit_minutes cannot exceed 1440 minutes (24 hours)")
         return v
 
     def _is_valid_user_id(self) -> bool:

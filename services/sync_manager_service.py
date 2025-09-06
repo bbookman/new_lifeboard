@@ -48,10 +48,10 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         """Register a source for automatic scheduled syncing"""
         namespace = source.namespace
         
-        # Add Twitter-specific logging
+        # Skip Twitter sources from automatic scheduling
         if isinstance(source, TwitterSource):
-            logger.info(f"[TWITTER TRACE] Registering Twitter source for auto-sync at {datetime.now(timezone.utc).isoformat()}")
-            logger.info(f"[TWITTER TRACE] Twitter source type: {type(source).__name__}, force_full_sync: {force_full_sync}")
+            logger.info(f"Twitter source skipped from automatic scheduling - use manual fetch instead")
+            return False
         
         self.log_service_call("register_source_for_auto_sync", {
             "namespace": namespace,
@@ -402,23 +402,9 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         else:
             logger.info("Weather source not available for auto-sync (disabled or missing API key)")
         
-        # Check Twitter source (if configured)
-        logger.info(f"[TWITTER TRACE] Checking Twitter source availability for auto-discovery")
-        if "twitter" in self.ingestion_service.sources:
-            logger.info(f"[TWITTER TRACE] Twitter source found in ingestion service sources")
-            twitter_source = self.ingestion_service.sources["twitter"]
-            logger.info(f"[TWITTER TRACE] Twitter source type: {type(twitter_source).__name__}")
-            
-            success = await self.register_source_for_auto_sync(twitter_source)
-            if success:
-                registered_sources.append("twitter")
-                logger.info(f"[TWITTER TRACE] Twitter source auto-registration successful")
-                logger.info("Auto-registered Twitter source for scheduled sync")
-            else:
-                logger.error(f"[TWITTER TRACE] Twitter source auto-registration failed")
-        else:
-            logger.info(f"[TWITTER TRACE] Twitter source not found in ingestion service sources")
-            logger.info("Twitter source not available for auto-sync (not configured)")
+        # Twitter source excluded from auto-discovery - use manual fetch instead
+        # Twitter sources must be triggered manually via the fetch button due to API limitations
+        logger.info("Twitter source skipped from auto-discovery - available for manual fetching only")
         
         # Future: Add other source types here
         # if self.config.notion.api_key:

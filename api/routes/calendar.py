@@ -617,6 +617,45 @@ def get_twitter_source() -> TwitterSource:
     return twitter_source
 
 
+@router.get("/twitter/status/{date}")
+async def get_twitter_rate_limit_status(
+    date: str,
+    twitter_source: TwitterSource = Depends(get_twitter_source)
+) -> Dict[str, Any]:
+    """
+    Check Twitter API rate limit status for a specific date.
+    
+    Returns:
+        Dict containing:
+        - can_fetch_now: boolean indicating if fetch is currently allowed
+        - minutes_until_next: minutes until next fetch is allowed (0 if can_fetch_now is true)
+        - last_fetch_time: ISO format string of last successful fetch or null
+    """
+    try:
+        # Validate date format
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Check rate limit status using the TwitterRateLimitService
+        can_fetch, minutes_until = await twitter_source.rate_limit_service.can_fetch_now()
+        
+        # Get last fetch time
+        last_fetch_time = await twitter_source.rate_limit_service.get_last_fetch_time()
+        last_fetch_time_str = last_fetch_time.isoformat() if last_fetch_time else None
+        
+        return {
+            "can_fetch_now": can_fetch,
+            "minutes_until_next": minutes_until,
+            "last_fetch_time": last_fetch_time_str
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking Twitter rate limit status for {date}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
 @router.post("/twitter/fetch/{date}")
 async def fetch_twitter_for_date(
     date: str,
@@ -640,7 +679,7 @@ async def fetch_twitter_for_date(
             logger.error(f"[TwitterOnDemandFetch] Invalid date format: {date}")
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        # Check if data already exists (optional optimization)
+        # Check if data already exists (short-circuit before rate limit check)
         existing_items = await database.async_get_data_items_by_date(date, namespaces=['twitter'])
         if existing_items:
             logger.info(f"[TwitterOnDemandFetch] Data already exists for {date}: {len(existing_items)} items")
@@ -651,6 +690,18 @@ async def fetch_twitter_for_date(
                 "items_existing": len(existing_items),
                 "date": date
             }
+        
+        # Check rate limit before attempting fetch
+        can_fetch, minutes_until = await twitter_source.rate_limit_service.can_fetch_now()
+        if not can_fetch:
+            logger.warning(f"[TwitterOnDemandFetch] Rate limited for {date}, {minutes_until} minutes remaining")
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Rate limited. Please wait {minutes_until} minutes before next fetch.",
+                headers={"Retry-After": str(minutes_until * 60)}
+            )
+        
+        logger.info(f"[TwitterOnDemandFetch] Rate limit check passed for {date}")
         
         logger.debug(f"[TwitterOnDemandFetch] No existing data found for {date}, proceeding with fetch")
         
@@ -770,6 +821,16 @@ async def fetch_twitter_for_date(
         final_items = await database.async_get_data_items_by_date(date, namespaces=['twitter'])
         
         logger.info(f"[TwitterOnDemandFetch] On-demand fetch completed for {date}: processed={processed_count}, stored={stored_count}, final_count={len(final_items)}")
+        
+        # Record successful fetch for rate limiting only if items were actually stored
+        if stored_count and stored_count > 0:
+            try:
+                await twitter_source.rate_limit_service.record_fetch_attempt(success=True)
+                logger.info(f"[TwitterOnDemandFetch] Recorded successful fetch for rate limiting")
+            except Exception as e:
+                logger.warning(f"[TwitterOnDemandFetch] Failed to record fetch attempt (non-critical): {e}")
+        else:
+            logger.info(f"[TwitterOnDemandFetch] No items stored, skipping rate limit recording")
         
         return {
             "success": True,
