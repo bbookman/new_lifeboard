@@ -88,12 +88,21 @@ class TwitterAPIService:
                 logger.debug(f"[TWITTER TRACE] Tweet {tweet_id} has invalid timestamp '{created_at_str}': {e}")
                 return None
                 
+            # Extract media URLs from media_items
+            media_urls = []
+            if tweet.get('media_items'):
+                for media_item in tweet['media_items']:
+                    # Prefer direct URL, fall back to preview_image_url
+                    media_url = media_item.get('url') or media_item.get('preview_image_url')
+                    if media_url:
+                        media_urls.append(media_url)
+            
             return {
                 'tweet_id': tweet_id,
                 'created_at': created_at.isoformat(),
                 'days_date': created_at.strftime('%Y-%m-%d'),
                 'text': text,
-                'media_urls': '[]',  # No media support in this implementation
+                'media_urls': json.dumps(media_urls),  # Serialize media URLs as JSON string
                 'public_metrics': tweet.get('public_metrics', {}),
                 'geo': tweet.get('geo'),
                 'place_id': tweet.get('geo', {}).get('place_id') if tweet.get('geo') else None,
@@ -339,7 +348,9 @@ class TwitterAPIService:
             'start_time': start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
             'end_time': end_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
             'exclude': 'retweets,replies',
-            'tweet.fields': 'created_at,text,public_metrics,geo',
+            'tweet.fields': 'created_at,text,public_metrics,geo,attachments',
+            'expansions': 'attachments.media_keys',
+            'media.fields': 'url,preview_image_url,type,width,height,alt_text',
             'place.fields': 'id,full_name,name,country,country_code,place_type,geo',
             'max_results': 100  # Maximum allowed by API
         }
@@ -364,21 +375,36 @@ class TwitterAPIService:
         tweets = response_data.get('data', [])
         includes = response_data.get('includes', {})
         places = {place['id']: place for place in includes.get('places', [])}
+        media = {media_item['media_key']: media_item for media_item in includes.get('media', [])}
         
         logger.info(f"[TWITTER TRACE] Response processing:")
         logger.info(f"[TWITTER TRACE] - Tweet count: {len(tweets)}")
         logger.info(f"[TWITTER TRACE] - Includes data: {json.dumps(includes, indent=2) if includes else 'None'}")
         logger.info(f"[TWITTER TRACE] - Places count: {len(places)}")
+        logger.info(f"[TWITTER TRACE] - Media count: {len(media)}")
         if places:
             logger.info(f"[TWITTER TRACE] - Place IDs: {list(places.keys())}")
+        if media:
+            logger.info(f"[TWITTER TRACE] - Media keys: {list(media.keys())}")
 
-        # Add place data to tweets
+        # Add place and media data to tweets
         for tweet in tweets:
+            # Add place data
             if tweet.get('geo') and tweet['geo'].get('place_id'):
                 place_id = tweet['geo']['place_id']
                 if place_id in places:
                     tweet['place'] = places[place_id]
                     logger.info(f"[TWITTER TRACE] Added place data to tweet {tweet['id']}: {places[place_id].get('full_name', 'Unknown')}")
+            
+            # Add media data
+            if tweet.get('attachments') and tweet['attachments'].get('media_keys'):
+                tweet_media = []
+                for media_key in tweet['attachments']['media_keys']:
+                    if media_key in media:
+                        media_item = media[media_key]
+                        tweet_media.append(media_item)
+                        logger.info(f"[TWITTER TRACE] Added media to tweet {tweet['id']}: {media_item.get('type', 'unknown')} - {media_item.get('url', media_item.get('preview_image_url', 'no_url'))}")
+                tweet['media_items'] = tweet_media
 
         processing_duration = (time.time() - processing_start) * 1000
         total_duration = (time.time() - method_start_time) * 1000
