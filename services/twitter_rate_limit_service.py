@@ -152,17 +152,25 @@ class TwitterRateLimitService:
             return None
     
     async def _update_last_fetch_time(self, fetch_time: datetime) -> None:
-        """Update the last successful Twitter fetch time in database using upsert"""
+        """Update the last successful Twitter fetch time in database"""
         try:
+            # First try to update existing record
             query = """
-                INSERT INTO data_sources (namespace, last_synced)
-                VALUES (?, ?)
-                ON CONFLICT(namespace) DO UPDATE SET last_synced=excluded.last_synced
+                UPDATE data_sources 
+                SET last_synced = ? 
+                WHERE namespace = ?
             """
-            await self.db_service.execute_query(
+            rows_affected = await self.db_service.execute_query(
                 query, 
-                (self.twitter_namespace, fetch_time.isoformat())
+                (fetch_time.isoformat(), self.twitter_namespace)
             )
+            
+            # If no rows were updated, the data source might not be registered yet
+            # This can happen during initialization - log a warning but don't fail
+            if rows_affected == 0:
+                logger.warning(f"[TWITTER TRACE] No data_sources record found for namespace '{self.twitter_namespace}'. "
+                             f"Twitter source may not be properly registered yet.")
+                # Don't insert - let the ingestion service handle registration with proper source_type
             
         except Exception as e:
             logger.error(f"[TWITTER TRACE] Error updating last fetch time: {e}")
