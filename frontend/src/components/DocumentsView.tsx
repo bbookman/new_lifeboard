@@ -198,7 +198,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         params.append('exclude_id', excludeId);
       }
       
-      const response = await fetch(`http://localhost:8000/api/documents/validate-title?${params}`);
+      const response = await fetch(`/api/documents/validate-title?${params}`);
       if (!response.ok) {
         throw new Error('Failed to validate title');
       }
@@ -226,7 +226,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       countParams.append('folder_path', currentFolderPath);
 
       const countStart = performance.now();
-      const countResponse = await fetch(`http://localhost:8000/api/documents/count?${countParams}`);
+      const countResponse = await fetch(`/api/documents/count?${countParams}`);
       if (!countResponse.ok) {
         throw new Error('Failed to check document count');
       }
@@ -248,7 +248,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       listParams.append('limit', '50');
 
       const listStart = performance.now();
-      const listResponse = await fetch(`http://localhost:8000/api/documents?${listParams}`);
+      const listResponse = await fetch(`/api/documents?${listParams}`);
       if (!listResponse.ok) {
         throw new Error('Failed to fetch documents');
       }
@@ -507,7 +507,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         ops: deltaContent.ops || [{ insert: '\n' }]
       };
 
-      const response = await fetch(`http://localhost:8000/api/documents/${openDocument.id}`, {
+      const response = await fetch(`/api/documents/${openDocument.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -583,7 +583,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
       console.log('🚀 Creating document with payload:', payload);
 
-      const response = await fetch('http://localhost:8000/api/documents', {
+      const response = await fetch('/api/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -656,7 +656,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
       console.log('🚀 Creating document with payload:', payload);
 
-      const response = await fetch('http://localhost:8000/api/documents', {
+      const response = await fetch('/api/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -746,7 +746,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
       console.log('🚀 Creating link with payload:', payload);
 
-      const response = await fetch('http://localhost:8000/api/documents', {
+      const response = await fetch('/api/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -804,7 +804,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
       console.log('🚀 Updating link with payload:', payload);
 
-      const response = await fetch(`http://localhost:8000/api/documents/${editingLink.id}`, {
+      const response = await fetch(`/api/documents/${editingLink.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -862,7 +862,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
       console.log('🚀 Creating folder with payload:', payload);
 
-      const response = await fetch('http://localhost:8000/api/documents', {
+      const response = await fetch('/api/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -923,7 +923,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:8000/api/documents/${document.id}`, {
+      const response = await fetch(`/api/documents/${document.id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -955,7 +955,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:8000/api/documents/${selectedDocument.id}`, {
+      const response = await fetch(`/api/documents/${selectedDocument.id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -991,7 +991,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setError(null);
 
       await Promise.all(selectedDocumentIds.map(id =>
-        fetch(`http://localhost:8000/api/documents/${id}`, {
+        fetch(`/api/documents/${id}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',

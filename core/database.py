@@ -679,10 +679,6 @@ class DatabaseService:
         """Async version of get_data_items_by_namespace"""
         start_time = time.time()
         
-        # Twitter-specific logging
-        if namespace == 'twitter':
-            logger.info(f"[TWITTER TRACE] Database query starting for Twitter namespace: limit={limit}")
-            logger.info(f"[TWITTER TRACE] Twitter query SQL: SELECT FROM data_items WHERE namespace='twitter'")
         
         try:
             async with self.get_async_connection() as conn:
@@ -697,30 +693,16 @@ class DatabaseService:
                     
                     execution_time = (time.time() - start_time) * 1000
                     
-                    if namespace == 'twitter':
-                        logger.info(f"[TWITTER TRACE] Twitter query executed in {execution_time:.2f}ms, returned {len(rows)} rows")
-                        if rows:
-                            sample_row = dict(rows[0])
-                            logger.info(f"[TWITTER TRACE] Twitter sample data: id={sample_row.get('id')}, "
-                                       f"source_id={sample_row.get('source_id')}, "
-                                       f"days_date={sample_row.get('days_date')}")
-                        else:
-                            logger.info(f"[TWITTER TRACE] No Twitter data found in database")
                     
                     parsed_rows = DatabaseRowParser.parse_rows_with_metadata(
                         [dict(row) for row in rows]
                     )
                     
-                    if namespace == 'twitter':
-                        logger.info(f"[TWITTER TRACE] Twitter data parsing completed: {len(parsed_rows)} items processed")
                     
                     return parsed_rows
                     
         except Exception as e:
             execution_time = (time.time() - start_time) * 1000
-            if namespace == 'twitter':
-                logger.error(f"[TWITTER TRACE] Twitter query failed after {execution_time:.2f}ms: {e}")
-                logger.error(f"[TWITTER TRACE] Twitter query error context: namespace={namespace}, limit={limit}")
             logger.error(f"Error in async_get_data_items_by_namespace: {e}")
             raise
     
@@ -1042,30 +1024,7 @@ class DatabaseService:
                     active_sources_row = await cursor.fetchone()
                     active_sources = active_sources_row['count']
                 
-                # Twitter-specific diagnostics
-                twitter_count = namespace_counts.get('twitter', 0)
                 execution_time = (time.time() - start_time) * 1000
-                
-                logger.info(f"[TWITTER TRACE] Database statistics completed in {execution_time:.2f}ms")
-                logger.info(f"[TWITTER TRACE] Twitter data statistics: total_items={twitter_count}, "
-                           f"total_db_items={total_items}")
-                
-                if twitter_count > 0:
-                    # Additional Twitter schema validation
-                    async with conn.execute("""
-                        SELECT COUNT(*) as count FROM data_items 
-                        WHERE namespace = 'twitter' AND days_date IS NOT NULL
-                    """) as cursor:
-                        twitter_with_dates_row = await cursor.fetchone()
-                        twitter_with_dates = twitter_with_dates_row['count']
-                    
-                    logger.info(f"[TWITTER TRACE] Twitter data integrity: items_with_dates={twitter_with_dates}/{twitter_count}")
-                    
-                    if twitter_with_dates < twitter_count:
-                        logger.warning(f"[TWITTER TRACE] Twitter data integrity issue: "
-                                     f"{twitter_count - twitter_with_dates} items missing days_date")
-                else:
-                    logger.warning(f"[TWITTER TRACE] No Twitter data found in database statistics")
                 
                 # Create the stats dictionary
                 stats = {

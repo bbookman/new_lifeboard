@@ -264,6 +264,11 @@ class TwitterSource(BaseSource):
             logger.info("[TWITTER TRACE] Opening API service context manager...")
             context_start = time.time()
             
+            # Check if api_service is the correct type
+            if not hasattr(self.api_service, '__aenter__'):
+                logger.error(f"[TWITTER TRACE] api_service is not an async context manager: {type(self.api_service)}")
+                raise ValueError(f"api_service must be TwitterAPIService, got {type(self.api_service)}")
+            
             async with self.api_service:
                 context_duration = (time.time() - context_start) * 1000
                 logger.info(f"[TWITTER TRACE] API service context opened in {context_duration:.2f}ms")

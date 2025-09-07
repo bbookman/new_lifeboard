@@ -104,7 +104,7 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
     try {
       // Check if LLM is configured by checking system settings
       // This is more reliable than health endpoints that might have dependency issues
-      const response = await fetch('http://localhost:8000/api/settings/');
+      const response = await fetch('/api/settings/');
       
       if (response.ok) {
         const settings = await response.json();
@@ -134,7 +134,7 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
 
   const checkSummaryPrompt = useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/documents?document_type=prompt&limit=1');
+      const response = await fetch('/api/documents?document_type=prompt&limit=1');
       if (!response.ok) {
         throw new Error('Failed to check for summary prompts');
       }
@@ -155,7 +155,7 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
   const checkSummaryPromptDefined = useCallback(async () => {
     try {
       // Check if there's a setting for which summary prompt is chosen/defined
-      const response = await fetch('http://localhost:8000/api/settings/prompt-selection');
+      const response = await fetch('/api/settings/prompt-selection');
       if (!response.ok) {
         throw new Error('Failed to check if summary prompt is defined');
       }

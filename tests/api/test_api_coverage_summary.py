@@ -28,7 +28,6 @@ class TestAPIRouteCoverage:
                 "database": True,
                 "chat_service": True,
                 "sync_manager": True,
-                "websocket_manager": True,
                 "embedding_service": True
             },
             "version": "1.0.0",
@@ -167,50 +166,6 @@ class TestAPIRouteCoverage:
         assert system_response.success is True
         assert system_response.result["details"] == "success"
     
-    def test_websocket_manager_model_coverage(self):
-        """Test WebSocket manager model coverage"""
-        from services.websocket_manager import WebSocketMessage, MessageType, ClientConnection
-        from datetime import datetime, timezone
-        from unittest.mock import MagicMock
-        
-        # Test MessageType enum
-        assert MessageType.PROCESSING_STATUS.value == "processing_status"
-        assert MessageType.DAY_UPDATE.value == "day_update"
-        assert MessageType.HEARTBEAT.value == "heartbeat"
-        
-        # Test WebSocketMessage
-        message = WebSocketMessage(
-            type=MessageType.PROCESSING_STATUS,
-            data={"status": "processing"}
-        )
-        assert message.type == MessageType.PROCESSING_STATUS
-        assert message.data["status"] == "processing"
-        assert message.timestamp is not None
-        assert message.message_id is not None
-        
-        # Test ClientConnection
-        mock_websocket = MagicMock()
-        now = datetime.now(timezone.utc)
-        
-        connection = ClientConnection(
-            websocket=mock_websocket,
-            client_id="test-client",
-            connected_at=now,
-            subscriptions={"topic1"},
-            last_heartbeat=now
-        )
-        assert connection.client_id == "test-client"
-        assert "topic1" in connection.subscriptions
-        
-        # Test empty subscriptions
-        connection_empty = ClientConnection(
-            websocket=mock_websocket,
-            client_id="test-client-2", 
-            connected_at=now,
-            subscriptions=None,
-            last_heartbeat=now
-        )
-        assert connection_empty.subscriptions == set()
 
 
 class TestAPIErrorHandling:

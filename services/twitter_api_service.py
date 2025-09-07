@@ -336,8 +336,8 @@ class TwitterAPIService:
 
         url = f"{self.base_url}/users/{user_id}/tweets"
         params = {
-            'start_time': start_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ')[:-3] + 'Z',
-            'end_time': end_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ')[:-3] + 'Z',
+            'start_time': start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'end_time': end_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
             'exclude': 'retweets,replies',
             'tweet.fields': 'created_at,text,public_metrics,geo',
             'place.fields': 'id,full_name,name,country,country_code,place_type,geo',

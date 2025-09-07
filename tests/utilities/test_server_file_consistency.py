@@ -28,7 +28,7 @@ class TestServerFileConsistency:
         required_routes = [
             'calendar', 'chat', 'documents', 'embeddings', 'headings',
             'health', 'llm', 'settings', 'sync', 'sync_status', 'system',
-            'weather', 'websocket', 'news', 'data_items'
+            'weather', 'news', 'data_items', 'processing'
         ]
         
         # Check that each required route is imported
@@ -62,23 +62,14 @@ class TestServerFileConsistency:
         
         assert "def create_app" in server_content, "Server should have create_app function"
 
-    def test_server_includes_router_with_api_prefix(self):
-        """Test that server.py includes routers with /api prefix."""
+    def test_server_includes_router_registration(self):
+        """Test that server.py includes router registration."""
         server_file = Path(__file__).parent.parent / "api" / "server.py"
         server_content = server_file.read_text()
         
-        # Should include routers with /api prefix
-        assert 'prefix="/api"' in server_content, "Server should register routers with /api prefix"
+        # Should include routers 
         assert "app.include_router" in server_content, "Server should include routers in app"
 
-    def test_server_handles_websocket_router_separately(self):
-        """Test that server.py handles websocket router without /api prefix."""
-        server_file = Path(__file__).parent.parent / "api" / "server.py"
-        server_content = server_file.read_text()
-        
-        # Websocket router should be included separately (without /api prefix)
-        websocket_pattern = r'app\.include_router\(websocket\.router\)'
-        assert re.search(websocket_pattern, server_content), "Server should include websocket router separately"
 
     def test_server_has_proper_fastapi_configuration(self):
         """Test that server.py has proper FastAPI app configuration."""

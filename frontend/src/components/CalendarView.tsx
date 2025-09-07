@@ -117,7 +117,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       
       for (const monthKey of monthsToFetch) {
         const [fetchYear, fetchMonth] = monthKey.split('-').map(Number);
-        const apiUrl = `http://localhost:8000/calendar/days-with-data?year=${fetchYear}&month=${fetchMonth}`;
+        const apiUrl = `/api/calendar/days-with-data?year=${fetchYear}&month=${fetchMonth}`;
         
         const response = await fetch(apiUrl, {
           method: 'GET',
@@ -215,69 +215,6 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     console.log(`[CALENDAR] All days with data updated: ${allDaysWithData.size} days`);
   }, [allDaysWithData]);
 
-  // WebSocket for real-time sync updates
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-
-    const connectWebSocket = () => {
-      try {
-        ws = new WebSocket('ws://localhost:8000/ws/processing');
-        
-        ws.onopen = () => {
-          console.log('[CALENDAR] WebSocket connected for sync updates');
-          // Subscribe to sync status updates
-          ws?.send(JSON.stringify({
-            type: 'subscribe',
-            topics: ['sync_status', 'sync_progress']
-          }));
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-            console.log('[CALENDAR] WebSocket message received:', message);
-            
-            if (message.type === 'sync_status' || message.type === 'sync_progress') {
-              // Refresh calendar data when sync updates occur
-              fetchDaysWithData(currentDate.getFullYear(), currentDate.getMonth());
-            }
-          } catch (error) {
-            console.error('[CALENDAR] Error parsing WebSocket message:', error);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.log('[CALENDAR] WebSocket error:', error);
-        };
-
-        ws.onclose = () => {
-          console.log('[CALENDAR] WebSocket disconnected');
-          // Attempt to reconnect after 5 seconds
-          reconnectTimeout = setTimeout(connectWebSocket, 5000);
-        };
-
-      } catch (error) {
-        console.error('[CALENDAR] Failed to connect WebSocket:', error);
-        // Attempt to reconnect after 5 seconds
-        reconnectTimeout = setTimeout(connectWebSocket, 5000);
-      }
-    };
-
-    // Only connect WebSocket if sync is not complete
-    if (!syncStatus || !syncStatus.is_complete) {
-      connectWebSocket();
-    }
-
-    return () => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, [currentDate, syncStatus?.is_complete]); // Reconnect when month changes or sync completes
 
   // Fetch data when component mounts or date changes
   useEffect(() => {

@@ -214,7 +214,7 @@ const TwitterFeedComponent = ({ selectedDate }: TwitterFeedProps) => {
       
       // Fetch the data directly without auto-fetching
       console.log(`[TwitterFeed] Calling fetchTwitterDataItems for date: ${selectedDate}`);
-      console.log(`[TwitterFeed] API URL will be: /calendar/data_items/${selectedDate}?namespaces=twitter`);
+      console.log(`[TwitterFeed] API URL will be: /api/calendar/data_items/${selectedDate}?namespaces=twitter`);
       
       const dataItems = await fetchTwitterDataItems(selectedDate);
       

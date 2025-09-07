@@ -31,7 +31,7 @@ from config.factory import create_production_config
 from core.dependencies import get_dependency_registry
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings, websocket, sync_status, documents, llm, news, data_items, sources
+from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings, sync_status, documents, llm, news, data_items, sources, processing
 
 logger = logging.getLogger(__name__)
 
@@ -231,21 +231,9 @@ async def lifespan(app: FastAPI):
                 logger.exception("LIFESPAN: Route dependency configuration exception:")
                 startup_diagnostics.append(f"Route config failed: {config_error}")
             
-            # Initialize WebSocketManager for real-time notifications
-            logger.info("LIFESPAN: Initializing WebSocketManager...")
-            startup_diagnostics.append("Initializing WebSocketManager...")
-            
-            try:
-                from services.websocket_manager import WebSocketManager, set_websocket_manager
-                websocket_manager = WebSocketManager(heartbeat_interval=30)
-                await websocket_manager.start()
-                set_websocket_manager(websocket_manager)
-                logger.info("LIFESPAN: WebSocketManager initialized and started successfully")
-                startup_diagnostics.append("WebSocketManager initialized successfully")
-            except Exception as ws_error:
-                logger.error(f"LIFESPAN: Failed to initialize WebSocketManager: {ws_error}")
-                logger.exception("LIFESPAN: WebSocketManager initialization exception:")
-                startup_diagnostics.append(f"WebSocketManager failed: {ws_error}")
+            # WebSocket functionality removed - using HTTP polling instead
+            logger.info("LIFESPAN: Skipping WebSocketManager initialization (using HTTP polling)")
+            startup_diagnostics.append("WebSocket functionality replaced with HTTP polling")
             
             logger.info("LIFESPAN: Entering yield phase - server is now ready")
         else:
@@ -412,25 +400,7 @@ async def lifespan(app: FastAPI):
             logger.warning(f"LIFESPAN: Error in task cleanup phase: {task_cleanup_error}")
             shutdown_errors.append(f"Task cleanup phase error: {task_cleanup_error}")
         
-        # Step 3: Shutdown WebSocketManager
-        logger.info("LIFESPAN: Shutting down WebSocketManager...")
-        try:
-            from services.websocket_manager import get_websocket_manager, clear_websocket_manager
-            websocket_manager = get_websocket_manager()
-            if websocket_manager:
-                await asyncio.wait_for(websocket_manager.stop(), timeout=5.0)
-                clear_websocket_manager()
-                logger.info("LIFESPAN: WebSocketManager shutdown completed")
-            else:
-                logger.info("LIFESPAN: No WebSocketManager instance to shutdown")
-        except asyncio.TimeoutError:
-            logger.warning("LIFESPAN: WebSocketManager shutdown timeout")
-            shutdown_errors.append("WebSocketManager shutdown timeout")
-        except Exception as ws_shutdown_error:
-            logger.warning(f"LIFESPAN: Error during WebSocketManager shutdown: {ws_shutdown_error}")
-            shutdown_errors.append(f"WebSocketManager shutdown error: {ws_shutdown_error}")
-        
-        # Step 4: Shutdown application services
+        # Step 3: Shutdown application services
         logger.info("LIFESPAN: Shutting down application services...")
         try:
             from services.startup import shutdown_application
@@ -530,13 +500,15 @@ app.include_router(system.router)
 app.include_router(weather.router)
 app.include_router(settings.router)
 app.include_router(headings.router)
-app.include_router(websocket.router)
 app.include_router(sync_status.router)
 app.include_router(documents.router)
 app.include_router(llm.router)
 app.include_router(news.router)
 app.include_router(data_items.router)
 app.include_router(sources.router)
+app.include_router(processing.router)
+
+# Legacy route redirects removed - all routes now properly structured
 
 # Mount static files for simple HTML UI
 static_dir = project_root / "static"

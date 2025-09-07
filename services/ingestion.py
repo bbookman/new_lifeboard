@@ -732,6 +732,22 @@ class IngestionService(BaseService, ServiceDebugMixin):
         # This ensures days_date reflects the user's local date regardless of data source
         return self.config.limitless.timezone
     
+    async def can_fetch_now(self) -> tuple[bool, int]:
+        """
+        Check if a fetch operation is allowed now.
+        This is a compatibility method for cases where IngestionService is used as rate_limit_service.
+        Always returns True, 0 since IngestionService doesn't implement rate limiting.
+        """
+        return True, 0
+
+    async def record_fetch_attempt(self, success: bool = True) -> None:
+        """
+        Record a fetch attempt.
+        This is a compatibility method for cases where IngestionService is used as rate_limit_service.
+        Does nothing since IngestionService doesn't implement rate limiting.
+        """
+        pass
+
     async def _send_completion_notifications(self, items: List[DataItem], namespace: str) -> None:
         """Send WebSocket notifications for completed ingestion"""
         try:

@@ -27,7 +27,7 @@ from core.dependencies import get_dependency_registry
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/calendar", tags=["calendar"])
+router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
 # Calendar API - JSON endpoints only
 

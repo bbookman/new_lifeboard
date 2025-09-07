@@ -755,51 +755,6 @@ class TestDateExtraction:
         assert days_date is None
 
 
-class TestWebSocketNotifications:
-    """Test WebSocket notification sending"""
-    
-    @pytest.mark.asyncio
-    async def test_send_completion_notifications(self, ingestion_service, sample_data_items):
-        """Test WebSocket notifications are sent for complete ingestions"""
-        # Mock WebSocket manager
-        with patch('services.ingestion.get_websocket_manager') as mock_get_ws:
-            mock_ws_manager = Mock()
-            mock_ws_manager.send_day_update = AsyncMock()
-            mock_get_ws.return_value = mock_ws_manager
-            
-            # Register source and ingest with complete mode
-            source = MockSource("notification_test", sample_data_items)
-            ingestion_service.register_source(source)
-            
-            result = await ingestion_service.ingest_from_source(
-                "notification_test", 
-                ingestion_mode='complete'
-            )
-            
-            assert result.success
-            # WebSocket notifications should be sent
-            mock_ws_manager.send_day_update.assert_called()
-    
-    @pytest.mark.asyncio
-    async def test_notification_failure_handling(self, ingestion_service, sample_data_items):
-        """Test graceful handling of notification failures"""
-        # Mock WebSocket manager to fail
-        with patch('services.ingestion.get_websocket_manager') as mock_get_ws:
-            mock_ws_manager = Mock()
-            mock_ws_manager.send_day_update = AsyncMock(side_effect=Exception("WebSocket error"))
-            mock_get_ws.return_value = mock_ws_manager
-            
-            source = MockSource("notification_fail", sample_data_items)
-            ingestion_service.register_source(source)
-            
-            # Should complete successfully despite notification failure
-            result = await ingestion_service.ingest_from_source(
-                "notification_fail",
-                ingestion_mode='complete'
-            )
-            
-            assert result.success
-
 
 class TestIngestionResultClass:
     """Test IngestionResult utility class"""

@@ -10,6 +10,8 @@ from services.chat_service import ChatService
 from services.document_service import DocumentService
 from services.llm_service import LLMService
 from services.sync_status_service import SyncStatusService, set_sync_status_service
+from services.twitter_api_service import TwitterAPIService
+from services.twitter_rate_limit_service import TwitterRateLimitService
 from sources.limitless import LimitlessSource
 from sources.news import NewsSource
 from sources.weather import WeatherSource
@@ -307,8 +309,8 @@ class StartupService:
                     logger.info("Registering Twitter source...")
                     twitter_source = TwitterSource(
                         self.config.twitter,
-                        self.database,
-                        self.ingestion_service
+                        TwitterAPIService(self.config.twitter),
+                        TwitterRateLimitService(self.database, self.config.twitter.rate_limit_minutes)
                     )
                     await self.ingestion_service.register_source(twitter_source)
                     startup_result["sources_registered"].append("twitter")

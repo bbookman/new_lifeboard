@@ -25,7 +25,7 @@ from services.chat_service import ChatService
 from services.scheduler import AsyncScheduler
 from services.startup import StartupService
 from services.sync_manager_service import SyncManagerService
-from services.websocket_manager import WebSocketManager
+# WebSocketManager removed - using HTTP polling instead
 
 # Sources and Processors
 from sources.base import DataItem, BaseSource
@@ -287,18 +287,6 @@ def mock_sync_manager_service():
     return mock_sync
 
 
-@pytest.fixture
-def mock_websocket_manager():
-    """Mock WebSocketManager with WebSocket operations"""
-    mock_ws = AsyncMock(spec=WebSocketManager)
-    
-    # Configure behaviors
-    mock_ws.broadcast.return_value = None
-    mock_ws.send_to_client.return_value = None
-    mock_ws.get_active_connections.return_value = 2
-    mock_ws.disconnect_client.return_value = None
-    
-    return mock_ws
 
 
 # Source and Processor Fixtures
@@ -421,8 +409,7 @@ def fully_mocked_services(
     mock_chat_service,
     mock_scheduler_service,
     mock_startup_service,
-    mock_sync_manager_service,
-    mock_websocket_manager
+    mock_sync_manager_service
 ):
     """Complete set of mocked services for integration testing"""
     return {
@@ -435,8 +422,7 @@ def fully_mocked_services(
         "chat": mock_chat_service,
         "scheduler": mock_scheduler_service,
         "startup": mock_startup_service,
-        "sync_manager": mock_sync_manager_service,
-        "websocket": mock_websocket_manager
+        "sync_manager": mock_sync_manager_service
     }
 
 
@@ -549,7 +535,6 @@ __all__ = [
     "mock_scheduler_service",
     "mock_startup_service",
     "mock_sync_manager_service",
-    "mock_websocket_manager",
     "mock_base_source",
     "mock_limitless_processor",
     "mock_sync_manager",

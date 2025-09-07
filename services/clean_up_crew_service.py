@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Dict, List, Optional, Set, Any, Callable, Awaitable
+from typing import Dict, List, Optional, Set, Any
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from enum import Enum
@@ -50,7 +50,7 @@ class CleanUpCrewService:
     This service acts as the "brain" that coordinates all semantic deduplication activities:
     - Queue management using single-table status tracking
     - Background job scheduling and execution
-    - Real-time progress tracking and WebSocket updates
+    - Real-time progress tracking via HTTP endpoints
     - Performance optimization and caching strategies
     - Error handling and recovery mechanisms
     """
@@ -58,12 +58,10 @@ class CleanUpCrewService:
     def __init__(self, 
                  database_service: DatabaseService,
                  scheduler_service: AsyncScheduler,
-                 semantic_service: SemanticDeduplicationService,
-                 websocket_manager: Optional[Any] = None):
+                 semantic_service: SemanticDeduplicationService):
         self.database = database_service
         self.scheduler = scheduler_service
         self.semantic_service = semantic_service
-        self.websocket_manager = websocket_manager
         
         # Processing configuration
         self.batch_size = 50
@@ -76,7 +74,6 @@ class CleanUpCrewService:
         self.background_job_id: Optional[str] = None
         self.processing_lock = asyncio.Lock()
         self.active_day_processing: Set[str] = set()
-        self.processing_callbacks: List[Callable[[str, ProcessingStatus], Awaitable[None]]] = []
         
         logger.info("Initialized CleanUpCrewService")
     
@@ -124,41 +121,6 @@ class CleanUpCrewService:
         
         logger.info("CleanUpCrewService shutdown complete")
     
-    async def get_day_status(self, days_date: str) -> ProcessingStatus:
-        """Get processing status for a specific day"""
-        try:
-            async with self.database.get_async_connection() as conn:
-                async with conn.execute("""
-                    SELECT semantic_status, COUNT(*) as count
-                    FROM data_items 
-                    WHERE days_date = ? AND namespace = 'limitless'
-                    GROUP BY semantic_status
-                """, (days_date,)) as cursor:
-                    
-                    rows = await cursor.fetchall()
-                    status_counts = {row['semantic_status']: row['count'] for row in rows}
-                
-                if not status_counts:
-                    return ProcessingStatus.PENDING
-                
-                # Determine overall status based on item statuses
-                total_items = sum(status_counts.values())
-                completed_items = status_counts.get('completed', 0)
-                failed_items = status_counts.get('failed', 0)
-                processing_items = status_counts.get('processing', 0)
-                
-                if processing_items > 0:
-                    return ProcessingStatus.PROCESSING
-                elif completed_items == total_items:
-                    return ProcessingStatus.COMPLETED
-                elif failed_items > 0:
-                    return ProcessingStatus.FAILED
-                else:
-                    return ProcessingStatus.PENDING
-                    
-        except Exception as e:
-            logger.error(f"Error getting day status for {days_date}: {e}")
-            return ProcessingStatus.PENDING
     
     async def get_processing_queue_status(self) -> Dict[str, Any]:
         """Get comprehensive status of the processing queue"""
@@ -209,10 +171,11 @@ class CleanUpCrewService:
                     "pending_days": pending_days,
                     "processing_days": processing_days,
                     "failed_days": failed_days,
-                    "active_processing": list(self.active_day_processing),
+                    "active_processing": bool(self.active_day_processing),
+                    "active_processing_days": list(self.active_day_processing),
                     "day_breakdown": day_status,
                     "background_job_id": self.background_job_id,
-                    "last_updated": datetime.now(timezone.utc).isoformat()
+                    "last_updated": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
                 }
                 
         except Exception as e:
@@ -270,14 +233,115 @@ class CleanUpCrewService:
         
         return final_results
     
-    async def add_progress_callback(self, callback: Callable[[str, ProcessingStatus], Awaitable[None]]):
-        """Add callback for processing progress updates"""
-        self.processing_callbacks.append(callback)
     
-    async def remove_progress_callback(self, callback: Callable[[str, ProcessingStatus], Awaitable[None]]):
-        """Remove progress callback"""
-        if callback in self.processing_callbacks:
-            self.processing_callbacks.remove(callback)
+    def get_queue_stats(self) -> Dict[str, Any]:
+        """
+        Get current processing queue statistics (synchronous version for HTTP API)
+        Returns statistics structure expected by HTTP endpoints
+        """
+        try:
+            with self.database.get_connection() as conn:
+                # Get counts for each status
+                cursor = conn.execute("""
+                    SELECT 
+                        (SELECT COUNT(DISTINCT days_date) 
+                         FROM data_items 
+                         WHERE namespace = 'limitless' 
+                         AND semantic_status = 'completed') as completed_days,
+                        (SELECT COUNT(DISTINCT days_date) 
+                         FROM data_items 
+                         WHERE namespace = 'limitless' 
+                         AND semantic_status = 'pending') as pending_days,
+                        (SELECT COUNT(DISTINCT days_date) 
+                         FROM data_items 
+                         WHERE namespace = 'limitless' 
+                         AND semantic_status = 'processing') as processing_days,
+                        (SELECT COUNT(DISTINCT days_date) 
+                         FROM data_items 
+                         WHERE namespace = 'limitless' 
+                         AND semantic_status = 'failed') as failed_days
+                """)
+                
+                row = cursor.fetchone()
+                
+                completed_days = row['completed_days'] if row['completed_days'] is not None else 0
+                pending_days = row['pending_days'] if row['pending_days'] is not None else 0
+                processing_days = row['processing_days'] if row['processing_days'] is not None else 0
+                failed_days = row['failed_days'] if row['failed_days'] is not None else 0
+                
+                total_days = completed_days + pending_days + processing_days + failed_days
+                active_processing = processing_days > 0
+                
+                return {
+                    "total_days": total_days,
+                    "completed_days": completed_days,
+                    "pending_days": pending_days,
+                    "processing_days": processing_days,
+                    "failed_days": failed_days,
+                    "active_processing": active_processing,
+                    "last_updated": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting queue stats: {e}")
+            raise
+    
+    def get_day_status(self, date: str) -> Optional[Dict[str, Any]]:
+        """
+        Get processing status for a specific day (synchronous version for HTTP API)
+        Returns day-specific processing information
+        """
+        try:
+            with self.database.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT 
+                        semantic_status,
+                        COUNT(*) as total_items,
+                        SUM(CASE WHEN semantic_status = 'completed' THEN 1 ELSE 0 END) as processed_items,
+                        SUM(CASE WHEN semantic_status = 'failed' THEN 1 ELSE 0 END) as failed_items,
+                        MAX(updated_at) as last_updated
+                    FROM data_items 
+                    WHERE days_date = ? AND namespace = 'limitless'
+                    GROUP BY days_date
+                """, (date,))
+                
+                row = cursor.fetchone()
+                
+                if not row or row['total_items'] == 0:
+                    return None
+                
+                total_items = row['total_items']
+                processed_items = row['processed_items'] if row['processed_items'] is not None else 0
+                failed_items = row['failed_items'] if row['failed_items'] is not None else 0
+                last_updated = row['last_updated'] if row['last_updated'] else datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+                
+                # Determine status based on items
+                if processed_items == total_items:
+                    status = "completed"
+                elif failed_items > 0:
+                    status = "failed"
+                elif processed_items > 0:
+                    status = "processing"
+                else:
+                    status = "pending"
+                
+                # Mock processing time (in real implementation, this would come from processing logs)
+                processing_time_seconds = 0.0
+                if status in ["completed", "failed"]:
+                    processing_time_seconds = min(total_items * 0.5, 60.0)  # Estimate based on item count
+                
+                return {
+                    "status": status,
+                    "total_items": total_items,
+                    "processed_items": processed_items,
+                    "failed_items": failed_items,
+                    "processing_time_seconds": processing_time_seconds,
+                    "last_updated": last_updated
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting day status for {date}: {e}")
+            raise
     
     async def get_processing_statistics(self) -> ProcessingStats:
         """Get comprehensive processing statistics"""
@@ -357,7 +421,6 @@ class CleanUpCrewService:
         try:
             # Mark day as being processed
             self.active_day_processing.add(days_date)
-            await self._notify_progress_callbacks(days_date, ProcessingStatus.PROCESSING)
             
             # Mark all items for this day as processing
             await self._update_day_items_status(days_date, ProcessingStatus.PROCESSING)
@@ -404,7 +467,6 @@ class CleanUpCrewService:
                 error_message=error_message
             )
             
-            await self._notify_progress_callbacks(days_date, status)
             return result
             
         except Exception as e:
@@ -421,7 +483,6 @@ class CleanUpCrewService:
                 error_message=str(e)
             )
             
-            await self._notify_progress_callbacks(days_date, ProcessingStatus.FAILED)
             return result
             
         finally:
@@ -509,10 +570,3 @@ class CleanUpCrewService:
         except Exception as e:
             logger.error(f"Error in queue assessment: {e}")
     
-    async def _notify_progress_callbacks(self, days_date: str, status: ProcessingStatus):
-        """Notify all registered progress callbacks"""
-        for callback in self.processing_callbacks:
-            try:
-                await callback(days_date, status)
-            except Exception as e:
-                logger.warning(f"Error in progress callback: {e}")

@@ -215,7 +215,7 @@ async def list_documents(
     try:
         if folder_path is not None:
             # Use folder contents listing when filtering by folder path
-            documents = document_service.list_folder_contents(
+            documents = await document_service.list_folder_contents(
                 folder_path=folder_path,
                 include_folders=(document_type == "folder" or document_type is None)
             )
@@ -226,7 +226,7 @@ async def list_documents(
             documents = documents[offset:offset + limit]
         else:
             # Use regular list_documents for backward compatibility
-            documents = document_service.list_documents(
+            documents = await document_service.list_documents(
                 document_type=document_type,
                 limit=limit,
                 offset=offset

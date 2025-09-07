@@ -19,7 +19,7 @@ describe('useLimitlessData Hook - URL Endpoint Validation', () => {
   describe('API Endpoint URL Correctness', () => {
     it('should use correct URL for data fetching', async () => {
       const targetDate = '2025-08-24';
-      const expectedUrl = `http://localhost:8000/calendar/data_items/${targetDate}?namespaces=limitless&_t=`;
+      const expectedUrl = `http://localhost:8000/api/calendar/data_items/${targetDate}?namespaces=limitless&_t=`;
 
       // Mock successful response
       mockFetch.mockResolvedValueOnce({
@@ -34,7 +34,7 @@ describe('useLimitlessData Hook - URL Endpoint Validation', () => {
 
       // Verify correct URL was called
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining(`http://localhost:8000/calendar/data_items/${targetDate}?namespaces=limitless&_t=`),
+        expect.stringContaining(`http://localhost:8000/api/calendar/data_items/${targetDate}?namespaces=limitless&_t=`),
         expect.objectContaining({
           headers: expect.objectContaining({
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -47,12 +47,12 @@ describe('useLimitlessData Hook - URL Endpoint Validation', () => {
       // Verify URL does NOT contain the incorrect patterns
       const calledUrl = mockFetch.mock.calls[0][0];
       expect(calledUrl).not.toContain('/calendar/api/data_items');
-      expect(calledUrl).toContain('/calendar/data_items');
+      expect(calledUrl).toContain('/api/calendar/data_items');
     });
 
     it('should use correct URL for automatic fetch', async () => {
       const targetDate = '2025-08-24';
-      const expectedFetchUrl = `http://localhost:8000/calendar/limitless/fetch/${targetDate}`;
+      const expectedFetchUrl = `http://localhost:8000/api/calendar/limitless/fetch/${targetDate}`;
 
       // Mock failed data fetch to trigger auto fetch
       mockFetch
@@ -99,7 +99,7 @@ describe('useLimitlessData Hook - URL Endpoint Validation', () => {
       const autoFetchCall = fetchCalls.find(call => call[0].includes('/limitless/fetch/'));
       expect(autoFetchCall).toBeDefined();
       expect(autoFetchCall![0]).not.toContain('/calendar/api/limitless/fetch');
-      expect(autoFetchCall![0]).toContain('/calendar/limitless/fetch');
+      expect(autoFetchCall![0]).toContain('/api/calendar/limitless/fetch');
     });
 
     it('should use correct URL in refetch after successful auto-fetch', async () => {
@@ -125,12 +125,12 @@ describe('useLimitlessData Hook - URL Endpoint Validation', () => {
 
       await waitFor(() => {
         const refetchCall = mockFetch.mock.calls.find(call => 
-          call[0].includes('/calendar/data_items') && 
+          call[0].includes('/api/calendar/data_items') && 
           call[0].includes('namespaces=limitless')
         );
         expect(refetchCall).toBeDefined();
         expect(refetchCall![0]).not.toContain('/calendar/api/data_items');
-        expect(refetchCall![0]).toContain('/calendar/data_items');
+        expect(refetchCall![0]).toContain('/api/calendar/data_items');
       });
     });
   });
@@ -205,7 +205,7 @@ describe('useLimitlessData Hook - URL Endpoint Validation', () => {
 
       // Verify it used the correct URL even for failed requests
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/calendar/data_items/'),
+        expect.stringContaining('/api/calendar/data_items/'),
         expect.any(Object)
       );
       expect(mockFetch).not.toHaveBeenCalledWith(
@@ -224,7 +224,7 @@ describe('useLimitlessData Hook - URL Endpoint Validation', () => {
 
       // Verify it attempted the correct URL even for network errors
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/calendar/data_items/'),
+        expect.stringContaining('/api/calendar/data_items/'),
         expect.any(Object)
       );
     });

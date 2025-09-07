@@ -31,7 +31,7 @@ export const ChatView = () => {
   const loadChatHistory = async () => {
     try {
       setLoadingHistory(true);
-      const response = await fetch('http://localhost:8000/api/chat/history');
+      const response = await fetch('/api/chat/history');
       if (response.ok) {
         const data = await response.json();
         const historyMessages: ChatMessage[] = [];
@@ -100,7 +100,7 @@ export const ChatView = () => {
     
     try {
       // Send message to API
-      const response = await fetch('http://localhost:8000/api/chat/send', {
+      const response = await fetch('/api/chat/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

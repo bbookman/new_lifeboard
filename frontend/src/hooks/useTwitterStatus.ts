@@ -67,6 +67,11 @@ export function useTwitterStatus(selectedDate: string): TwitterStatusState & Twi
    * Checks the current Twitter rate limit status for the selected date
    */
   const checkRateLimit = useCallback(async (abortController?: AbortController) => {
+    // Don't make API call if selectedDate is empty or invalid
+    if (!selectedDate || !selectedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return { canFetch: true, minutesUntil: 0, lastFetchTime: null };
+    }
+
     try {
       const response = await fetch(`/api/calendar/twitter/status/${selectedDate}`, {
         signal: abortController?.signal

@@ -121,13 +121,6 @@ class TestServiceContainerGlobalInstance:
 class TestServiceContainerIntegration:
     """Test ServiceContainer integration with existing routes."""
 
-    def test_websocket_route_can_access_service_container(self):
-        """Test that WebSocket route can import and use service container."""
-        from services.startup import get_service_container
-        
-        # This should not raise ImportError
-        container = get_service_container()
-        assert container is not None
 
     def test_clean_up_crew_route_can_access_service_container(self):
         """Test that clean up crew route can import and use service container."""
@@ -144,14 +137,11 @@ class TestServiceContainerIntegration:
         container = get_service_container()
         
         # Mock the services that routes expect
-        mock_websocket_manager = Mock()
         mock_clean_up_crew_service = Mock()
         
-        container.register("websocket_manager", mock_websocket_manager)
         container.register("clean_up_crew_service", mock_clean_up_crew_service)
         
         # Test retrieval
-        assert container.get("websocket_manager") is mock_websocket_manager
         assert container.get("clean_up_crew_service") is mock_clean_up_crew_service
 
 

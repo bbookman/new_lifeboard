@@ -82,6 +82,10 @@ class LoggingConfig:
             aiosqlite_logger = logging.getLogger('aiosqlite')
             aiosqlite_logger.setLevel(logging.INFO)
             
+            # Suppress verbose httpx INFO logging
+            httpx_logger = logging.getLogger('httpx')
+            httpx_logger.setLevel(logging.DEBUG)
+            
             # Create formatter
             formatter = logging.Formatter(
                 fmt=self.log_format,

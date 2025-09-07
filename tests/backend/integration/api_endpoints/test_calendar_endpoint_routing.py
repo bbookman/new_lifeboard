@@ -171,18 +171,6 @@ class TestCalendarEndpointRouting:
                 # Should route correctly (200) even if data filtering produces empty results
                 assert response.status_code == 200, f"Endpoint {endpoint} should route correctly (got {response.status_code})"
 
-    def test_websocket_routing_not_affected(self, client):
-        """Test that WebSocket endpoints are not affected by calendar routing changes"""
-        # WebSocket endpoints should still work correctly
-        # Note: We can't test actual WebSocket connections in TestClient, 
-        # but we can test the routing doesn't conflict
-        
-        # Since our app only includes calendar router, WebSocket will return 404,
-        # but this test ensures calendar routing changes don't break other routing
-        response = client.get("/ws/processing")
-        # In our test app, this will be 404 since we only included calendar router
-        # The important thing is that calendar routing doesn't interfere
-        assert response.status_code == 404, "Expected 404 for WebSocket in calendar-only test app"
 
     @pytest.mark.parametrize("year,month", [
         (2024, 1), (2024, 12), (2023, 6), (2025, 3)

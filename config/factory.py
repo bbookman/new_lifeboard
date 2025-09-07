@@ -166,12 +166,13 @@ def create_production_config() -> AppConfig:
             rate_limit_minutes=float(os.getenv("TWITTER_RATE_LIMIT_IN_MINUTES", "15.0")),
             other_error_max_retries=int(os.getenv("TWITTER_OTHER_ERROR_MAX_RETRIES", "3")),
             inter_call_delay=float(os.getenv("TWITTER_INTER_CALL_DELAY", "3.0"))
-
-            # Log Twitter configuration for troubleshooting
-            logger.info("Twitter rate limit configuration:")
-            logger.info(f"- Rate limit minutes: {os.getenv('TWITTER_RATE_LIMIT_IN_MINUTES', '15.0')}")
-            logger.info(f"- Inter-call delay: {os.getenv('TWITTER_INTER_CALL_DELAY', '3.0')}")
         ),
+        # Log Twitter configuration for troubleshooting (after TwitterConfig is created)
+    )
+    logger.info("Twitter rate limit configuration:")
+    logger.info(f"- Rate limit minutes: {os.getenv('TWITTER_RATE_LIMIT_IN_MINUTES', '15.0')}")
+    logger.info(f"- Inter-call delay: {os.getenv('TWITTER_INTER_CALL_DELAY', '3.0')}")
+    return AppConfig(
         search=SearchConfig(
             default_limit=int(os.getenv("SEARCH_DEFAULT_LIMIT", "20")),
             max_limit=int(os.getenv("SEARCH_MAX_LIMIT", "100")),

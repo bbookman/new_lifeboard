@@ -19,7 +19,7 @@ describe('useTwitterData Hook - Auto-Fetch Integration', () => {
   describe('API Endpoint URL Correctness', () => {
     it('should use correct URL for data checking', async () => {
       const targetDate = '2025-08-24';
-      const expectedDataUrl = `http://localhost:8000/calendar/data_items/${targetDate}?namespaces=twitter&_t=`;
+      const expectedDataUrl = `http://localhost:8000/api/calendar/data_items/${targetDate}?namespaces=twitter&_t=`;
 
       // Mock successful response (no data exists)
       mockFetch.mockResolvedValueOnce({
@@ -47,7 +47,7 @@ describe('useTwitterData Hook - Auto-Fetch Integration', () => {
 
     it('should use correct URL for auto-fetch API', async () => {
       const targetDate = '2025-08-24';
-      const expectedFetchUrl = `http://localhost:8000/calendar/twitter/fetch/${targetDate}`;
+      const expectedFetchUrl = `http://localhost:8000/api/calendar/twitter/fetch/${targetDate}`;
 
       // Mock data check response (no data exists)
       mockFetch.mockResolvedValueOnce({
@@ -120,7 +120,7 @@ describe('useTwitterData Hook - Auto-Fetch Integration', () => {
       // Should only make the data check call, not the auto-fetch call
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/calendar/data_items/'),
+        expect.stringContaining('/api/calendar/data_items/'),
         expect.any(Object)
       );
     });

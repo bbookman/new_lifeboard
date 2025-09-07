@@ -37,7 +37,7 @@ export const useTwitterData = (): TwitterDataState & TwitterDataActions => {
       setFetchAttempted(prev => new Set([...prev, targetDate]));
       
       // Call the on-demand fetch API
-      const fetchApiUrl = `http://localhost:8000/calendar/twitter/fetch/${targetDate}`;
+      const fetchApiUrl = `http://localhost:8000/api/calendar/twitter/fetch/${targetDate}`;
       console.log(`[useTwitterData] Calling automatic fetch API: ${fetchApiUrl}`);
       
       const fetchResponse = await fetch(fetchApiUrl, {
@@ -86,6 +86,12 @@ export const useTwitterData = (): TwitterDataState & TwitterDataActions => {
    * Check if Twitter data exists for a date and trigger fetch if needed
    */
   const checkAndFetchData = useCallback(async (targetDate: string): Promise<void> => {
+    // Don't make API call if targetDate is empty or invalid
+    if (!targetDate || !targetDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      console.log(`[useTwitterData] Skipping API call for invalid date: ${targetDate}`);
+      return;
+    }
+
     try {
       setLoading(true);
       setFetchError(null);
@@ -93,7 +99,7 @@ export const useTwitterData = (): TwitterDataState & TwitterDataActions => {
       
       // Fetch existing data for the target date
       const timestamp = Date.now();
-      const apiUrl = `http://localhost:8000/calendar/data_items/${targetDate}?namespaces=twitter&_t=${timestamp}`;
+      const apiUrl = `http://localhost:8000/api/calendar/data_items/${targetDate}?namespaces=twitter&_t=${timestamp}`;
       console.log(`[useTwitterData] API URL: ${apiUrl}`);
       
       const response = await fetch(apiUrl, {

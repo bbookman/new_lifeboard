@@ -48,7 +48,6 @@ class TestHealthRoutes:
                 "database": True,
                 "chat_service": True,
                 "sync_manager": True,
-                "websocket_manager": True,
                 "embedding_service": True
             },
             "initialization_time": "2024-01-15T09:30:00.000Z",
@@ -77,7 +76,6 @@ class TestHealthRoutes:
                 "database": True,
                 "chat_service": False,
                 "sync_manager": True,
-                "websocket_manager": False,
                 "embedding_service": True
             },
             "initialization_time": None,
@@ -85,8 +83,7 @@ class TestHealthRoutes:
             "environment": "test",
             "uptime_seconds": 120,
             "errors": [
-                "Chat service initialization failed",
-                "WebSocket manager connection timeout"
+                "Chat service initialization failed"
             ],
             "database_status": {
                 "connected": True,
@@ -122,7 +119,6 @@ class TestHealthRoutes:
         assert services["database"] is True
         assert services["chat_service"] is True
         assert services["sync_manager"] is True
-        assert services["websocket_manager"] is True
         assert services["embedding_service"] is True
         
         # Verify details include all status information
@@ -148,14 +144,12 @@ class TestHealthRoutes:
         # Verify some services are down
         services = data["services"]
         assert services["chat_service"] is False
-        assert services["websocket_manager"] is False
         
         # Verify error details are included
         details = data["details"]
         assert "errors" in details
-        assert len(details["errors"]) == 2
+        assert len(details["errors"]) == 1
         assert "Chat service initialization failed" in details["errors"]
-        assert "WebSocket manager connection timeout" in details["errors"]
     
     def test_health_check_service_unavailable(self):
         """Test health check when startup service is unavailable"""
@@ -238,7 +232,7 @@ class TestHealthRoutes:
         status_data = data["data"]
         assert status_data["startup_complete"] is False
         assert "errors" in status_data
-        assert len(status_data["errors"]) == 2
+        assert len(status_data["errors"]) == 1
     
     def test_status_endpoint_exception_handling(self, client, mock_startup_service):
         """Test status endpoint with service exception"""
