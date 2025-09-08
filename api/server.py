@@ -31,7 +31,7 @@ from config.factory import create_production_config
 from core.dependencies import get_dependency_registry
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings, sync_status, documents, llm, news, data_items, sources, processing
+from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings, sync_status, documents, llm, news, data_items, sources, processing, spotify
 
 logger = logging.getLogger(__name__)
 
@@ -490,23 +490,27 @@ async def log_requests(request: Request, call_next):
 
 # Route dependencies will be configured after services are initialized in lifespan
 
-# Include route modules
-app.include_router(health.router)
-app.include_router(sync.router)
-app.include_router(chat.router)
-app.include_router(calendar.router)
-app.include_router(embeddings.router)
-app.include_router(system.router)
-app.include_router(weather.router)
-app.include_router(settings.router)
-app.include_router(headings.router)
-app.include_router(sync_status.router)
-app.include_router(documents.router)
-app.include_router(llm.router)
-app.include_router(news.router)
-app.include_router(data_items.router)
-app.include_router(sources.router)
-app.include_router(processing.router)
+# Include route modules - routers with existing /api prefix included as-is, others get /api prefix
+# Routers with empty or no /api prefix - add /api
+app.include_router(health.router, prefix="/api")  # health.py has "" prefix -> /api
+app.include_router(sync.router, prefix="/api")  # sync.py has "" prefix -> /api/sync
+app.include_router(weather.router, prefix="/api")  # weather.py has no prefix -> /api/weather
+app.include_router(spotify.router, prefix="/api")  # spotify.py has "/spotify" -> /api/spotify
+app.include_router(headings.router, prefix="/api")  # headings.py has "/headings" -> /api/headings
+app.include_router(sync_status.router, prefix="/api")  # sync_status.py has "/sync-status" -> /api/sync-status
+app.include_router(data_items.router, prefix="/api")  # data_items.py has "/data_items" -> /api/data_items
+
+# Routers that already have /api prefix - include as-is (no additional prefix)
+app.include_router(chat.router)  # chat.py already has /api/chat prefix
+app.include_router(calendar.router)  # calendar.py already has /api/calendar prefix
+app.include_router(embeddings.router)  # embeddings.py already has /api/embeddings prefix
+app.include_router(system.router)  # system.py already has /api/system prefix
+app.include_router(settings.router)  # settings.py already has /api/settings prefix
+app.include_router(documents.router)  # documents.py already has /api/documents prefix
+app.include_router(llm.router)  # llm.py already has /api/llm prefix
+app.include_router(news.router)  # news.py already has /api/news prefix
+app.include_router(sources.router)  # sources.py already has /api/sources prefix
+app.include_router(processing.router)  # processing.py already has /api/processing prefix
 
 # Legacy route redirects removed - all routes now properly structured
 

@@ -1,5 +1,5 @@
 // React Query provider setup
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../lib/queryClient';
 
@@ -8,6 +8,11 @@ interface QueryProviderProps {
 }
 
 export const QueryProvider = ({ children }: QueryProviderProps) => {
+  useEffect(() => {
+    console.log('[QueryProvider] QueryClient initialized:', !!queryClient);
+    console.log('[QueryProvider] QueryClient instance:', queryClient);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       {children}

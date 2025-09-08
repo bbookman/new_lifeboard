@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LimitlessConfig, NewsConfig, WeatherConfig, TwitterConfig, SearchConfig, SchedulerConfig, LoggingConfig,
+    LimitlessConfig, NewsConfig, WeatherConfig, TwitterConfig, SpotifyConfig, SearchConfig, SchedulerConfig, LoggingConfig,
     LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
 )
 
@@ -167,12 +167,19 @@ def create_production_config() -> AppConfig:
             other_error_max_retries=int(os.getenv("TWITTER_OTHER_ERROR_MAX_RETRIES", "3")),
             inter_call_delay=float(os.getenv("TWITTER_INTER_CALL_DELAY", "3.0"))
         ),
-        # Log Twitter configuration for troubleshooting (after TwitterConfig is created)
-    )
-    logger.info("Twitter rate limit configuration:")
-    logger.info(f"- Rate limit minutes: {os.getenv('TWITTER_RATE_LIMIT_IN_MINUTES', '15.0')}")
-    logger.info(f"- Inter-call delay: {os.getenv('TWITTER_INTER_CALL_DELAY', '3.0')}")
-    return AppConfig(
+        spotify=SpotifyConfig(
+            client_id=os.getenv("SPOTIFY_CLIENT_ID"),
+            client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
+            redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/callback"),
+            enabled=os.getenv("SPOTIFY_ENABLED", "true").lower() == "true",
+            sync_interval_hours=int(os.getenv("SPOTIFY_SYNC_INTERVAL_HOURS", "1")),
+            recently_played_limit=int(os.getenv("SPOTIFY_RECENTLY_PLAYED_LIMIT", "50")),
+            max_retries=int(os.getenv("SPOTIFY_MAX_RETRIES", "3")),
+            retry_delay=float(os.getenv("SPOTIFY_RETRY_DELAY", "1.0")),
+            request_timeout=float(os.getenv("SPOTIFY_REQUEST_TIMEOUT", "30.0")),
+            rate_limit_max_delay=int(os.getenv("SPOTIFY_RATE_LIMIT_MAX_DELAY", "60")),
+            respect_retry_after=os.getenv("SPOTIFY_RESPECT_RETRY_AFTER", "true").lower() == "true"
+        ),
         search=SearchConfig(
             default_limit=int(os.getenv("SEARCH_DEFAULT_LIMIT", "20")),
             max_limit=int(os.getenv("SEARCH_MAX_LIMIT", "100")),

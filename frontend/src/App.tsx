@@ -10,6 +10,7 @@ import { DocumentsView } from './components/DocumentsView'
 import { DateNavigation } from './components/DateNavigation'
 import { LimitlessContentExpanded } from './components/LimitlessContentExpanded'
 import { LimitlessMarkdownExpanded } from './components/LimitlessMarkdownExpanded'
+import { QueryProvider } from './providers/QueryProvider'
 
 const navigationItems = [
   { id: 'day', label: 'Day', icon: '📅', path: '/day' },
@@ -166,10 +167,14 @@ function MainLayout() {
 }
 
 function App() {
+  console.log('[App] App component rendering');
+
   return (
-    <BrowserRouter>
-      <MainLayout />
-    </BrowserRouter>
+    <QueryProvider>
+      <BrowserRouter>
+        <MainLayout />
+      </BrowserRouter>
+    </QueryProvider>
   );
 }
 

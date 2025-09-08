@@ -468,7 +468,6 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
             return StringValidator.validate_non_empty_string(v, "Twitter Username")
         return v
     
-
     @field_validator('user_id')
     @classmethod
     def validate_user_id(cls, v):
@@ -532,6 +531,81 @@ class TwitterConfig(BaseModel, BaseConfigMixin):
         return self.enabled
 
 
+class SpotifyConfig(BaseModel, BaseConfigMixin):
+    """Spotify API configuration"""
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
+    redirect_uri: str = "http://localhost:8888/callback"
+    enabled: bool = True
+    sync_interval_hours: int = 1
+    recently_played_limit: int = 50
+    max_retries: int = 3
+    retry_delay: float = 1.0
+    request_timeout: float = 30.0
+    rate_limit_max_delay: int = 60
+    respect_retry_after: bool = True
+    required_scopes: List[str] = ["user-read-recently-played", "user-read-playback-state"]
+    
+    @field_validator('client_id', 'client_secret')
+    @classmethod
+    def validate_required_fields(cls, v, info):
+        # Allow None values but validate non-None, non-empty strings
+        if v is not None:
+            if not isinstance(v, str) or v.strip() == "":
+                field_name = info.field_name.replace('_', ' ').title()
+                raise ValueError(f"{field_name} must be a non-empty string if provided")
+            return v.strip()
+        return v
+    
+    @field_validator('sync_interval_hours')
+    @classmethod
+    def validate_sync_interval_hours(cls, v):
+        if not isinstance(v, int) or v < 1 or v > 24:
+            raise ValueError("sync_interval_hours must be between 1 and 24")
+        return v
+    
+    @field_validator('recently_played_limit')
+    @classmethod
+    def validate_recently_played_limit(cls, v):
+        if not isinstance(v, int) or v < 1 or v > 50:
+            raise ValueError("recently_played_limit must be between 1 and 50")
+        return v
+    
+    @field_validator('request_timeout')
+    @classmethod
+    def validate_request_timeout(cls, v):
+        if not isinstance(v, (int, float)) or v <= 0:
+            raise ValueError("request_timeout must be positive")
+        return v
+    
+    @field_validator('max_retries', 'rate_limit_max_delay')
+    @classmethod
+    def validate_positive_ints(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_int(v, field_name)
+    
+    @field_validator('retry_delay')
+    @classmethod
+    def validate_positive_floats(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_float(v, field_name)
+    
+    def is_api_configured(self) -> bool:
+        """Check if API credentials are properly configured"""
+        return (
+            self.client_id is not None and 
+            self.client_secret is not None and 
+            isinstance(self.client_id, str) and
+            isinstance(self.client_secret, str) and
+            self.client_id.strip() != "" and 
+            self.client_secret.strip() != ""
+        )
+    
+    def is_fully_configured(self) -> bool:
+        """Check if both enabled and API credentials are properly configured"""
+        return self.enabled and self.is_api_configured()
+
+
 class DocumentsConfig(BaseModel):
     """User documents configuration"""
     enabled: bool = True
@@ -572,6 +646,7 @@ class AppConfig(BaseModel):
     news: NewsConfig = NewsConfig()
     weather: WeatherConfig = WeatherConfig()
     twitter: TwitterConfig = TwitterConfig()
+    spotify: SpotifyConfig = SpotifyConfig()
     documents: DocumentsConfig = DocumentsConfig()
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()

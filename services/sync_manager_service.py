@@ -13,6 +13,7 @@ from sources.limitless import LimitlessSource
 from sources.news import NewsSource
 from sources.weather import WeatherSource
 from sources.twitter import TwitterSource
+from sources.spotify import SpotifySource
 from config.models import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,9 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
             interval_seconds = 15 * 60  # 15 minutes in seconds
             logger.info(f"[TWITTER TRACE] Twitter source configured for 15-minute sync interval due to API rate limits")
             logger.info(f"[TWITTER TRACE] Twitter sync interval: {interval_hours} hours ({interval_seconds} seconds)")
+        elif isinstance(source, SpotifySource):
+            interval_hours = self.config.spotify.sync_interval_hours
+            interval_seconds = interval_hours * 3600
         else:
             # Default sync interval for other sources
             interval_hours = 24
@@ -402,6 +406,17 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         else:
             logger.info("Weather source not available for auto-sync (disabled or missing API key)")
         
+        # Check Spotify source
+        if (self.config.spotify.enabled and self.config.spotify.is_fully_configured() and 
+            "spotify" in self.ingestion_service.sources):
+            spotify_source = self.ingestion_service.sources["spotify"]
+            success = await self.register_source_for_auto_sync(spotify_source)
+            if success:
+                registered_sources.append("spotify")
+                logger.info("Auto-registered Spotify source for scheduled sync")
+        else:
+            logger.info("Spotify source not available for auto-sync (disabled or not fully configured)")
+        
         # Twitter source excluded from auto-discovery - use manual fetch instead
         # Twitter sources must be triggered manually via the fetch button due to API limitations
         logger.info("Twitter source skipped from auto-discovery - available for manual fetching only")
@@ -553,6 +568,8 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
         elif namespace == "twitter":
             # Twitter doesn't have a time-based sync interval, it syncs once
             return False
+        elif namespace == "spotify":
+            sync_interval_hours = self.config.spotify.sync_interval_hours
         else:
             logger.warning(f"Unknown namespace {namespace}, using default sync interval")
         

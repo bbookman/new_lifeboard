@@ -13,11 +13,20 @@ class VectorStoreService:
     def __init__(self, config):
         self.config = config
         self.vectors = {}  # id -> vector mapping
-        self.id_to_index = {}  # id -> index mapping  
+        self.id_to_index = {}  # id -> index mapping
         self.index_to_id = {}  # index -> id mapping
         self.dimension = None
         self.next_index = 0
-        
+
+        # Debug logging for config values
+        logger.info(f"VectorStoreService initialized with config: index_path='{self.config.index_path}', id_map_path='{self.config.id_map_path}'")
+
+        # Validate paths are not empty
+        if not self.config.index_path or not self.config.index_path.strip():
+            logger.error(f"VectorStoreService: index_path is empty or None: '{self.config.index_path}'")
+        if not self.config.id_map_path or not self.config.id_map_path.strip():
+            logger.error(f"VectorStoreService: id_map_path is empty or None: '{self.config.id_map_path}'")
+
         # Load existing data if available
         self._load_index()
     
@@ -46,6 +55,17 @@ class VectorStoreService:
     def _save_index(self):
         """Save vector index to disk"""
         try:
+            # Debug logging for paths being used
+            logger.debug(f"_save_index called with paths: id_map_path='{self.config.id_map_path}', index_path='{self.config.index_path}'")
+
+            # Validate paths before using them
+            if not self.config.id_map_path or not self.config.id_map_path.strip():
+                logger.error(f"_save_index: id_map_path is empty: '{self.config.id_map_path}'")
+                return
+            if not self.config.index_path or not self.config.index_path.strip():
+                logger.error(f"_save_index: index_path is empty: '{self.config.index_path}'")
+                return
+
             # Save ID mappings
             data = {
                 'id_to_index': self.id_to_index,
@@ -53,11 +73,13 @@ class VectorStoreService:
                 'next_index': self.next_index,
                 'dimension': self.dimension
             }
-            
-            os.makedirs(os.path.dirname(self.config.id_map_path), exist_ok=True)
+
+            id_map_dir = os.path.dirname(self.config.id_map_path)
+            logger.debug(f"Creating directory for id_map: '{id_map_dir}'")
+            os.makedirs(id_map_dir, exist_ok=True)
             with open(self.config.id_map_path, 'w') as f:
                 json.dump(data, f)
-            
+
             # Save vectors as numpy array
             if self.vectors:
                 vectors_list = []
@@ -71,14 +93,17 @@ class VectorStoreService:
                             vectors_list.append(np.zeros(self.dimension, dtype=np.float32))
                     else:
                         vectors_list.append(np.zeros(self.dimension, dtype=np.float32))
-                
+
                 if vectors_list:
                     vectors_array = np.array(vectors_list)
-                    os.makedirs(os.path.dirname(self.config.index_path), exist_ok=True)
+                    index_dir = os.path.dirname(self.config.index_path)
+                    logger.debug(f"Creating directory for index: '{index_dir}'")
+                    os.makedirs(index_dir, exist_ok=True)
                     np.save(self.config.index_path, vectors_array)
-                    
+
         except Exception as e:
             logger.error(f"Could not save index: {e}")
+            logger.error(f"Error details: id_map_path='{self.config.id_map_path}', index_path='{self.config.index_path}'")
     
     def add_vector(self, vector_id: str, vector: np.ndarray) -> bool:
         """Add a vector to the store"""

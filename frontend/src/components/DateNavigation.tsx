@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { format, subDays, addDays, isToday } from 'date-fns';
+import { format, subDays, addDays } from 'date-fns';
 import { useNavigate } from "react-router-dom";
 import { Button } from "./ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -63,7 +63,7 @@ export const DateNavigation = ({ selectedDate, onDateChange, isDayViewActive, is
   }, [todayDate, handleDateChange]);
 
 
-  const isDisplayDateToday = displayDate ? isToday(new Date(displayDate + 'T00:00:00')) : false;
+  const isDisplayDateToday = displayDate && todayDate ? displayDate === todayDate : false;
 
   // If we're in expanded view, don't show any navigation
   if (isExpandedView) {

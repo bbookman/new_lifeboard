@@ -120,7 +120,7 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
       setFetchAttempted(prev => new Set([...prev, targetDate]));
       
       // Call the on-demand fetch API
-      const fetchApiUrl = `http://localhost:8000/api/calendar/limitless/fetch/${targetDate}`;
+      const fetchApiUrl = `/api/calendar/limitless/fetch/${targetDate}`;
       console.log(`[useLimitlessData] Calling automatic fetch API: ${fetchApiUrl}`);
       
       const fetchResponse = await fetch(fetchApiUrl, {
@@ -146,7 +146,7 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
             // Fetch data manually without auto-fetch to avoid loops
             try {
               const timestamp = Date.now();
-              const apiUrl = `http://localhost:8000/api/calendar/data_items/${targetDate}?namespaces=limitless&_t=${timestamp}`;
+              const apiUrl = `/api/calendar/data_items/${targetDate}?namespaces=limitless&_t=${timestamp}`;
               const response = await fetch(apiUrl, {
                 headers: {
                   'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -209,7 +209,7 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
       
       // Fetch data for the target date with cache-busting timestamp
       const timestamp = Date.now();
-      const apiUrl = `http://localhost:8000/api/calendar/data_items/${targetDate}?namespaces=limitless&_t=${timestamp}`;
+      const apiUrl = `/api/calendar/data_items/${targetDate}?namespaces=limitless&_t=${timestamp}`;
       console.log(`[useLimitlessData] API URL: ${apiUrl}`);
       
       const response = await fetch(apiUrl, {

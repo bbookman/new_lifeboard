@@ -1,59 +1,27 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import musicImage from "@/assets/music-placeholder.jpg";
-
-interface MusicTrack {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  playTime: string;
-  duration: string;
-  mood?: string;
-}
+import { useSpotifyTracks } from "../hooks/useSpotifyData";
+import SpotifyPlayer from "./SpotifyPlayer";
+import { SpotifyTrack } from "../lib/api";
 
 interface MusicHistoryProps {
   selectedDate?: string;
 }
 
-const sampleTracks: MusicTrack[] = [
-  {
-    id: "1",
-    title: "Midnight Reflections",
-    artist: "The Velvet Underground",
-    album: "Late Night Sessions",
-    playTime: "2 hours ago",
-    duration: "4:23",
-    mood: "Chill"
-  },
-  {
-    id: "2",
-    title: "Electric Dreams",
-    artist: "Synthwave Collective",
-    album: "Neon Nights",
-    playTime: "4 hours ago",
-    duration: "3:45",
-    mood: "Energetic"
-  },
-  {
-    id: "3",
-    title: "Ocean Waves",
-    artist: "Ambient Nature",
-    album: "Peaceful Moments",
-    playTime: "6 hours ago",
-    duration: "5:12",
-    mood: "Peaceful"
-  },
-  {
-    id: "4",
-    title: "City Lights",
-    artist: "Jazz Fusion",
-    album: "Urban Stories",
-    playTime: "8 hours ago",
-    duration: "6:01",
-    mood: "Smooth"
-  }
-];
+const getMoodFromAudioFeatures = (audioFeatures?: SpotifyTrack['audio_features']): string => {
+  if (!audioFeatures) return 'Unknown';
+  
+  const { valence, energy, danceability } = audioFeatures;
+  
+  if (valence > 0.7 && energy > 0.7) return 'Energetic';
+  if (valence > 0.6 && danceability > 0.6) return 'Upbeat';
+  if (valence < 0.4 && energy < 0.4) return 'Chill';
+  if (energy < 0.3) return 'Peaceful';
+  if (danceability > 0.7) return 'Danceable';
+  if (valence > 0.5) return 'Happy';
+  return 'Smooth';
+};
 
 const getMoodColor = (mood: string) => {
   switch (mood) {
@@ -61,8 +29,55 @@ const getMoodColor = (mood: string) => {
     case 'Energetic': return 'bg-red-100 text-red-800';
     case 'Peaceful': return 'bg-green-100 text-green-800';
     case 'Smooth': return 'bg-purple-100 text-purple-800';
+    case 'Upbeat': return 'bg-orange-100 text-orange-800';
+    case 'Danceable': return 'bg-pink-100 text-pink-800';
+    case 'Happy': return 'bg-yellow-100 text-yellow-800';
     default: return 'bg-gray-100 text-gray-800';
   }
+};
+
+const formatDuration = (durationMs: number): string => {
+  const minutes = Math.floor(durationMs / 60000);
+  const seconds = Math.floor((durationMs % 60000) / 1000);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+const formatPlayTime = (playedAt: string): string => {
+  const playedDate = new Date(playedAt);
+  const now = new Date();
+  const diffMs = now.getTime() - playedDate.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  
+  if (diffHours > 0) {
+    return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  } else if (diffMinutes > 0) {
+    return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
+  } else {
+    return 'Just now';
+  }
+};
+
+const calculateTotalStats = (tracks: SpotifyTrack[]) => {
+  const totalDurationMs = tracks.reduce((sum, track) => sum + track.duration_ms, 0);
+  const totalMinutes = Math.floor(totalDurationMs / 60000);
+  const trackCount = tracks.length;
+  
+  // Determine dominant mood
+  const moods = tracks.map(track => getMoodFromAudioFeatures(track.audio_features));
+  const moodCounts = moods.reduce((acc, mood) => {
+    acc[mood] = (acc[mood] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  const dominantMood = Object.entries(moodCounts)
+    .sort(([,a], [,b]) => b - a)[0]?.[0] || 'Mixed';
+  
+  return {
+    trackCount,
+    totalMinutes,
+    dominantMood: dominantMood.toLowerCase()
+  };
 };
 
 /**
@@ -70,7 +85,96 @@ const getMoodColor = (mood: string) => {
  * @param selectedDate - The date to display music history for (YYYY-MM-DD format)
  */
 export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
-  // TODO: In a real app, fetch music data based on selectedDate
+  const { data: tracks, isLoading, error } = useSpotifyTracks(selectedDate);
+  
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="border-b-2 border-music-accent pb-2">
+          <h2 className="font-headline text-3xl font-bold text-newspaper-headline">
+            Music Journal
+          </h2>
+          <p className="text-newspaper-byline font-body text-sm">
+            Your daily soundtrack and listening history
+            {selectedDate && ` • ${selectedDate}`}
+          </p>
+        </div>
+        
+        <Card className="p-6 bg-gradient-to-r from-music-accent/5 to-music-accent/10">
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-music-accent"></div>
+            <span className="ml-3 text-newspaper-byline">Loading your music history...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+  
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="border-b-2 border-music-accent pb-2">
+          <h2 className="font-headline text-3xl font-bold text-newspaper-headline">
+            Music Journal
+          </h2>
+          <p className="text-newspaper-byline font-body text-sm">
+            Your daily soundtrack and listening history
+            {selectedDate && ` • ${selectedDate}`}
+          </p>
+        </div>
+        
+        <Card className="p-6 bg-gradient-to-r from-music-accent/5 to-music-accent/10">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="text-red-500 mb-2">⚠️</div>
+              <p className="text-newspaper-byline">
+                Failed to load music history: {error.message}
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+  
+  // Empty state
+  if (!tracks || tracks.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="border-b-2 border-music-accent pb-2">
+          <h2 className="font-headline text-3xl font-bold text-newspaper-headline">
+            Music Journal
+          </h2>
+          <p className="text-newspaper-byline font-body text-sm">
+            Your daily soundtrack and listening history
+            {selectedDate && ` • ${selectedDate}`}
+          </p>
+        </div>
+        
+        <Card className="p-6 bg-gradient-to-r from-music-accent/5 to-music-accent/10">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="text-4xl mb-4">🎵</div>
+              <h3 className="font-headline text-lg font-bold text-newspaper-headline mb-2">
+                No music history found
+              </h3>
+              <p className="text-newspaper-byline">
+                {selectedDate 
+                  ? `No tracks were played on ${selectedDate}`
+                  : 'No recent tracks found'
+                }
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+  
+  // Calculate stats for the tracks
+  const stats = calculateTotalStats(tracks);
   
   return (
     <div className="space-y-6">
@@ -98,38 +202,60 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
               Today's Listening Stats
             </h3>
             <p className="text-newspaper-byline font-body">
-              4 tracks • 19 minutes • Mostly chill vibes
+              {stats.trackCount} track{stats.trackCount !== 1 ? 's' : ''} • {stats.totalMinutes} minutes • Mostly {stats.dominantMood} vibes
             </p>
           </div>
         </div>
         
         <div className="space-y-4">
-          {sampleTracks.map((track) => (
-            <div key={track.id} className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex-1">
-                <h4 className="font-body font-semibold text-newspaper-headline">
-                  {track.title}
-                </h4>
-                <p className="text-newspaper-byline text-sm">
-                  {track.artist} • {track.album}
-                </p>
+          {tracks.map((track) => {
+            const mood = getMoodFromAudioFeatures(track.audio_features);
+            
+            return (
+              <div key={`${track.id}-${track.played_at}`} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between p-4">
+                  <div className="flex-1">
+                    <h4 className="font-body font-semibold text-newspaper-headline">
+                      {track.title}
+                    </h4>
+                    <p className="text-newspaper-byline text-sm">
+                      {track.artist} • {track.album}
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center space-x-3">
+                    <Badge className={`text-xs ${getMoodColor(mood)}`}>
+                      {mood}
+                    </Badge>
+                    <span className="text-newspaper-byline text-sm font-mono">
+                      {formatDuration(track.duration_ms)}
+                    </span>
+                    <span className="text-newspaper-byline text-xs">
+                      {formatPlayTime(track.played_at)}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Spotify Player Integration */}
+                <div className="px-4 pb-4">
+                  <SpotifyPlayer
+                    currentTrack={{
+                      id: track.id,
+                      name: track.title,
+                      artists: [{ name: track.artist }],
+                      album: {
+                        name: track.album,
+                        images: []
+                      },
+                      preview_url: track.preview_url || null,
+                      duration_ms: track.duration_ms
+                    }}
+                    className="border-t pt-3"
+                  />
+                </div>
               </div>
-              
-              <div className="flex items-center space-x-3">
-                {track.mood && (
-                  <Badge className={`text-xs ${getMoodColor(track.mood)}`}>
-                    {track.mood}
-                  </Badge>
-                )}
-                <span className="text-newspaper-byline text-sm font-mono">
-                  {track.duration}
-                </span>
-                <span className="text-newspaper-byline text-xs">
-                  {track.playTime}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
       

@@ -37,7 +37,7 @@ export const useTwitterData = (): TwitterDataState & TwitterDataActions => {
       setFetchAttempted(prev => new Set([...prev, targetDate]));
       
       // Call the on-demand fetch API
-      const fetchApiUrl = `http://localhost:8000/api/calendar/twitter/fetch/${targetDate}`;
+      const fetchApiUrl = `/api/calendar/twitter/fetch/${targetDate}`;
       console.log(`[useTwitterData] Calling automatic fetch API: ${fetchApiUrl}`);
       
       const fetchResponse = await fetch(fetchApiUrl, {
@@ -99,7 +99,7 @@ export const useTwitterData = (): TwitterDataState & TwitterDataActions => {
       
       // Fetch existing data for the target date
       const timestamp = Date.now();
-      const apiUrl = `http://localhost:8000/api/calendar/data_items/${targetDate}?namespaces=twitter&_t=${timestamp}`;
+      const apiUrl = `/api/calendar/data_items/${targetDate}?namespaces=twitter&_t=${timestamp}`;
       console.log(`[useTwitterData] API URL: ${apiUrl}`);
       
       const response = await fetch(apiUrl, {
