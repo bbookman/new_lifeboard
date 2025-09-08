@@ -34,7 +34,7 @@ def mock_document_service():
     service.delete_folder = AsyncMock()
     service.move_item = AsyncMock()
     service.count_documents = AsyncMock()
-    service.title_exists = MagicMock()
+    service.title_exists = AsyncMock()
     service.process_template = MagicMock()
     service.validate_template = MagicMock()
     service._check_service_health = AsyncMock()

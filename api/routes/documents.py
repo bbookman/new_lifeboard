@@ -194,7 +194,7 @@ async def validate_document_title(
 ) -> Dict[str, bool]:
     """Fast title uniqueness validation"""
     try:
-        exists = document_service.title_exists(title, document_type, exclude_id)
+        exists = await document_service.title_exists(title, document_type, exclude_id)
         return {"is_unique": not exists}
         
     except Exception as e:
