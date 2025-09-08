@@ -61,7 +61,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const [editingLink, setEditingLink] = useState<Document | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteSelectedDialog, setShowDeleteSelectedDialog] = useState(false);
-  const [showUniqueNameDialog, setShowUniqueNameDialog] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'document'>('list');
   const [openDocument, setOpenDocument] = useState<Document | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
@@ -168,51 +167,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     });
   }, [showDeleteDialog, selectedDocument]);
 
-  // Debug useEffect to monitor unique name dialog state
-  useEffect(() => {
-    console.log('🚨 Unique name dialog state changed:', {
-      showUniqueNameDialog,
-      timestamp: new Date().toISOString()
-    });
-    
-    // Check if modal gets reset immediately
-    if (showUniqueNameDialog) {
-      setTimeout(() => {
-        console.log('⏰ Modal state after 100ms:', showUniqueNameDialog);
-      }, 100);
-      
-      setTimeout(() => {
-        console.log('⏰ Modal state after 500ms:', showUniqueNameDialog);
-      }, 500);
-    }
-  }, [showUniqueNameDialog]);
 
-  const checkUniqueTitle = async (title: string, documentType: string, excludeId?: string) => {
-    console.log('🔍 checkUniqueTitle called with:', { title, documentType, excludeId });
-    
-    try {
-      const params = new URLSearchParams();
-      params.append('title', title);
-      params.append('document_type', documentType);
-      if (excludeId) {
-        params.append('exclude_id', excludeId);
-      }
-      
-      const response = await fetch(`/api/documents/validate-title?${params}`);
-      if (!response.ok) {
-        throw new Error('Failed to validate title');
-      }
-
-      const data = await response.json();
-      console.log('📝 Title validation result:', data.is_unique ? 'UNIQUE' : 'DUPLICATE FOUND');
-      
-      return data.is_unique;
-    } catch (err) {
-      console.error('❌ Error checking unique title:', err);
-      // If we can't check, allow the operation and let the server handle it
-      return true;
-    }
-  };
 
   const fetchDocuments = async () => {
     try {
@@ -468,21 +423,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         return;
       }
 
-      console.log('🔍 Checking unique title for:', editForm.title, 'type:', editForm.document_type, 'excludeId:', openDocument.id);
-      
-      // Check for unique title
-      const isUnique = await checkUniqueTitle(editForm.title, editForm.document_type, openDocument.id);
-      console.log('✅ Unique check result:', isUnique);
-      
-      if (!isUnique) {
-        console.log('🚨 Duplicate found, showing unique name dialog');
-        console.log('📱 Current showUniqueNameDialog state before setting:', showUniqueNameDialog);
-        setShowUniqueNameDialog(true);
-        console.log('📱 setShowUniqueNameDialog(true) called');
-        return;
-      }
-      
-      console.log('✅ Title is unique, proceeding with save...');
     } catch (error) {
       console.error('💥 FATAL ERROR in handleSaveEdit:', error);
       setError('An unexpected error occurred while saving');
@@ -544,12 +484,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       return;
     }
 
-    // Check for unique title
-    const isUnique = await checkUniqueTitle(editForm.title, editForm.document_type);
-    if (!isUnique) {
-      setShowUniqueNameDialog(true);
-      return;
-    }
 
     try {
       setLoading(true);
@@ -618,12 +552,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       return;
     }
 
-    // Check for unique title
-    const isUnique = await checkUniqueTitle(createForm.title, createForm.document_type);
-    if (!isUnique) {
-      setShowUniqueNameDialog(true);
-      return;
-    }
 
     try {
       setLoading(true);
@@ -839,12 +767,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       return;
     }
 
-    // Check for unique title
-    const isUnique = await checkUniqueTitle(newFolderName, 'folder');
-    if (!isUnique) {
-      setShowUniqueNameDialog(true);
-      return;
-    }
 
     try {
       setLoading(true);
@@ -1256,35 +1178,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Unique Name Validation Dialog - Available in document view */}
-        {console.log('🎭 Rendering Unique Name Dialog in DOCUMENT VIEW with state:', showUniqueNameDialog)}
-        <AlertDialog 
-          open={showUniqueNameDialog} 
-          onOpenChange={(open) => {
-            console.log('🎭 AlertDialog onOpenChange called with:', open);
-            setShowUniqueNameDialog(open);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Name Already Exists</AlertDialogTitle>
-              <AlertDialogDescription>
-                A document with this name already exists. Please choose a unique name for your folder, note, or prompt.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogAction
-                onClick={() => {
-                  console.log('✅ Unique name dialog OK button clicked');
-                  setShowUniqueNameDialog(false);
-                }}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                OK
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </>
     );
   }
@@ -1956,34 +1849,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         </DialogContent>
       </Dialog>
 
-      {/* Unique Name Validation Dialog */}
-      <AlertDialog 
-        open={showUniqueNameDialog} 
-        onOpenChange={(open) => {
-          console.log('🎭 AlertDialog onOpenChange called with:', open);
-          setShowUniqueNameDialog(open);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Name Already Exists</AlertDialogTitle>
-            <AlertDialogDescription>
-              A document with this name already exists. Please choose a unique name for your folder, note, or prompt.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction
-              onClick={() => {
-                console.log('✅ Unique name dialog OK button clicked');
-                setShowUniqueNameDialog(false);
-              }}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              OK
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

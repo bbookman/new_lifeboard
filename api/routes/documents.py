@@ -36,7 +36,7 @@ class CreateDocumentRequest(BaseModel):
     path: str = Field("/", description="Virtual directory path")
     is_folder: Optional[bool] = Field(None, description="Whether this is a folder (ignored, determined by document_type)")
     url: Optional[str] = Field(None, description="URL for link documents")
-    home_date: Optional[str] = Field(None, description="Home date (ignored, uses created_at)")
+    home_date: Optional[str] = Field(None, description="Home date for the document")
 
     @validator('title')
     def validate_title(cls, v):
@@ -69,7 +69,7 @@ class UpdateDocumentRequest(BaseModel):
     content_delta: Optional[Dict[str, Any]] = Field(None, description="Quill Delta format content")
     content_md: Optional[str] = Field(None, description="Markdown content (ignored, generated from delta)")
     url: Optional[str] = Field(None, description="URL for link documents")
-    home_date: Optional[str] = Field(None, description="Home date (ignored, uses updated_at)")
+    home_date: Optional[str] = Field(None, description="Home date for the document")
 
     @validator('title')
     def validate_title(cls, v):
@@ -102,7 +102,7 @@ class DocumentResponse(BaseModel):
             path=document.path,
             is_folder=document.is_folder,
             url=getattr(document, 'url', None),
-            home_date=document.created_at.isoformat(),  # Use created_at as home_date
+            home_date=document.home_date.isoformat() if document.home_date else document.created_at.isoformat(),  # Use actual home_date or created_at as fallback
             created_at=document.created_at.isoformat(),
             updated_at=document.updated_at.isoformat()
         )
@@ -166,12 +166,18 @@ async def create_document(
         else:
             # Handle regular document creation
             content_delta = request.content_delta or {"ops": [{"insert": "\n"}]}
+            home_date = None
+            if request.home_date:
+                from datetime import datetime
+                home_date = datetime.fromisoformat(request.home_date.replace('Z', '+00:00'))
+
             document = await document_service.create_document(
                 title=request.title,
                 document_type=request.document_type,
                 content_delta=content_delta,
                 path=request.path,
-                url=request.url
+                url=request.url,
+                home_date=home_date
             )
         
         return DocumentResponse.from_document(document)
@@ -184,22 +190,6 @@ async def create_document(
 
 
 
-@router.get("/validate-title", response_model=Dict[str, bool])
-@handle_api_exceptions("Failed to validate title", 500, include_details=True)
-async def validate_document_title(
-    title: str = Query(..., min_length=1, description="Title to validate"),
-    document_type: str = Query(..., pattern="^(note|prompt|folder|link)$", description="Document type"),
-    exclude_id: Optional[str] = Query(None, description="Document ID to exclude from validation"),
-    document_service: DocumentService = Depends(get_document_service_for_route)
-) -> Dict[str, bool]:
-    """Fast title uniqueness validation"""
-    try:
-        exists = await document_service.title_exists(title, document_type, exclude_id)
-        return {"is_unique": not exists}
-        
-    except Exception as e:
-        logger.error(f"Error validating title '{title}': {e}")
-        raise HTTPException(status_code=500, detail="Failed to validate title")
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -559,12 +549,18 @@ async def update_document(
 ) -> DocumentResponse:
     """Update an existing document"""
     try:
+        home_date = None
+        if request.home_date:
+            from datetime import datetime
+            home_date = datetime.fromisoformat(request.home_date.replace('Z', '+00:00'))
+
         document = await document_service.update_document(
             doc_id=document_id,
             title=request.title,
             document_type=request.document_type,
             content_delta=request.content_delta,
-            url=request.url
+            url=request.url,
+            home_date=home_date
         )
         
         return DocumentResponse.from_document(document)

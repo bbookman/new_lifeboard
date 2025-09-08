@@ -193,6 +193,7 @@ def create_complete_schema(conn: sqlite3.Connection) -> None:
             content_md TEXT NOT NULL,     -- Markdown version for search/LLM
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            home_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             path VARCHAR(500) DEFAULT '/' NOT NULL,
             is_folder BOOLEAN DEFAULT FALSE NOT NULL,
             url TEXT  -- URL for link documents

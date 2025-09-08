@@ -35,6 +35,7 @@ class Document:
     path: str  # Virtual directory path
     is_folder: bool  # True if this is a folder
     url: Optional[str] = None  # URL for link documents
+    home_date: datetime = None  # Home date for the document
     created_at: datetime = None
     updated_at: datetime = None
 
@@ -63,11 +64,12 @@ class DocumentService(BaseService):
         self.add_capability("vector_integration")
     
     async def create_document(self,
-                            title: str,
-                            document_type: str,
-                            content_delta: Dict[str, Any],
-                            path: str = "/",
-                            url: Optional[str] = None) -> Document:
+                             title: str,
+                             document_type: str,
+                             content_delta: Dict[str, Any],
+                             path: str = "/",
+                             url: Optional[str] = None,
+                             home_date: Optional[datetime] = None) -> Document:
         """Create a new document"""
         if document_type not in ['note', 'prompt', 'link']:
             raise ValueError("Document type must be 'note', 'prompt', or 'link'")
@@ -106,6 +108,7 @@ class DocumentService(BaseService):
             path=document_path,
             is_folder=False,
             url=url,
+            home_date=home_date if home_date else now,  # Use provided home_date or default to now
             created_at=now,
             updated_at=now
         )
@@ -121,11 +124,12 @@ class DocumentService(BaseService):
         return document
     
     async def update_document(self,
-                            doc_id: str,
-                            title: Optional[str] = None,
-                            document_type: Optional[str] = None,  # Added parameter
-                            content_delta: Optional[Dict[str, Any]] = None,
-                            url: Optional[str] = None) -> Document:
+                             doc_id: str,
+                             title: Optional[str] = None,
+                             document_type: Optional[str] = None,  # Added parameter
+                             content_delta: Optional[Dict[str, Any]] = None,
+                             url: Optional[str] = None,
+                             home_date: Optional[datetime] = None) -> Document:
         """Update an existing document"""
         
         # DIAGNOSTIC LOG: Check what's being requested
@@ -166,7 +170,11 @@ class DocumentService(BaseService):
         # Update URL if provided (for link documents)
         if url is not None:
             document.url = url
-        
+
+        # Update home_date if provided
+        if home_date is not None:
+            document.home_date = home_date
+
         document.updated_at = datetime.now(timezone.utc)
         
         # DIAGNOSTIC LOG: Check document before storing
@@ -188,17 +196,17 @@ class DocumentService(BaseService):
             async with self.database.get_async_connection() as conn:
                 async with conn.execute("""
                     SELECT id, title, document_type, content_delta, content_md,
-                           path, is_folder, url, created_at, updated_at
-                    FROM user_documents 
+                           path, is_folder, url, home_date, created_at, updated_at
+                    FROM user_documents
                     WHERE id = ?
                 """, (doc_id,)) as cursor:
-                    
+
                     row = await cursor.fetchone()
                     if not row:
                         return None
-                    
+
                     return self._row_to_document(row)
-            
+
         except Exception as e:
             logger.error(f"Error getting document {doc_id}: {e}")
             return None
@@ -218,8 +226,8 @@ class DocumentService(BaseService):
             # Build query
             query = """
                 SELECT id, title, document_type, content_delta, content_md,
-                       path, is_folder, url, created_at, updated_at
-                FROM user_documents 
+                       path, is_folder, url, home_date, created_at, updated_at
+                FROM user_documents
                 WHERE 1=1
             """
             params = []
@@ -335,6 +343,7 @@ class DocumentService(BaseService):
             content_md="",
             path=folder_path,
             is_folder=True,
+            home_date=now,  # Use current time as home_date for folders
             created_at=now,
             updated_at=now
         )
@@ -368,13 +377,13 @@ class DocumentService(BaseService):
                     # Root folder: find items with no subdirectories
                     query = """
                         SELECT id, title, document_type, content_delta, content_md,
-                               path, is_folder, url, created_at, updated_at
-                        FROM user_documents 
+                               path, is_folder, url, home_date, created_at, updated_at
+                        FROM user_documents
                         WHERE (
                             -- Documents in root: path like '/name' (count slashes = 1, ends without slash)
                             (LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 1 AND NOT path LIKE '%/' AND is_folder = FALSE)
                             OR
-                            -- Folders in root: path like '/name/' (count slashes = 2, ends with slash)  
+                            -- Folders in root: path like '/name/' (count slashes = 2, ends with slash)
                             (LENGTH(path) - LENGTH(REPLACE(path, '/', '')) = 2 AND path LIKE '%/' AND is_folder = TRUE)
                         )
                     """
@@ -384,8 +393,8 @@ class DocumentService(BaseService):
                     # and has exactly one more level
                     query = """
                         SELECT id, title, document_type, content_delta, content_md,
-                               path, is_folder, url, created_at, updated_at
-                        FROM user_documents 
+                               path, is_folder, url, home_date, created_at, updated_at
+                        FROM user_documents
                         WHERE path LIKE ?
                         AND (
                             -- Documents: path starts with folder_path, no additional slashes
@@ -532,40 +541,15 @@ class DocumentService(BaseService):
             logger.error(f"Error checking path existence {path}: {e}")
             return False
     
-    async def title_exists(self, title: str, document_type: str, exclude_id: Optional[str] = None) -> bool:
-        """Check if a title already exists for the given document type (excluding links)"""
-        # Skip uniqueness check for links
-        if document_type == 'link':
-            return False
-            
-        try:
-            async with self.database.get_async_connection() as conn:
-                query = """
-                    SELECT COUNT(*) as count FROM user_documents 
-                    WHERE LOWER(title) = LOWER(?) AND document_type != 'link'
-                """
-                params = [title]
-                
-                if exclude_id:
-                    query += " AND id != ?"
-                    params.append(exclude_id)
-                
-                async with conn.execute(query, params) as cursor:
-                    row = await cursor.fetchone()
-                    return row['count'] > 0
-                
-        except Exception as e:
-            logger.error(f"Error checking title existence '{title}': {e}")
-            return False
     
     async def _store_document(self, document: Document):
         """Store document in database"""
         try:
             async with self.database.get_async_connection() as conn:
                 await conn.execute("""
-                    INSERT OR REPLACE INTO user_documents 
-                    (id, title, document_type, content_delta, content_md, path, is_folder, url, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO user_documents
+                    (id, title, document_type, content_delta, content_md, path, is_folder, url, home_date, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     document.id,
                     document.title,
@@ -575,11 +559,12 @@ class DocumentService(BaseService):
                     document.path,
                     document.is_folder,
                     document.url,
+                    document.home_date.isoformat() if document.home_date else None,
                     document.created_at.isoformat(),
                     document.updated_at.isoformat()
                 ))
                 await conn.commit()
-            
+
         except Exception as e:
             logger.error(f"Error storing document {document.id}: {e}")
             raise
@@ -595,6 +580,7 @@ class DocumentService(BaseService):
             path=row['path'] if 'path' in row.keys() else '/',  # Default to root if not present
             is_folder=bool(row['is_folder']) if 'is_folder' in row.keys() else False,  # Default to False if not present
             url=row['url'] if 'url' in row.keys() else None,  # Default to None if not present
+            home_date=datetime.fromisoformat(row['home_date']) if row['home_date'] else None,
             created_at=datetime.fromisoformat(row['created_at']),
             updated_at=datetime.fromisoformat(row['updated_at'])
         )
