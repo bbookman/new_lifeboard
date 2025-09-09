@@ -30,58 +30,119 @@ jest.mock('@/assets/music-placeholder.jpg', () => 'mocked-music-image.jpg');
 const mockSpotifyTracks: SpotifyTrack[] = [
   {
     id: 'track1',
-    title: 'Test Song 1',
-    artist: 'Test Artist 1',
-    album: 'Test Album 1',
+    name: 'Test Song 1',
+    artists: [{ id: 'artist1', name: 'Test Artist 1', external_urls: {} }],
+    album: {
+      id: 'album1',
+      name: 'Test Album 1',
+      artists: [{ id: 'artist1', name: 'Test Artist 1', external_urls: {} }],
+      images: [],
+      external_urls: {},
+      release_date: '2024-01-01',
+      release_date_precision: 'day',
+      total_tracks: 10,
+      album_type: 'album'
+    },
     duration_ms: 180000, // 3 minutes
-    played_at: '2024-01-15T10:30:00Z',
+    popularity: 80,
+    explicit: false,
     preview_url: 'https://example.com/preview1.mp3',
     external_urls: {
       spotify: 'https://open.spotify.com/track/track1'
     },
+    external_ids: {},
+    available_markets: ['US'],
+    disc_number: 1,
+    track_number: 1,
+    is_local: false,
+    played_at: '2024-01-15T10:30:00Z',
     audio_features: {
       danceability: 0.8,
       energy: 0.9,
-      valence: 0.7,
-      tempo: 120,
+      key: 5,
+      loudness: -5.0,
+      mode: 1,
+      speechiness: 0.1,
       acousticness: 0.1,
       instrumentalness: 0.0,
       liveness: 0.2,
-      speechiness: 0.1
+      valence: 0.7,
+      tempo: 120,
+      duration_ms: 180000,
+      time_signature: 4
     }
   },
   {
     id: 'track2',
-    title: 'Test Song 2',
-    artist: 'Test Artist 2',
-    album: 'Test Album 2',
+    name: 'Test Song 2',
+    artists: [{ id: 'artist2', name: 'Test Artist 2', external_urls: {} }],
+    album: {
+      id: 'album2',
+      name: 'Test Album 2',
+      artists: [{ id: 'artist2', name: 'Test Artist 2', external_urls: {} }],
+      images: [],
+      external_urls: {},
+      release_date: '2024-01-01',
+      release_date_precision: 'day',
+      total_tracks: 10,
+      album_type: 'album'
+    },
     duration_ms: 240000, // 4 minutes
-    played_at: '2024-01-15T08:15:00Z',
+    popularity: 75,
+    explicit: false,
     preview_url: null,
     external_urls: {
       spotify: 'https://open.spotify.com/track/track2'
     },
+    external_ids: {},
+    available_markets: ['US'],
+    disc_number: 1,
+    track_number: 2,
+    is_local: false,
+    played_at: '2024-01-15T08:15:00Z',
     audio_features: {
       danceability: 0.3,
       energy: 0.2,
-      valence: 0.3,
-      tempo: 80,
+      key: 2,
+      loudness: -10.0,
+      mode: 0,
+      speechiness: 0.05,
       acousticness: 0.8,
       instrumentalness: 0.5,
       liveness: 0.1,
-      speechiness: 0.05
+      valence: 0.3,
+      tempo: 80,
+      duration_ms: 240000,
+      time_signature: 4
     }
   },
   {
     id: 'track3',
-    title: 'Test Song 3',
-    artist: 'Test Artist 3',
-    album: 'Test Album 3',
+    name: 'Test Song 3',
+    artists: [{ id: 'artist3', name: 'Test Artist 3', external_urls: {} }],
+    album: {
+      id: 'album3',
+      name: 'Test Album 3',
+      artists: [{ id: 'artist3', name: 'Test Artist 3', external_urls: {} }],
+      images: [],
+      external_urls: {},
+      release_date: '2024-01-01',
+      release_date_precision: 'day',
+      total_tracks: 10,
+      album_type: 'album'
+    },
     duration_ms: 210000, // 3.5 minutes
-    played_at: '2024-01-15T06:45:00Z',
+    popularity: 70,
+    explicit: false,
     external_urls: {
       spotify: 'https://open.spotify.com/track/track3'
-    }
+    },
+    external_ids: {},
+    available_markets: ['US'],
+    disc_number: 1,
+    track_number: 3,
+    is_local: false,
+    played_at: '2024-01-15T06:45:00Z'
     // No audio_features to test fallback
   }
 ];

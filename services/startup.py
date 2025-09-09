@@ -12,10 +12,12 @@ from services.llm_service import LLMService
 from services.sync_status_service import SyncStatusService, set_sync_status_service
 from services.twitter_api_service import TwitterAPIService
 from services.twitter_rate_limit_service import TwitterRateLimitService
+from services.spotify_token_service import SpotifyTokenService
 from sources.limitless import LimitlessSource
 from sources.news import NewsSource
 from sources.weather import WeatherSource
 from sources.twitter import TwitterSource
+from sources.spotify import SpotifySource
 from core.database import DatabaseService
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
@@ -152,6 +154,11 @@ class StartupService:
             logger.info("Initializing database service...")
             self.database = DatabaseService(self.config.database.path)
             startup_result["services_initialized"].append("database")
+            
+            # Spotify token service (depends on database)
+            logger.info("Initializing Spotify token service...")
+            self.spotify_token_service = SpotifyTokenService(self.database, self.config.spotify)
+            startup_result["services_initialized"].append("spotify_token_service")
             
             # Embedding service
             logger.info("Initializing embedding service...")
@@ -344,6 +351,26 @@ class StartupService:
                 else:
                     logger.info("Weather source not fully configured, skipping source registration")
 
+            # Register Spotify source if fully configured (enabled, client_id, and client_secret)
+            if self.config.spotify.is_api_configured():
+                try:
+                    logger.info("Registering Spotify source...")
+                    spotify_source = SpotifySource(self.config.spotify, self.database, self.spotify_token_service)
+                    await self.ingestion_service.register_source(spotify_source)
+                    startup_result["sources_registered"].append("spotify")
+                    logger.info("Spotify source registered successfully")
+                except Exception as e:
+                    error_msg = f"Failed to register Spotify source: {str(e)}"
+                    logger.warning(error_msg)
+                    startup_result["errors"].append(error_msg)
+            else:
+                if not self.config.spotify.enabled:
+                    logger.info("Spotify service disabled in configuration, skipping source registration")
+                elif not self.config.spotify.client_id or not self.config.spotify.client_secret:
+                    logger.info("Spotify API credentials not configured, skipping source registration")
+                else:
+                    logger.info("Spotify source not fully configured, skipping source registration")
+
             # Future: Add other source registrations here
             # if self.config.notion.api_key:
             #     notion_source = NotionSource(self.config.notion)
@@ -442,7 +469,8 @@ class StartupService:
                     "limitless": "limitless_api",
                     "news": "news_api",
                     "twitter": "twitter_archive", 
-                    "weather": "weather_api"
+                    "weather": "weather_api",
+                    "spotify": "spotify_api"
                 }
                 source_type = source_type_map.get(namespace, "unknown")
                 self.sync_status_service.register_source(namespace, source_type)

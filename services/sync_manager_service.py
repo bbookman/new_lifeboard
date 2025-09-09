@@ -54,6 +54,20 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
             logger.info(f"Twitter source skipped from automatic scheduling - use manual fetch instead")
             return False
         
+        # Skip Spotify sources from automatic scheduling unless user is authenticated
+        if isinstance(source, SpotifySource):
+            if source.token_service:
+                # Check if user has authenticated
+                is_authenticated = await source.token_service.is_authenticated()
+                if not is_authenticated:
+                    logger.info(f"Spotify source skipped from automatic scheduling - user not authenticated. Use OAuth to connect.")
+                    return False
+                else:
+                    logger.info(f"Spotify source registered for automatic scheduling - user authenticated")
+            else:
+                logger.warning(f"Spotify source skipped - no token service available")
+                return False
+        
         self.log_service_call("register_source_for_auto_sync", {
             "namespace": namespace,
             "source_type": type(source).__name__,
@@ -592,3 +606,33 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check on sync system (legacy method for backwards compatibility)"""
         return await self._check_service_health()
+    
+    async def enable_auto_sync_for_authenticated_source(self, source: BaseSource) -> bool:
+        """
+        Enable automatic sync for a source after user authentication.
+        Used for sources like Spotify that require user authentication.
+        """
+        namespace = source.namespace
+        
+        # Only applicable to Spotify for now
+        if not isinstance(source, SpotifySource):
+            logger.warning(f"Dynamic auto-sync enable only supported for Spotify sources, got {type(source).__name__}")
+            return False
+        
+        # Check if already registered
+        if namespace in self.source_job_mapping:
+            logger.info(f"Source {namespace} already has automatic sync enabled")
+            return True
+        
+        # Verify user is authenticated
+        if source.token_service:
+            is_authenticated = await source.token_service.is_authenticated()
+            if is_authenticated:
+                logger.info(f"Enabling automatic sync for authenticated Spotify user")
+                return await self.register_source_for_auto_sync(source)
+            else:
+                logger.warning(f"Cannot enable auto-sync for {namespace} - user not authenticated")
+                return False
+        else:
+            logger.error(f"Cannot enable auto-sync for {namespace} - no token service")
+            return False

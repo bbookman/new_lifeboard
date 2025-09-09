@@ -31,13 +31,13 @@ async def trigger_sync(
                 raise HTTPException(status_code=404, detail=f"Source '{request.source}' not found")
             
             # Add sync job to background tasks
-            background_tasks.add_task(sync_manager.sync_source, request.source)
+            background_tasks.add_task(sync_manager.trigger_immediate_sync, request.source, False)
             return SyncResponse(status="triggered", message=f"Sync triggered for {request.source}")
         else:
             # Trigger sync for all sources
             available_sources = list(startup_service.ingestion_service.sources.keys())
             for source in available_sources:
-                background_tasks.add_task(sync_manager.sync_source, source)
+                background_tasks.add_task(sync_manager.trigger_immediate_sync, source, False)
             return SyncResponse(status="triggered", message=f"Sync triggered for all sources: {available_sources}")
             
     except HTTPException:

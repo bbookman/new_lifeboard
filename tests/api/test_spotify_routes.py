@@ -480,4 +480,344 @@ class TestSpotifyErrorHandling:
         assert response.status_code == 200
         tracks = response.json()
         # Should provide default empty audio_features
+class TestSpotifyTrackByIdEndpoint:
+    """Test GET /spotify/track/{track_id} endpoint."""
+
+    @pytest.fixture
+    def sample_spotify_track_data(self):
+        """Sample comprehensive Spotify track data."""
+        return {
+            "id": "4iV5W9uYEdYUVa79Axb7Rh",
+            "name": "Bohemian Rhapsody",
+            "artists": [
+                {
+                    "id": "1dfeR4HaWDbWqFHLkxsg1d",
+                    "name": "Queen",
+                    "external_urls": {"spotify": "https://open.spotify.com/artist/1dfeR4HaWDbWqFHLkxsg1d"},
+                    "genres": ["rock", "classic rock"],
+                    "popularity": 85,
+                    "followers": {"total": 50000000}
+                }
+            ],
+            "album": {
+                "id": "6i6folBtxKV28WX3msQ4FE",
+                "name": "A Night at the Opera",
+                "artists": [
+                    {
+                        "id": "1dfeR4HaWDbWqFHLkxsg1d",
+                        "name": "Queen",
+                        "external_urls": {"spotify": "https://open.spotify.com/artist/1dfeR4HaWDbWqFHLkxsg1d"}
+                    }
+                ],
+                "images": [
+                    {"url": "https://i.scdn.co/image/large.jpg", "height": 640, "width": 640},
+                    {"url": "https://i.scdn.co/image/medium.jpg", "height": 300, "width": 300},
+                    {"url": "https://i.scdn.co/image/small.jpg", "height": 64, "width": 64}
+                ],
+                "external_urls": {"spotify": "https://open.spotify.com/album/6i6folBtxKV28WX3msQ4FE"},
+                "release_date": "1975-11-21",
+                "release_date_precision": "day",
+                "total_tracks": 12,
+                "album_type": "album",
+                "genres": ["rock", "classic rock"],
+                "popularity": 80
+            },
+            "duration_ms": 355000,
+            "popularity": 80,
+            "explicit": False,
+            "preview_url": "https://p.scdn.co/mp3-preview/preview.mp3",
+            "external_urls": {"spotify": "https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh"},
+            "external_ids": {"isrc": "GBCEE7500123"},
+            "available_markets": ["US", "GB", "CA", "AU"],
+            "disc_number": 1,
+            "track_number": 11,
+            "is_local": False
+        }
+
+    @pytest.fixture
+    def sample_audio_features(self):
+        """Sample audio features data."""
+        return {
+            "danceability": 0.414,
+            "energy": 0.404,
+            "key": 0,
+            "loudness": -9.928,
+            "mode": 0,
+            "speechiness": 0.0499,
+            "acousticness": 0.271,
+            "instrumentalness": 0.0000000294,
+            "liveness": 0.300,
+            "valence": 0.224,
+            "tempo": 71.105,
+            "duration_ms": 354947,
+            "time_signature": 4
+        }
+
+    def test_get_track_by_id_success(self, client, mock_startup_service, sample_spotify_track_data, sample_audio_features):
+        """Test successful retrieval of individual track."""
+        mock_service, mock_conn, mock_cursor = mock_startup_service
+
+        # Mock Spotify source
+        mock_spotify_source = Mock()
+        mock_spotify_source._get_access_token = AsyncMock()
+        mock_spotify_source._ensure_client = AsyncMock(return_value=Mock())
+
+        with patch('api.routes.spotify._get_spotify_source', return_value=mock_spotify_source), \
+             patch('api.routes.spotify._fetch_track_data', return_value=sample_spotify_track_data), \
+             patch('api.routes.spotify._fetch_audio_features', return_value=sample_audio_features), \
+             patch('api.routes.spotify._transform_to_comprehensive_track') as mock_transform:
+
+            # Mock the transformation
+            mock_track = Mock()
+            mock_track.id = sample_spotify_track_data["id"]
+            mock_track.name = sample_spotify_track_data["name"]
+            mock_transform.return_value = mock_track
+
+            response = client.get("/spotify/track/4iV5W9uYEdYUVa79Axb7Rh")
+
+            assert response.status_code == 200
+            mock_transform.assert_called_once()
+
+    def test_get_track_by_id_invalid_format(self, client, mock_startup_service):
+        """Test track retrieval with invalid track ID format."""
+        mock_service, mock_conn, mock_cursor = mock_startup_service
+
+        response = client.get("/spotify/track/invalid")
+
+        assert response.status_code == 400
+        assert "Invalid track ID format" in response.json()["detail"]
+
+    def test_get_track_by_id_with_market(self, client, mock_startup_service, sample_spotify_track_data):
+        """Test track retrieval with market parameter."""
+        mock_service, mock_conn, mock_cursor = mock_startup_service
+
+        mock_spotify_source = Mock()
+        mock_spotify_source._get_access_token = AsyncMock()
+        mock_spotify_source._ensure_client = AsyncMock(return_value=Mock())
+
+        with patch('api.routes.spotify._get_spotify_source', return_value=mock_spotify_source), \
+             patch('api.routes.spotify._fetch_track_data') as mock_fetch, \
+             patch('api.routes.spotify._fetch_audio_features', return_value=None), \
+             patch('api.routes.spotify._transform_to_comprehensive_track') as mock_transform:
+
+            mock_fetch.return_value = sample_spotify_track_data
+            mock_transform.return_value = Mock()
+
+            response = client.get("/spotify/track/4iV5W9uYEdYUVa79Axb7Rh?market=US")
+
+            assert response.status_code == 200
+            mock_fetch.assert_called_once()
+            # Verify market parameter was passed
+            call_args = mock_fetch.call_args
+            assert call_args[0][1] == "US"  # market parameter
+
+    def test_get_track_by_id_without_audio_features(self, client, mock_startup_service, sample_spotify_track_data):
+        """Test track retrieval without audio features."""
+        mock_service, mock_conn, mock_cursor = mock_startup_service
+
+        mock_spotify_source = Mock()
+        mock_spotify_source._get_access_token = AsyncMock()
+        mock_spotify_source._ensure_client = AsyncMock(return_value=Mock())
+
+        with patch('api.routes.spotify._get_spotify_source', return_value=mock_spotify_source), \
+             patch('api.routes.spotify._fetch_track_data', return_value=sample_spotify_track_data), \
+             patch('api.routes.spotify._fetch_audio_features') as mock_audio_fetch, \
+             patch('api.routes.spotify._transform_to_comprehensive_track') as mock_transform:
+
+            mock_audio_fetch.return_value = None
+            mock_transform.return_value = Mock()
+
+            response = client.get("/spotify/track/4iV5W9uYEdYUVa79Axb7Rh?include_audio_features=false")
+
+            assert response.status_code == 200
+            mock_audio_fetch.assert_not_called()
+
+    def test_get_track_by_id_api_error(self, client, mock_startup_service):
+        """Test track retrieval with API error."""
+        mock_service, mock_conn, mock_cursor = mock_startup_service
+
+        mock_spotify_source = Mock()
+        mock_spotify_source._get_access_token = AsyncMock()
+        mock_spotify_source._ensure_client = AsyncMock(return_value=Mock())
+
+        with patch('api.routes.spotify._get_spotify_source', return_value=mock_spotify_source), \
+             patch('api.routes.spotify._fetch_track_data', side_effect=Exception("API Error")):
+
+            response = client.get("/spotify/track/4iV5W9uYEdYUVa79Axb7Rh")
+
+            assert response.status_code == 500
+            assert "Failed to fetch track" in response.json()["detail"]
+
+    def test_get_track_by_id_not_configured(self, client, mock_startup_service):
+        """Test track retrieval when Spotify is not configured."""
+        mock_service, mock_conn, mock_cursor = mock_startup_service
+
+        with patch('api.routes.spotify._get_spotify_source', side_effect=Exception("Spotify API not configured")):
+            response = client.get("/spotify/track/4iV5W9uYEdYUVa79Axb7Rh")
+
+            assert response.status_code == 500
+            assert "Spotify API not configured" in response.json()["detail"]
+
+
+class TestSpotifyTrackDataFetching:
+    """Test track data fetching functions."""
+
+    def test_fetch_track_data_success(self):
+        """Test successful track data fetching."""
+        mock_spotify_source = Mock()
+        mock_spotify_source._get_access_token = AsyncMock()
+        mock_spotify_source._ensure_client = AsyncMock()
+        mock_client = Mock()
+        mock_spotify_source._ensure_client.return_value = mock_client
+        mock_spotify_source._make_request_with_retry = AsyncMock()
+
+        sample_data = {"id": "test_track", "name": "Test Track"}
+        mock_spotify_source._make_request_with_retry.return_value = Mock(json=Mock(return_value=sample_data))
+
+        import asyncio
+        from api.routes.spotify import _fetch_track_data
+
+        async def run_test():
+            result = await _fetch_track_data(mock_spotify_source, "test_track_id", "US")
+            assert result == sample_data
+            mock_spotify_source._make_request_with_retry.assert_called_once()
+
+        asyncio.run(run_test())
+
+    def test_fetch_track_data_failure(self):
+        """Test track data fetching failure."""
+        mock_spotify_source = Mock()
+        mock_spotify_source._get_access_token = AsyncMock()
+        mock_spotify_source._ensure_client = AsyncMock()
+        mock_spotify_source._make_request_with_retry = AsyncMock(return_value=None)
+
+        import asyncio
+        from api.routes.spotify import _fetch_track_data
+
+        async def run_test():
+            with pytest.raises(Exception, match="Failed to fetch track"):
+                await _fetch_track_data(mock_spotify_source, "test_track_id")
+
+        asyncio.run(run_test())
+
+    def test_fetch_audio_features_success(self):
+        """Test successful audio features fetching."""
+        mock_spotify_source = Mock()
+        mock_spotify_source._get_access_token = AsyncMock()
+        mock_spotify_source._ensure_client = AsyncMock()
+        mock_spotify_source._make_request_with_retry = AsyncMock()
+
+        sample_features = {"danceability": 0.8, "energy": 0.7}
+        mock_spotify_source._make_request_with_retry.return_value = Mock(json=Mock(return_value=sample_features))
+
+        import asyncio
+        from api.routes.spotify import _fetch_audio_features
+
+        async def run_test():
+            result = await _fetch_audio_features(mock_spotify_source, "test_track_id")
+            assert result == sample_features
+
+        asyncio.run(run_test())
+
+    def test_fetch_audio_features_not_available(self):
+        """Test audio features not available."""
+        mock_spotify_source = Mock()
+        mock_spotify_source._get_access_token = AsyncMock()
+        mock_spotify_source._ensure_client = AsyncMock()
+        mock_spotify_source._make_request_with_retry = AsyncMock(return_value=None)
+
+        import asyncio
+        from api.routes.spotify import _fetch_audio_features
+
+        async def run_test():
+            result = await _fetch_audio_features(mock_spotify_source, "test_track_id")
+            assert result is None
+
+        asyncio.run(run_test())
+
+
+class TestSpotifyTrackTransformation:
+    """Test track data transformation functions."""
+
+    def test_transform_to_comprehensive_track_complete(self, sample_spotify_track_data, sample_audio_features):
+        """Test transformation with complete data."""
+        from api.routes.spotify import _transform_to_comprehensive_track
+
+        result = _transform_to_comprehensive_track(sample_spotify_track_data, sample_audio_features)
+
+        assert result.id == sample_spotify_track_data["id"]
+        assert result.name == sample_spotify_track_data["name"]
+        assert result.popularity == sample_spotify_track_data["popularity"]
+        assert result.explicit == sample_spotify_track_data["explicit"]
+        assert result.duration_ms == sample_spotify_track_data["duration_ms"]
+        assert result.disc_number == sample_spotify_track_data["disc_number"]
+        assert result.track_number == sample_spotify_track_data["track_number"]
+        assert result.is_local == sample_spotify_track_data["is_local"]
+
+        # Test album transformation
+        assert result.album.id == sample_spotify_track_data["album"]["id"]
+        assert result.album.name == sample_spotify_track_data["album"]["name"]
+        assert len(result.album.images) == 3
+        assert result.album.release_date == sample_spotify_track_data["album"]["release_date"]
+
+        # Test artists transformation
+        assert len(result.artists) == 1
+        assert result.artists[0].id == sample_spotify_track_data["artists"][0]["id"]
+        assert result.artists[0].name == sample_spotify_track_data["artists"][0]["name"]
+
+        # Test audio features
+        assert result.audio_features is not None
+        assert result.audio_features.danceability == sample_audio_features["danceability"]
+        assert result.audio_features.energy == sample_audio_features["energy"]
+        assert result.audio_features.tempo == sample_audio_features["tempo"]
+
+        # Test external data
+        assert result.external_urls == sample_spotify_track_data["external_urls"]
+        assert result.external_ids == sample_spotify_track_data["external_ids"]
+        assert result.available_markets == sample_spotify_track_data["available_markets"]
+
+    def test_transform_to_comprehensive_track_no_audio_features(self, sample_spotify_track_data):
+        """Test transformation without audio features."""
+        from api.routes.spotify import _transform_to_comprehensive_track
+
+        result = _transform_to_comprehensive_track(sample_spotify_track_data, None)
+
+        assert result.audio_features is None
+
+    def test_transform_to_comprehensive_track_minimal_data(self):
+        """Test transformation with minimal required data."""
+        from api.routes.spotify import _transform_to_comprehensive_track
+
+        minimal_data = {
+            "id": "test_id",
+            "name": "Test Track",
+            "artists": [{"id": "artist_id", "name": "Test Artist", "external_urls": {}}],
+            "album": {
+                "id": "album_id",
+                "name": "Test Album",
+                "artists": [{"id": "artist_id", "name": "Test Artist", "external_urls": {}}],
+                "images": [],
+                "external_urls": {},
+                "release_date": "2023-01-01",
+                "release_date_precision": "day",
+                "total_tracks": 10,
+                "album_type": "album"
+            },
+            "duration_ms": 180000,
+            "popularity": 50,
+            "explicit": False,
+            "external_urls": {},
+            "external_ids": {},
+            "available_markets": [],
+            "disc_number": 1,
+            "track_number": 1,
+            "is_local": False
+        }
+
+        result = _transform_to_comprehensive_track(minimal_data, None)
+
+        assert result.id == "test_id"
+        assert result.name == "Test Track"
+        assert result.album.name == "Test Album"
+        assert result.artists[0].name == "Test Artist"
         assert tracks[0]["audio_features"] == {}

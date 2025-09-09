@@ -168,17 +168,17 @@ def create_production_config() -> AppConfig:
             inter_call_delay=float(os.getenv("TWITTER_INTER_CALL_DELAY", "3.0"))
         ),
         spotify=SpotifyConfig(
-            client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-            client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
-            redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/callback"),
-            enabled=os.getenv("SPOTIFY_ENABLED", "true").lower() == "true",
-            sync_interval_hours=int(os.getenv("SPOTIFY_SYNC_INTERVAL_HOURS", "1")),
-            recently_played_limit=int(os.getenv("SPOTIFY_RECENTLY_PLAYED_LIMIT", "50")),
-            max_retries=int(os.getenv("SPOTIFY_MAX_RETRIES", "3")),
-            retry_delay=float(os.getenv("SPOTIFY_RETRY_DELAY", "1.0")),
-            request_timeout=float(os.getenv("SPOTIFY_REQUEST_TIMEOUT", "30.0")),
-            rate_limit_max_delay=int(os.getenv("SPOTIFY_RATE_LIMIT_MAX_DELAY", "60")),
-            respect_retry_after=os.getenv("SPOTIFY_RESPECT_RETRY_AFTER", "true").lower() == "true"
+            client_id=os.getenv("SPOTIFY__CLIENT_ID"),
+            client_secret=os.getenv("SPOTIFY__CLIENT_SECRET"),
+            redirect_uri=os.getenv("SPOTIFY__REDIRECT_URI", "http://localhost:8888/callback"),
+            enabled=os.getenv("SPOTIFY__ENABLED", "true").lower() == "true",
+            sync_interval_hours=int(os.getenv("SPOTIFY__SYNC_INTERVAL_HOURS", "1")),
+            recently_played_limit=int(os.getenv("SPOTIFY__RECENTLY_PLAYED_LIMIT", "50")),
+            max_retries=int(os.getenv("SPOTIFY__MAX_RETRIES", "3")),
+            retry_delay=float(os.getenv("SPOTIFY__RETRY_DELAY", "1.0")),
+            request_timeout=float(os.getenv("SPOTIFY__REQUEST_TIMEOUT", "30.0")),
+            rate_limit_max_delay=int(os.getenv("SPOTIFY__RATE_LIMIT_MAX_DELAY", "60")),
+            respect_retry_after=os.getenv("SPOTIFY__RATE_LIMIT_RESPECT_RETRY_AFTER", "true").lower() == "true"
         ),
         search=SearchConfig(
             default_limit=int(os.getenv("SEARCH_DEFAULT_LIMIT", "20")),

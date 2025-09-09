@@ -20,6 +20,7 @@ from core.retry_utils import (
     BackoffStrategy,
 )
 from core.http_client_mixin import BaseHTTPSource
+from services.spotify_token_service import SpotifyTokenService
 
 logger = logging.getLogger(__name__)
 
@@ -27,17 +28,19 @@ logger = logging.getLogger(__name__)
 class SpotifySource(BaseHTTPSource, BaseSource):
     """Spotify Web API source for recently played tracks"""
     
-    def __init__(self, config: SpotifyConfig, db_service: DatabaseService = None):
+    def __init__(self, config: SpotifyConfig, db_service: DatabaseService = None, token_service: SpotifyTokenService = None):
         """
         Initialize SpotifySource with configuration.
         
         Args:
             config: SpotifyConfig instance containing API configuration
             db_service: DatabaseService instance for data operations
+            token_service: SpotifyTokenService instance for user token management
         """
         super().__init__(config, "spotify")
         self.config = config
         self.db_service = db_service
+        self.token_service = token_service
         self.access_token = None
         self.token_expires_at = None
         self.base_url = "https://api.spotify.com/v1"
@@ -79,7 +82,7 @@ class SpotifySource(BaseHTTPSource, BaseSource):
     
     async def _get_access_token(self) -> str:
         """
-        Get or refresh access token using client credentials flow.
+        Get or refresh access token, preferring user tokens over client credentials.
         
         Returns:
             Valid access token
@@ -87,12 +90,29 @@ class SpotifySource(BaseHTTPSource, BaseSource):
         Raises:
             Exception: If token acquisition fails
         """
-        # Check if current token is still valid
+        # First, try to get user token if token_service is available
+        if self.token_service:
+            try:
+                user_token = await self.token_service.get_valid_token()
+                if user_token:
+                    logger.info("Using user OAuth token for Spotify API access")
+                    self.access_token = user_token
+                    # User tokens typically last 1 hour, set expiry with buffer
+                    self.token_expires_at = datetime.now(timezone.utc).timestamp() + 3300  # 55 minutes
+                    return self.access_token
+                else:
+                    logger.info("No valid user token available, user needs to authenticate")
+                    return None
+            except Exception as e:
+                logger.warning(f"Failed to get user token: {e}")
+        
+        # Check if current client credentials token is still valid
         if (self.access_token and self.token_expires_at and 
             datetime.now(timezone.utc).timestamp() < self.token_expires_at - 300):  # 5 min buffer
             return self.access_token
         
-        # Get new token using client credentials flow
+        # Fallback to client credentials flow (limited scope)
+        logger.info("Using client credentials for Spotify API access (limited scope)")
         auth_string = f"{self.config.client_id}:{self.config.client_secret}"
         auth_bytes = auth_string.encode('ascii')
         auth_b64 = base64.b64encode(auth_bytes).decode('ascii')
@@ -173,8 +193,11 @@ class SpotifySource(BaseHTTPSource, BaseSource):
             return
 
         try:
-            # Get access token
-            await self._get_access_token()
+            # Get access token - this now returns None if no user token available
+            token = await self._get_access_token()
+            if token is None:
+                logger.info("Spotify sync skipped - user not authenticated. Use OAuth to connect your Spotify account.")
+                return
             
             # Create client with auth headers
             client = await self._ensure_client()

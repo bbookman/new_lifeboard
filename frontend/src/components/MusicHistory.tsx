@@ -1,9 +1,13 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { RefreshCw, Play } from "lucide-react";
 import musicImage from "@/assets/music-placeholder.jpg";
-import { useSpotifyTracks } from "../hooks/useSpotifyData";
+import { useSpotifyTracks, useSpotifyRefresh, useSpotifyAuth } from "../hooks/useSpotifyData";
 import SpotifyPlayer from "./SpotifyPlayer";
 import { SpotifyTrack } from "../lib/api";
+import { useState } from "react";
 
 interface MusicHistoryProps {
   selectedDate?: string;
@@ -86,6 +90,20 @@ const calculateTotalStats = (tracks: SpotifyTrack[]) => {
  */
 export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
   const { data: tracks, isLoading, error } = useSpotifyTracks(selectedDate);
+  const { data: authStatus } = useSpotifyAuth();
+  const refreshMutation = useSpotifyRefresh(selectedDate);
+  const [showNoDataModal, setShowNoDataModal] = useState(false);
+
+  const handleRefresh = async () => {
+    try {
+      const result = await refreshMutation.mutateAsync();
+      if (!result || result.length === 0) {
+        setShowNoDataModal(true);
+      }
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    }
+  };
   
   // Loading state
   if (isLoading) {
@@ -115,7 +133,7 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="border-b-2 border-music-accent pb-2">
+        <div className="border-b-2 border-music-accent pb-2 relative">
           <h2 className="font-headline text-3xl font-bold text-newspaper-headline">
             Music Journal
           </h2>
@@ -123,14 +141,26 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
             Your daily soundtrack and listening history
             {selectedDate && ` • ${selectedDate}`}
           </p>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRefresh}
+            disabled={isLoading || refreshMutation.isPending}
+            className="absolute top-0 right-0 h-8 w-8"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading || refreshMutation.isPending ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
         
         <Card className="p-6 bg-gradient-to-r from-music-accent/5 to-music-accent/10">
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <div className="text-red-500 mb-2">⚠️</div>
-              <p className="text-newspaper-byline">
+              <p className="text-newspaper-byline mb-4">
                 Failed to load music history: {error.message}
+              </p>
+              <p className="text-newspaper-byline text-xs">
+                Click the refresh button above to retry
               </p>
             </div>
           </div>
@@ -143,7 +173,7 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
   if (!tracks || tracks.length === 0) {
     return (
       <div className="space-y-6">
-        <div className="border-b-2 border-music-accent pb-2">
+        <div className="border-b-2 border-music-accent pb-2 relative">
           <h2 className="font-headline text-3xl font-bold text-newspaper-headline">
             Music Journal
           </h2>
@@ -151,6 +181,15 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
             Your daily soundtrack and listening history
             {selectedDate && ` • ${selectedDate}`}
           </p>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRefresh}
+            disabled={isLoading || refreshMutation.isPending}
+            className="absolute top-0 right-0 h-8 w-8"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading || refreshMutation.isPending ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
         
         <Card className="p-6 bg-gradient-to-r from-music-accent/5 to-music-accent/10">
@@ -160,11 +199,14 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
               <h3 className="font-headline text-lg font-bold text-newspaper-headline mb-2">
                 No music history found
               </h3>
-              <p className="text-newspaper-byline">
+              <p className="text-newspaper-byline mb-4">
                 {selectedDate 
                   ? `No tracks were played on ${selectedDate}`
                   : 'No recent tracks found'
                 }
+              </p>
+              <p className="text-newspaper-byline text-xs">
+                Click the refresh button above to fetch your Spotify data
               </p>
             </div>
           </div>
@@ -178,7 +220,7 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
   
   return (
     <div className="space-y-6">
-      <div className="border-b-2 border-music-accent pb-2">
+      <div className="border-b-2 border-music-accent pb-2 relative">
         <h2 className="font-headline text-3xl font-bold text-newspaper-headline">
           Music Journal
         </h2>
@@ -186,6 +228,15 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
           Your daily soundtrack and listening history
           {selectedDate && ` • ${selectedDate}`}
         </p>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleRefresh}
+          disabled={isLoading || refreshMutation.isPending}
+          className="absolute top-0 right-0 h-8 w-8"
+        >
+          <RefreshCw className={`h-4 w-4 ${isLoading || refreshMutation.isPending ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
       
       <Card className="p-6 bg-gradient-to-r from-music-accent/5 to-music-accent/10">
@@ -210,29 +261,72 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
         <div className="space-y-4">
           {tracks.map((track) => {
             const mood = getMoodFromAudioFeatures(track.audio_features);
+            const albumArt = track.album?.images?.[0]?.url;
+            const releaseYear = track.album?.release_date ? new Date(track.album.release_date).getFullYear() : null;
+            const spotifyUrl = track.external_urls?.spotify;
             
             return (
               <div key={`${track.id}-${track.played_at}`} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between p-4">
-                  <div className="flex-1">
-                    <h4 className="font-body font-semibold text-newspaper-headline">
-                      {track.title}
-                    </h4>
-                    <p className="text-newspaper-byline text-sm">
-                      {track.artist} • {track.album}
-                    </p>
+                <div className="flex items-start p-4 space-x-4">
+                  {/* Left column: Album art */}
+                  <div className="flex-shrink-0">
+                    <div className="w-16 h-16 rounded-lg overflow-hidden shadow-sm bg-gray-100">
+                      {albumArt ? (
+                        <img 
+                          src={albumArt} 
+                          alt={`${track.album?.name || 'Album'} cover`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                          🎵
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
-                  <div className="flex items-center space-x-3">
-                    <Badge className={`text-xs ${getMoodColor(mood)}`}>
-                      {mood}
-                    </Badge>
-                    <span className="text-newspaper-byline text-sm font-mono">
-                      {formatDuration(track.duration_ms)}
-                    </span>
-                    <span className="text-newspaper-byline text-xs">
-                      {formatPlayTime(track.played_at)}
-                    </span>
+                  {/* Right column: Track info and controls */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-body font-semibold text-newspaper-headline truncate">
+                          {track.name}
+                        </h4>
+                        <p className="text-newspaper-byline text-sm truncate">
+                          {track.artists?.[0]?.name || 'Unknown Artist'}
+                        </p>
+                        <p className="text-newspaper-byline text-xs truncate">
+                          {track.album?.name || 'Unknown Album'}
+                          {releaseYear && ` • ${releaseYear}`}
+                        </p>
+                        
+                        <div className="flex items-center space-x-2 mt-2">
+                          <Badge className={`text-xs ${getMoodColor(mood)}`}>
+                            {mood}
+                          </Badge>
+                          <span className="text-newspaper-byline text-xs font-mono">
+                            {formatDuration(track.duration_ms)}
+                          </span>
+                          {track.played_at && (
+                            <span className="text-newspaper-byline text-xs">
+                              {formatPlayTime(track.played_at)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Play button */}
+                      {spotifyUrl && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 flex-shrink-0"
+                          onClick={() => window.open(spotifyUrl, '_blank')}
+                        >
+                          <Play className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 
@@ -241,11 +335,11 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
                   <SpotifyPlayer
                     currentTrack={{
                       id: track.id,
-                      name: track.title,
-                      artists: [{ name: track.artist }],
+                      name: track.name,
+                      artists: track.artists || [{ name: 'Unknown Artist' }],
                       album: {
-                        name: track.album,
-                        images: []
+                        name: track.album?.name || 'Unknown Album',
+                        images: track.album?.images || []
                       },
                       preview_url: track.preview_url || null,
                       duration_ms: track.duration_ms
@@ -264,6 +358,28 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
           View Full Listening History →
         </button>
       </div>
+
+      {/* No Data Modal */}
+      <Dialog open={showNoDataModal} onOpenChange={setShowNoDataModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>No Spotify Data Found</DialogTitle>
+            <DialogDescription>
+              {authStatus?.authenticated === false ? (
+                <>
+                  You need to connect your Spotify account to view your music history. 
+                  Click the refresh button to start the authentication process.
+                </>
+              ) : (
+                <>
+                  No Spotify data found for today. Make sure you've been listening to music on Spotify 
+                  and try refreshing again later.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

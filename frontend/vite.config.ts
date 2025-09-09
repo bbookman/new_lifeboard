@@ -16,6 +16,10 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
   },
   server: {
+    https: {
+      key: './localhost+2-key.pem',
+      cert: './localhost+2.pem'
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

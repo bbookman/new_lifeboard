@@ -10,6 +10,7 @@ import { DocumentsView } from './components/DocumentsView'
 import { DateNavigation } from './components/DateNavigation'
 import { LimitlessContentExpanded } from './components/LimitlessContentExpanded'
 import { LimitlessMarkdownExpanded } from './components/LimitlessMarkdownExpanded'
+import { SpotifyCallback } from './pages/SpotifyCallback'
 import { QueryProvider } from './providers/QueryProvider'
 
 const navigationItems = [
@@ -160,6 +161,7 @@ function MainLayout() {
           <Route path="/settings" element={<SettingsView />} />
           <Route path="/limitless-content/:id" element={<LimitlessContentExpanded />} />
           <Route path="/limitless-expanded" element={<LimitlessMarkdownExpanded />} />
+          <Route path="/spotify/callback" element={<SpotifyCallback />} />
         </Routes>
       </div>
     </div>
