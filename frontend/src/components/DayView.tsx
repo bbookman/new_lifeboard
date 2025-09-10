@@ -75,7 +75,7 @@ export const DayView = ({ selectedDate, onDateChange, setFormattedDate }: DayVie
         <div className="lg:col-span-1 space-y-8">
           <NewsFeed selectedDate={effectiveDate} key={`newsfeed-${effectiveDate}`} />
           <TwitterFeed selectedDate={effectiveDate} key={`twitter-${effectiveDate}`} />
-          <MusicHistory selectedDate={effectiveDate} key={`music-${effectiveDate}`} />
+          {false && <MusicHistory selectedDate={effectiveDate} key={`music-${effectiveDate}`} />}
         </div>
       </div>
       
