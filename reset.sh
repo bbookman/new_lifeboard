@@ -12,8 +12,8 @@
 # To make executable: chmod +x reset.sh
 #
 # The script will start:
-# - Backend API server at http://localhost:8000
-# - Frontend React UI at http://localhost:5173 (if frontend exists)
+# - Backend API server at https://127.0.0.1:8000
+# - Frontend React UI at https://127.0.0.1:5173 (if frontend exists)
 #
 # Press Ctrl+C to stop all services
 
@@ -184,17 +184,17 @@ else
     echo ""
     if [ -d "frontend" ]; then
         echo "Modern React UI (Recommended):"
-        echo "  🔗 http://localhost:5173"
+        echo "  🔗 https://127.0.0.1:5173"
         echo ""
         echo "Backend API Server:"
-        echo "  🔗 http://localhost:8000"
+        echo "  🔗 https://127.0.0.1:8000"
         echo ""
         echo "Legacy HTML Templates:"
-        echo "  🔗 http://localhost:8000/calendar"
-        echo "  🔗 http://localhost:8000/chat"
+        echo "  🔗 https://127.0.0.1:8000/calendar"
+        echo "  🔗 https://127.0.0.1:8000/chat"
     else
         echo "Backend Server:"
-        echo "  🔗 http://localhost:8000"
+        echo "  🔗 https://127.0.0.1:8000"
     fi
     echo ""
     echo "📋 To view logs: tail -f logs/lifeboard.log"

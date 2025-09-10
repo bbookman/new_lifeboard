@@ -8,6 +8,7 @@ import httpx
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from core.dependencies import get_startup_service_dependency
@@ -439,35 +440,48 @@ async def get_auth_url(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/auth/callback", response_model=TokenResponse)
+@router.get("/auth/callback")
 async def auth_callback(
     code: Optional[str] = Query(None, description="Authorization code from Spotify"),
     error: Optional[str] = Query(None, description="Error from Spotify OAuth"),
     startup_service: StartupService = Depends(get_startup_service_dependency)
 ):
-    """Handle Spotify OAuth callback."""
+    """Handle Spotify OAuth callback and redirect back to frontend."""
     try:
         logger.info("Handling Spotify OAuth callback")
         
         # Check for OAuth error
         if error:
             logger.error(f"Spotify OAuth error: {error}")
-            raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
+            # Redirect to frontend with error
+            return RedirectResponse(
+                url=f"https://127.0.0.1:5173/spotify/callback?error={urllib.parse.quote(error)}",
+                status_code=302
+            )
         
         # Check for authorization code
         if not code:
-            raise HTTPException(status_code=400, detail="Missing authorization code")
+            error_msg = "Missing authorization code"
+            logger.error(error_msg)
+            return RedirectResponse(
+                url=f"https://127.0.0.1:5173/spotify/callback?error={urllib.parse.quote(error_msg)}",
+                status_code=302
+            )
         
         # Exchange code for token using real Spotify API
         token_data = await exchange_code_for_token(code, startup_service.config.spotify)
         
         # Store tokens in database using SpotifyTokenService
-        token_service = SpotifyTokenService()
+        token_service = SpotifyTokenService(startup_service.database, startup_service.config.spotify)
         success = await token_service.store_tokens(token_data)
         
         if not success:
-            logger.error("Failed to store Spotify tokens in database")
-            raise HTTPException(status_code=500, detail="Failed to store authentication tokens")
+            error_msg = "Failed to store authentication tokens"
+            logger.error(error_msg)
+            return RedirectResponse(
+                url=f"https://127.0.0.1:5173/spotify/callback?error={urllib.parse.quote(error_msg)}",
+                status_code=302
+            )
         
         logger.info("Successfully exchanged code for token and stored in database")
         
@@ -486,17 +500,26 @@ async def auth_callback(
             except Exception as sync_error:
                 logger.warning(f"Failed to enable automatic sync after authentication: {sync_error}")
                 # Don't fail the OAuth flow if sync enablement fails
-        return TokenResponse(
-            access_token=token_data["access_token"],
-            refresh_token=token_data.get("refresh_token"),
-            expires_in=token_data["expires_in"]
+        
+        # Redirect to frontend with success
+        return RedirectResponse(
+            url="https://127.0.0.1:5173/spotify/callback?success=true",
+            status_code=302
         )
         
-    except HTTPException:
-        raise
+    except HTTPException as he:
+        # Redirect to frontend with error
+        error_msg = str(he.detail) if hasattr(he, 'detail') else str(he)
+        return RedirectResponse(
+            url=f"https://127.0.0.1:5173/spotify/callback?error={urllib.parse.quote(error_msg)}",
+            status_code=302
+        )
     except Exception as e:
         logger.error(f"Error handling Spotify OAuth callback: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return RedirectResponse(
+            url=f"https://127.0.0.1:5173/spotify/callback?error={urllib.parse.quote(str(e))}",
+            status_code=302
+        )
 
 
 async def exchange_code_for_token(code: str, config) -> Dict[str, Any]:
@@ -547,7 +570,7 @@ async def get_auth_status(
         logger.info("Getting Spotify authentication status")
         
         # Create token service
-        token_service = SpotifyTokenService()
+        token_service = SpotifyTokenService(startup_service.database, startup_service.config.spotify)
         
         # Check authentication status
         is_authenticated = await token_service.is_authenticated()

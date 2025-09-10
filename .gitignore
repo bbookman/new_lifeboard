@@ -17,6 +17,9 @@ logs/
 node_modules/
 *.db
 
+*.pem
+
+
 # C extensions
 *.so
 

@@ -129,14 +129,14 @@ start_backend() {
         print_warning "requirements.txt not found. Skipping dependency installation."
     fi
     
-    # Start backend in background
-    python -m uvicorn api.server:app --reload --port 8000 > logs/backend.log 2>&1 &
+    # Start backend in background with SSL certificates
+    python -m uvicorn api.server:app --reload --port 8000 --ssl-keyfile=127.0.0.1-key.pem --ssl-certfile=127.0.0.1.pem > logs/backend.log 2>&1 &
     BACKEND_PID=$!
     
     # Wait a moment and check if it started successfully
     sleep 3
     if kill -0 $BACKEND_PID 2>/dev/null; then
-        print_success "Backend API server started (PID: $BACKEND_PID) at http://localhost:8000"
+        print_success "Backend API server started (PID: $BACKEND_PID) at https://127.0.0.1:8000"
     else
         print_error "Backend server failed to start. Check logs/backend.log"
         return 1
@@ -170,7 +170,7 @@ start_frontend() {
     # Wait a moment and check if it started successfully
     sleep 3
     if kill -0 $FRONTEND_PID 2>/dev/null; then
-        print_success "Frontend dev server started (PID: $FRONTEND_PID) at http://localhost:5173"
+        print_success "Frontend dev server started (PID: $FRONTEND_PID) at https://127.0.0.1:5173"
     else
         print_error "Frontend server failed to start. Check logs/frontend.log"
         return 1
@@ -182,8 +182,8 @@ show_servers() {
     echo ""
     print_success "🎉 Lifeboard Full Stack is now running!"
     echo ""
-    echo -e "${GREEN}Frontend (New UI):${NC} http://localhost:5173"
-    echo -e "${BLUE}Backend API:${NC}      http://localhost:8000"
+    echo -e "${GREEN}Frontend (New UI):${NC} https://127.0.0.1:5173"
+    echo -e "${BLUE}Backend API:${NC}      https://127.0.0.1:8000"
     echo ""
     echo "==============================="
     echo "FOR BEST RESULTS, LET THE SERVERS BAKE FOR A FEW MOMENTS"

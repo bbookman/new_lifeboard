@@ -16,18 +16,21 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
   },
   server: {
+    host: true, // Listen on all interfaces (0.0.0.0)
     https: {
-      key: './localhost+2-key.pem',
-      cert: './localhost+2.pem'
+      key: '../127.0.0.1-key.pem',
+      cert: '../127.0.0.1.pem'
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       },
       '/upload': {
-        target: 'http://localhost:8000/api/settings',
+        target: 'https://127.0.0.1:8000/api/settings',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
         timeout: 300000,
         proxyTimeout: 300000,
         configure: (proxy, _options) => {
@@ -43,40 +46,49 @@ export default defineConfig({
         }
       },
       '/sync': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       },
       '/chat': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       },
       '/calendar': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       },
       '/embeddings': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       },
       '/system': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       },
       '/weather': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       },
       '/settings': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       },
       '/headings': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       },
       '/health': {
-        target: 'http://localhost:8000',
+        target: 'https://127.0.0.1:8000',
         changeOrigin: true,
+        secure: false, // Accept self-signed certificates
       }
     }
   }

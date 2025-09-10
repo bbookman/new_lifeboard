@@ -90,7 +90,7 @@ const calculateTotalStats = (tracks: SpotifyTrack[]) => {
  */
 export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
   const { data: tracks, isLoading, error } = useSpotifyTracks(selectedDate);
-  const { data: authStatus } = useSpotifyAuth();
+  const { data: authStatus, isLoading: authLoading } = useSpotifyAuth();
   const refreshMutation = useSpotifyRefresh(selectedDate);
   const [showNoDataModal, setShowNoDataModal] = useState(false);
 
@@ -105,8 +105,9 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
     }
   };
   
-  // Loading state
-  if (isLoading) {
+  // Show loading state only if user is authenticated and tracks are loading
+  // Skip loading spinner entirely if user is not authenticated
+  if (isLoading && !authLoading && authStatus?.authenticated === true) {
     return (
       <div className="space-y-6">
         <div className="border-b-2 border-music-accent pb-2">
@@ -197,16 +198,21 @@ export const MusicHistory = ({ selectedDate }: MusicHistoryProps) => {
             <div className="text-center">
               <div className="text-4xl mb-4">🎵</div>
               <h3 className="font-headline text-lg font-bold text-newspaper-headline mb-2">
-                No music history found
+                {authStatus?.authenticated === false ? 'Connect Your Spotify Account' : 'No music history found'}
               </h3>
               <p className="text-newspaper-byline mb-4">
-                {selectedDate 
-                  ? `No tracks were played on ${selectedDate}`
-                  : 'No recent tracks found'
+                {authStatus?.authenticated === false 
+                  ? 'Connect your Spotify account to see your listening history and discover your music patterns'
+                  : selectedDate 
+                    ? `No tracks were played on ${selectedDate}`
+                    : 'No recent tracks found'
                 }
               </p>
               <p className="text-newspaper-byline text-xs">
-                Click the refresh button above to fetch your Spotify data
+                {authStatus?.authenticated === false 
+                  ? 'Click the refresh button above to connect with Spotify'
+                  : 'Click the refresh button above to fetch your Spotify data'
+                }
               </p>
             </div>
           </div>

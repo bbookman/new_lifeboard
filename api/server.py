@@ -1069,6 +1069,8 @@ async def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = Fals
             port=port,
             log_level=log_level,
             reload=False,
+            ssl_keyfile="127.0.0.1-key.pem",
+            ssl_certfile="127.0.0.1.pem",
             # Enable graceful shutdown with timeout
             timeout_graceful_shutdown=30,  # 30 seconds for graceful shutdown
             timeout_keep_alive=5

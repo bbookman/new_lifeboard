@@ -14,46 +14,31 @@ export const SpotifyCallback = () => {
   useEffect(() => {
     const processCallback = async () => {
       try {
-        const code = searchParams.get('code');
+        const success = searchParams.get('success');
         const error = searchParams.get('error');
 
         if (error) {
           setStatus('error');
-          setMessage(`Authentication failed: ${error}`);
+          setMessage(`Authentication failed: ${decodeURIComponent(error)}`);
           return;
         }
 
-        if (!code) {
-          setStatus('error');
-          setMessage('No authorization code received');
+        if (success === 'true') {
+          setStatus('success');
+          setMessage('Successfully connected to Spotify! You can close this window.');
+
+          // Close the popup window after successful authentication
+          setTimeout(() => {
+            if (window.opener) {
+              window.close();
+            }
+          }, 2000);
           return;
         }
 
-        // Exchange the code for tokens
-        const response = await fetch(`/api/spotify/auth/callback?code=${encodeURIComponent(code)}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Callback failed: ${response.status} - ${errorText}`);
-        }
-
-        const result = await response.json();
-        console.log('OAuth callback successful:', result);
-
-        setStatus('success');
-        setMessage('Successfully connected to Spotify! You can close this window.');
-
-        // Close the popup window after successful authentication
-        setTimeout(() => {
-          if (window.opener) {
-            window.close();
-          }
-        }, 2000);
+        // If we get here, neither success nor error was provided
+        setStatus('error');
+        setMessage('Invalid callback - missing success or error parameter');
 
       } catch (error) {
         console.error('OAuth callback error:', error);
