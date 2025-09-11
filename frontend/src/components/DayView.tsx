@@ -5,6 +5,7 @@ import { MusicHistory } from "./MusicHistory";
 import { PhotoGallery } from "./PhotoGallery";
 import { useEffect, useState } from "react";
 import { getTodayYYYYMMDD } from "../lib/utils";
+import { useConfig } from "../hooks/useConfig";
 
 interface DayViewProps {
   selectedDate?: string;
@@ -19,6 +20,7 @@ interface DayViewProps {
  */
 export const DayView = ({ selectedDate, onDateChange, setFormattedDate }: DayViewProps) => {
   const [displayDate, setDisplayDate] = useState<string>('');
+  const { data: config, isLoading: configLoading } = useConfig();
   
   // Use selectedDate directly when available, otherwise use state
   const effectiveDate = selectedDate || displayDate;
@@ -73,7 +75,9 @@ export const DayView = ({ selectedDate, onDateChange, setFormattedDate }: DayVie
         
         {/* Right column - News feed, Twitter, and Music */}
         <div className="lg:col-span-1 space-y-8">
-          <NewsFeed selectedDate={effectiveDate} key={`newsfeed-${effectiveDate}`} />
+          {!configLoading && config?.news?.enabled && (
+            <NewsFeed selectedDate={effectiveDate} key={`newsfeed-${effectiveDate}`} />
+          )}
           <TwitterFeed selectedDate={effectiveDate} key={`twitter-${effectiveDate}`} />
           {false && <MusicHistory selectedDate={effectiveDate} key={`music-${effectiveDate}`} />}
         </div>
