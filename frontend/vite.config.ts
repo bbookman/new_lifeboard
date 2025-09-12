@@ -26,6 +26,19 @@ export default defineConfig({
         target: 'https://127.0.0.1:8000',
         changeOrigin: true,
         secure: false, // Accept self-signed certificates
+        timeout: 300000,
+        proxyTimeout: 300000,
+        configure: (proxy, _options) => {
+          proxy.on('timeout', () => {
+            console.log('API proxy timeout occurred');
+          });
+          proxy.on('proxyReqWs', (proxyReq, req, socket) => {
+            proxyReq.setTimeout(300000);
+          });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            proxyRes.setTimeout(300000);
+          });
+        }
       },
       '/upload': {
         target: 'https://127.0.0.1:8000/api/settings',
@@ -86,6 +99,11 @@ export default defineConfig({
         secure: false, // Accept self-signed certificates
       },
       '/health': {
+        target: 'https://127.0.0.1:8000',
+        changeOrigin: true,
+        secure: false, // Accept self-signed certificates
+      },
+      '/debug': {
         target: 'https://127.0.0.1:8000',
         changeOrigin: true,
         secure: false, // Accept self-signed certificates

@@ -379,7 +379,7 @@ class LLMService(BaseService, ServiceDebugMixin):
                 cursor = conn.execute("""
                     SELECT ps.prompt_document_id
                     FROM prompt_settings ps
-                    WHERE ps.setting_key = 'daily_summary_prompt' 
+                    WHERE ps.setting_key LIKE 'daily_summary_prompt_%' 
                     AND ps.is_active = TRUE
                     ORDER BY ps.updated_at DESC
                     LIMIT 1
@@ -387,14 +387,14 @@ class LLMService(BaseService, ServiceDebugMixin):
                 
                 row = cursor.fetchone()
                 if not row or not row['prompt_document_id']:
-                    self.logger.warning("No 'daily_summary_prompt' setting found in database.")
+                    self.logger.warning("No daily summary prompt configured in database.")
                     return None
                 
                 prompt_id = row['prompt_document_id']
                 self.logger.debug(f"Found prompt setting, document_id: {prompt_id}")
 
                 # Get the prompt document
-                document = self.document_service.get_document(prompt_id)
+                document = await self.document_service.get_document(prompt_id)
                 if not document or document.document_type != 'prompt':
                     self.logger.warning(f"Selected prompt document not found or invalid: {prompt_id}")
                     return None
@@ -403,7 +403,7 @@ class LLMService(BaseService, ServiceDebugMixin):
                 
                 # Process template variables in the prompt
                 self.logger.debug("Processing template variables in prompt...")
-                resolved_template = self.template_processor.resolve_template(
+                resolved_template = await self.template_processor.resolve_template(
                     content=document.content_md,
                     target_date=target_date
                 )

@@ -65,7 +65,7 @@ async def get_prompt_selection() -> PromptSelectionResponse:
             cursor = conn.execute("""
                 SELECT prompt_document_id, is_active
                 FROM prompt_settings 
-                WHERE setting_key = 'daily_summary_prompt' AND is_active = TRUE
+                WHERE setting_key LIKE 'daily_summary_prompt_%' AND is_active = TRUE
                 ORDER BY updated_at DESC
                 LIMIT 1
             """)
@@ -103,10 +103,12 @@ async def save_prompt_selection(request: PromptSelectionRequest) -> Dict[str, bo
             conn.execute("""
                 UPDATE prompt_settings 
                 SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
-                WHERE setting_key = 'daily_summary_prompt'
+                WHERE setting_key LIKE 'daily_summary_prompt_%'
             """)
             
             # Insert new setting if prompt_document_id provided
+            # NOTE: This uses fixed key 'daily_summary_prompt' which may conflict with
+            # Documents API pattern 'daily_summary_prompt_{document_id}'
             if request.prompt_document_id:
                 conn.execute("""
                     INSERT INTO prompt_settings (setting_key, prompt_document_id, is_active)

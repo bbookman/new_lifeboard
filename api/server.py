@@ -31,7 +31,7 @@ from config.factory import create_production_config
 from core.dependencies import get_dependency_registry
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings, sync_status, documents, llm, news, data_items, sources, processing, spotify, config
+from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings, sync_status, documents, llm, news, data_items, sources, processing, spotify, config, debug
 
 logger = logging.getLogger(__name__)
 
@@ -512,6 +512,7 @@ app.include_router(news.router)  # news.py already has /api/news prefix
 app.include_router(sources.router)  # sources.py already has /api/sources prefix
 app.include_router(processing.router)  # processing.py already has /api/processing prefix
 app.include_router(config.router)  # config.py already has /api/config prefix
+app.include_router(debug.router)  # debug.py already has /api/debug prefix
 
 # Legacy route redirects removed - all routes now properly structured
 

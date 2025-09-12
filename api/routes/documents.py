@@ -162,6 +162,7 @@ async def create_document(
     document_service: DocumentService = Depends(get_document_service_for_route)
 ) -> DocumentResponse:
     """Create a new document or folder"""
+    logger.info(f"🚀 Creating document: {request.dict()}")
     try:
         if request.document_type == "folder":
             # Handle folder creation
@@ -199,9 +200,13 @@ async def create_document(
         return DocumentResponse.from_document(document, is_summary_prompt=is_summary_prompt, affected_summary_docs=affected_summary_docs)
         
     except ValueError as e:
+        logger.error(f"❌ Validation error creating document: {e}")
+        logger.error(f"❌ Request data: {request.dict()}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error creating document: {e}")
+        logger.error(f"❌ Error creating document: {e}")
+        logger.error(f"❌ Request data: {request.dict()}")
+        logger.exception("Full exception details:")
         raise HTTPException(status_code=500, detail="Failed to create document")
 
 
@@ -277,7 +282,8 @@ async def _handle_summary_prompt_designation(document_id: str, document_service:
             return affected_docs
             
     except Exception as e:
-        logger.error(f"Error handling summary prompt designation: {e}")
+        logger.error(f"❌ Error handling summary prompt designation for document {document_id}: {e}")
+        logger.exception("Full exception details:")
         raise
 
 
@@ -349,7 +355,7 @@ async def list_documents(
         document_responses = []
         for doc in documents:
             # Skip summary prompt status checks in list view for performance
-            # This information is only needed in document detail view
+            # This information is loaded when user opens document for editing
             document_responses.append(DocumentResponse.from_document(doc, is_summary_prompt=None))
         
         return DocumentListResponse(

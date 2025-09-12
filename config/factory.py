@@ -102,9 +102,12 @@ def create_production_config() -> AppConfig:
     logger.info(f"TWITTER_BEARER_TOKEN: {os.getenv('TWITTER_BEARER_TOKEN')!r}")
     logger.info(f"TWITTER_USER_NAME: {os.getenv('TWITTER_USER_NAME')!r}")
     
+    # Get project root directory for absolute paths
+    project_root = Path(__file__).parent.parent
+    
     return AppConfig(
         database=DatabaseConfig(
-            path=os.getenv("LIFEBOARD_DB_PATH", "lifeboard.db")
+            path=os.getenv("LIFEBOARD_DB_PATH", str(project_root / "lifeboard.db"))
         ),
         embeddings=EmbeddingConfig(
             model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
@@ -112,8 +115,8 @@ def create_production_config() -> AppConfig:
             batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
         ),
         vector_store=VectorStoreConfig(
-            index_path=os.getenv("VECTOR_INDEX_PATH", "vector_index.faiss"),
-            id_map_path=os.getenv("VECTOR_ID_MAP_PATH", "vector_ids.json"),
+            index_path=os.getenv("VECTOR_INDEX_PATH", str(project_root / "vector_index.faiss")),
+            id_map_path=os.getenv("VECTOR_ID_MAP_PATH", str(project_root / "vector_ids.json")),
             dimension=int(os.getenv("VECTOR_DIMENSION", "384"))
         ),
         limitless=LimitlessConfig(

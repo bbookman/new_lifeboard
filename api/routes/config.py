@@ -23,6 +23,19 @@ async def get_config(registry = Depends(get_dependency_registry)) -> Dict[str, A
         
         config = startup_service.config
         
+        # Check LLM configuration status
+        llm_configured = False
+        llm_provider_name = "none"
+        llm_model = "none"
+        try:
+            if config.llm_provider and config.llm_provider.is_active_provider_configured():
+                llm_configured = True
+                llm_provider_name = config.llm_provider.provider
+                active_config = config.llm_provider.get_active_provider_config()
+                llm_model = getattr(active_config, 'model', 'unknown')
+        except Exception as e:
+            logger.warning(f"Error checking LLM configuration: {e}")
+
         # Return relevant config settings for frontend
         return {
             "news": {
@@ -43,6 +56,11 @@ async def get_config(registry = Depends(get_dependency_registry)) -> Dict[str, A
             },
             "limitless": {
                 "timezone": config.limitless.timezone
+            },
+            "llm": {
+                "configured": llm_configured,
+                "provider": llm_provider_name,
+                "model": llm_model
             }
         }
         

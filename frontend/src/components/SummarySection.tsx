@@ -48,12 +48,13 @@ const sampleNews: NewsArticle[] = [
  * @param selectedDate - The date to display summary and news for (YYYY-MM-DD format)
  */
 export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
-  console.log(`[SummarySection] Received selectedDate: ${selectedDate}`);
+  console.log(`[SummarySection] 🔍 COMPONENT INITIALIZED - selectedDate: ${selectedDate}`);
   
   
   // Daily Summary state management
   const [dailySummary, setDailySummary] = useState<DailySummaryData | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   const convertToSummaryData = (response: LLMSummaryResponse, date: string): DailySummaryData => {
     const content = response.content || "";
@@ -101,39 +102,75 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
 
 
   const loadDailySummary = useCallback(async (date: string) => {
-    if (!date) return;
+    if (!date) {
+      console.log(`[SummarySection] ❌ No date provided, skipping summary load`);
+      return;
+    }
 
-    console.log(`[SummarySection] Loading daily summary for date: ${date}`);
+    console.log(`[SummarySection] 🚀 STARTING summary load workflow for date: ${date}`);
     setSummaryLoading(true);
+    
+    // Load debug info first
+    try {
+      console.log(`[SummarySection] 🔍 Fetching debug info to check system status...`);
+      const debugResponse = await fetch('/api/debug/summary-status');
+      if (debugResponse.ok) {
+        const debugData = await debugResponse.json();
+        setDebugInfo(debugData);
+        console.log(`[SummarySection] 🔍 DEBUG INFO:`, debugData);
+        
+        if (!debugData.summary_ready) {
+          console.warn(`[SummarySection] ⚠️ SUMMARY NOT READY:`, debugData.recommendations);
+        }
+      } else {
+        console.warn(`[SummarySection] ⚠️ Could not fetch debug info: ${debugResponse.status}`);
+      }
+    } catch (e) {
+      console.warn(`[SummarySection] ⚠️ Debug info fetch failed:`, e);
+    }
 
     try {
+      console.log(`[SummarySection] 📋 Step 1: Checking for cached summary...`);
       const cachedResponse = await apiClient.getDailySummary(date);
 
       if (cachedResponse.success && cachedResponse.data?.content) {
-        console.log(`[SummarySection] Found cached summary`);
+        console.log(`[SummarySection] ✅ Step 1 SUCCESS: Found cached summary (${cachedResponse.data.content.length} chars)`);
         const summaryData = convertToSummaryData(cachedResponse.data, date);
         setDailySummary(summaryData);
         setSummaryLoading(false);
         return;
       }
 
-      console.log(`[SummarySection] No cached summary found, generating new summary...`);
+      console.log(`[SummarySection] 📋 Step 1 RESULT: No cached summary, proceeding to generation...`);
+      console.log(`[SummarySection] 🔄 Step 2: Generating new summary...`);
       const generateResponse = await apiClient.generateDailySummary(date, false);
 
+      console.log(`[SummarySection] 📋 Step 2 RESPONSE:`, {
+        success: generateResponse.success,
+        hasData: !!generateResponse.data,
+        dataSuccess: generateResponse.data?.success,
+        hasContent: !!generateResponse.data?.content,
+        contentLength: generateResponse.data?.content?.length || 0,
+        error: generateResponse.error,
+        errorMessage: generateResponse.data?.error_message
+      });
+
       if (generateResponse.success && generateResponse.data?.success && generateResponse.data?.content) {
-        console.log(`[SummarySection] Successfully generated new summary`);
+        console.log(`[SummarySection] ✅ Step 2 SUCCESS: Generated new summary (${generateResponse.data.content.length} chars)`);
         const summaryData = convertToSummaryData(generateResponse.data, date);
         setDailySummary(summaryData);
       } else {
         const errorMsg = generateResponse.data?.error_message || generateResponse.error || 'Failed to generate summary';
-        console.error(`[SummarySection] Failed to generate summary:`, errorMsg);
+        console.error(`[SummarySection] ❌ Step 2 FAILED: ${errorMsg}`);
+        console.error(`[SummarySection] 📋 Full error context:`, generateResponse);
         setDailySummary(null);
       }
     } catch (error) {
-      console.error('[SummarySection] Error loading daily summary:', error);
+      console.error('[SummarySection] 💥 CRITICAL ERROR in summary workflow:', error);
       setDailySummary(null);
     } finally {
       setSummaryLoading(false);
+      console.log(`[SummarySection] 🏁 Summary load workflow completed`);
     }
   }, []);
 
@@ -189,6 +226,23 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
 
         {selectedDate && (
           <>
+            {/* Debug info panel (only show if there's an issue) */}
+            {debugInfo && !debugInfo.summary_ready && (
+              <div className="card p-4 mb-4 border-l-4 border-l-yellow-500 bg-yellow-50">
+                <h4 className="font-semibold text-yellow-800 mb-2">🔧 Summary Debug Info</h4>
+                <div className="text-sm text-yellow-700 space-y-1">
+                  <div>Status: <span className="font-mono">{debugInfo.summary_ready ? '✅ Ready' : '❌ Not Ready'}</span></div>
+                  {debugInfo.recommendations?.map((rec: string, i: number) => (
+                    <div key={i}>• {rec}</div>
+                  ))}
+                  <details className="mt-2">
+                    <summary className="cursor-pointer">Technical Details</summary>
+                    <pre className="mt-1 text-xs overflow-auto">{JSON.stringify(debugInfo, null, 2)}</pre>
+                  </details>
+                </div>
+              </div>
+            )}
+
             {summaryLoading ? (
               <div className="card p-6">
                 <div className="flex items-center justify-center">
@@ -209,6 +263,11 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
                 </div>
               ) : (
                 <div className="card p-6">
+                  <div className="text-center text-newspaper-byline">
+                    {debugInfo?.summary_ready === false 
+                      ? "Summary system not ready - check debug info above" 
+                      : "No summary available for this date"}
+                  </div>
                 </div>
               )}
           </>

@@ -398,25 +398,39 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     setSelectedDocument(null);
   };
 
-  const handleStartEdit = () => {
+  const handleStartEdit = async () => {
     if (openDocument) {
+      // For prompt documents, fetch the latest document data to get accurate summary status
+      let documentToEdit = openDocument;
+      if (openDocument.document_type === 'prompt') {
+        try {
+          const response = await fetch(`/api/documents/${openDocument.id}`);
+          if (response.ok) {
+            documentToEdit = await response.json();
+          }
+        } catch (error) {
+          console.warn('Failed to fetch document details for editing:', error);
+          // Continue with original document if fetch fails
+        }
+      }
+
       // Convert Delta content back to plain text for editing
       let plainTextContent = '';
-      if (openDocument.content_delta?.ops) {
-        plainTextContent = openDocument.content_delta.ops
+      if (documentToEdit.content_delta?.ops) {
+        plainTextContent = documentToEdit.content_delta.ops
           .map((op: any) => typeof op.insert === 'string' ? op.insert : '')
           .join('')
           .replace(/\n$/, ''); // Remove trailing newline
       }
 
       setEditForm({
-        title: openDocument.title,
-        document_type: openDocument.document_type === 'folder' ? 'note' : openDocument.document_type,
+        title: documentToEdit.title,
+        document_type: documentToEdit.document_type === 'folder' ? 'note' : documentToEdit.document_type,
         content: plainTextContent,
-        url: openDocument.url || '',
-        home_date: new Date(openDocument.home_date)
+        url: documentToEdit.url || '',
+        home_date: new Date(documentToEdit.home_date)
       });
-      setEditIsSummaryPrompt(openDocument.is_summary_prompt || false); // Set summary prompt status from API
+      setEditIsSummaryPrompt(documentToEdit.is_summary_prompt || false); // Set summary prompt status from API
       setIsEditing(true);
     }
   };
@@ -693,6 +707,11 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setLoading(true);
       setError(null);
 
+      // Show user-friendly progress message for summary prompts
+      if (editForm.document_type === 'prompt' && editIsSummaryPrompt) {
+        console.log('🔄 Creating summary prompt - this may take a moment due to embedding generation...');
+      }
+
       // Get the current Delta content from Quill editor
       const quillEditor = quillRef.current?.getEditor();
       let deltaContent = quillEditor ? quillEditor.getContents() : editFormDelta;
@@ -720,7 +739,15 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         ...(editForm.document_type === 'link' && { url: editForm.url })
       };
 
-      console.log('🚀 Creating document with payload:', payload);
+      console.log('🚀 Creating document with payload:', JSON.stringify(payload, null, 2));
+      console.log('📊 Frontend state before API call:', {
+        editForm,
+        editIsSummaryPrompt,
+        currentFolderPath,
+        showSummaryConflictModal,
+        conflictCurrentPromptTitle,
+        serializedDelta: serializedDelta ? 'Present' : 'Missing'
+      });
 
       const response = await fetch('/api/documents', {
         method: 'POST',
@@ -730,10 +757,20 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         body: JSON.stringify(payload),
       });
 
+      console.log('🔍 API Response status:', response.status, response.statusText);
+      console.log('🔍 API Response headers:', Object.fromEntries(response.headers.entries()));
+      
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Server error response:', errorText);
-        throw new Error(`Failed to create document: ${response.status} ${response.statusText}`);
+        console.error('❌ Server error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: errorText,
+          url: response.url,
+          timestamp: new Date().toISOString()
+        });
+        throw new Error(`Failed to create document: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const newDocument: Document = await response.json();
@@ -746,7 +783,13 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       // Refresh summary prompt status for affected documents
       if (newDocument.affected_summary_docs) {
         console.log('🔄 Summary prompt change affected documents:', newDocument.affected_summary_docs);
-        await refreshSummaryPromptStatus(newDocument.affected_summary_docs);
+        try {
+          await refreshSummaryPromptStatus(newDocument.affected_summary_docs);
+          console.log('✅ Successfully refreshed summary prompt status');
+        } catch (refreshError) {
+          console.error('⚠️ Failed to refresh summary status (non-critical):', refreshError);
+          // Don't fail the entire operation for this
+        }
       }
 
     } catch (err) {
@@ -820,10 +863,20 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         body: JSON.stringify(payload),
       });
 
+      console.log('🔍 API Response status:', response.status, response.statusText);
+      console.log('🔍 API Response headers:', Object.fromEntries(response.headers.entries()));
+      
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Server error response:', errorText);
-        throw new Error(`Failed to create document: ${response.status} ${response.statusText}`);
+        console.error('❌ Server error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: errorText,
+          url: response.url,
+          timestamp: new Date().toISOString()
+        });
+        throw new Error(`Failed to create document: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const newDocument: Document = await response.json();
@@ -836,7 +889,13 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       // Refresh summary prompt status for affected documents
       if (newDocument.affected_summary_docs) {
         console.log('🔄 Summary prompt change affected documents:', newDocument.affected_summary_docs);
-        await refreshSummaryPromptStatus(newDocument.affected_summary_docs);
+        try {
+          await refreshSummaryPromptStatus(newDocument.affected_summary_docs);
+          console.log('✅ Successfully refreshed summary prompt status');
+        } catch (refreshError) {
+          console.error('⚠️ Failed to refresh summary status (non-critical):', refreshError);
+          // Don't fail the entire operation for this
+        }
       }
     } catch (err) {
       console.error('❌ Error in handleCreateDocument:', err);
