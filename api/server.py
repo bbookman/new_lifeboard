@@ -541,6 +541,27 @@ async def simple_ui():
         )
 
 
+# This catch-all route must be defined after all other specific routes
+@app.get("/{full_path:path}")
+async def serve_react_app(request: Request, full_path: str):
+    """Serve the React app for any non-API route."""
+    if full_path.startswith("api/"):
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Not found", "detail": "This is an API route. Did you mean to call it from an application?"}
+        )
+
+    react_index_path = project_root / "frontend" / "dist" / "index.html"
+    if react_index_path.exists():
+        return FileResponse(react_index_path, media_type="text/html")
+    else:
+        # This fallback is if the frontend hasn't been built
+        return JSONResponse(
+            status_code=404,
+            content={"error": "React app not found", "detail": "The frontend has not been built. Please run 'npm run build' in the 'frontend' directory."}
+        )
+
+
 # Global error handlers
 @app.exception_handler(404)
 async def not_found_handler(request, exc):

@@ -171,6 +171,21 @@ async def upload_twitter_archive(
         result = await twitter_source.import_from_zip(temp_zip_path)
 
         if result["success"]:
+            # Get the ingestion service to actually store the data items
+            registry = get_dependency_registry()
+            startup_service = registry.get_startup_service()
+            
+            if not startup_service or not startup_service.ingestion_service:
+                logger.error("[TWITTER IMPORT] Ingestion service not available")
+                return JSONResponse(content={"message": "Ingestion service not available"}, status_code=500)
+            
+            # Ingest the data items if they were returned
+            if result.get("data_items"):
+                logger.info(f"[TWITTER IMPORT] Ingesting {len(result['data_items'])} data items into database")
+                ingestion_result = await startup_service.ingestion_service.ingest_items("twitter", result["data_items"])
+                logger.info(f"[TWITTER IMPORT] Successfully ingested {ingestion_result.items_stored} tweets into database "
+                          f"({ingestion_result.items_processed} processed, {ingestion_result.embeddings_generated} embeddings generated)")
+            
             logger.info(f"[TWITTER IMPORT] Twitter import successful: {result['message']}")
             return JSONResponse(content={"message": result["message"]})
         else:
