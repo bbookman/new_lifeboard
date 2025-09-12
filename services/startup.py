@@ -155,10 +155,14 @@ class StartupService:
             self.database = DatabaseService(self.config.database.path)
             startup_result["services_initialized"].append("database")
             
-            # Spotify token service (depends on database)
-            logger.info("Initializing Spotify token service...")
-            self.spotify_token_service = SpotifyTokenService(self.database, self.config.spotify)
-            startup_result["services_initialized"].append("spotify_token_service")
+            # Spotify token service (depends on database) - only if Spotify is enabled
+            if self.config.spotify.enabled:
+                logger.info("Initializing Spotify token service...")
+                self.spotify_token_service = SpotifyTokenService(self.database, self.config.spotify)
+                startup_result["services_initialized"].append("spotify_token_service")
+            else:
+                logger.info("Spotify is disabled - skipping Spotify token service initialization")
+                self.spotify_token_service = None
             
             # Embedding service
             logger.info("Initializing embedding service...")
@@ -352,7 +356,7 @@ class StartupService:
                     logger.info("Weather source not fully configured, skipping source registration")
 
             # Register Spotify source if fully configured (enabled, client_id, and client_secret)
-            if self.config.spotify.is_api_configured():
+            if self.config.spotify.is_api_configured() and self.spotify_token_service is not None:
                 try:
                     logger.info("Registering Spotify source...")
                     spotify_source = SpotifySource(self.config.spotify, self.database, self.spotify_token_service)

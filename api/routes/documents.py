@@ -37,6 +37,7 @@ class CreateDocumentRequest(BaseModel):
     is_folder: Optional[bool] = Field(None, description="Whether this is a folder (ignored, determined by document_type)")
     url: Optional[str] = Field(None, description="URL for link documents")
     home_date: Optional[str] = Field(None, description="Home date for the document")
+    is_summary_prompt: Optional[bool] = Field(False, description="Whether this prompt should be set as the summary prompt")
 
     @validator('title')
     def validate_title(cls, v):
@@ -70,6 +71,7 @@ class UpdateDocumentRequest(BaseModel):
     content_md: Optional[str] = Field(None, description="Markdown content (ignored, generated from delta)")
     url: Optional[str] = Field(None, description="URL for link documents")
     home_date: Optional[str] = Field(None, description="Home date for the document")
+    is_summary_prompt: Optional[bool] = Field(None, description="Whether this prompt should be set as the summary prompt")
 
     @validator('title')
     def validate_title(cls, v):
@@ -88,11 +90,13 @@ class DocumentResponse(BaseModel):
     is_folder: bool
     url: Optional[str] = None
     home_date: str  # Add home_date field
+    is_summary_prompt: Optional[bool] = None  # Add summary prompt status
     created_at: str
     updated_at: str
+    affected_summary_docs: Optional[List[str]] = None  # Documents affected by summary prompt changes
 
     @classmethod
-    def from_document(cls, document: Document) -> 'DocumentResponse':
+    def from_document(cls, document: Document, is_summary_prompt: Optional[bool] = None, affected_summary_docs: Optional[List[str]] = None) -> 'DocumentResponse':
         return cls(
             id=document.id,
             title=document.title,
@@ -103,8 +107,10 @@ class DocumentResponse(BaseModel):
             is_folder=document.is_folder,
             url=getattr(document, 'url', None),
             home_date=document.home_date.isoformat() if document.home_date else document.created_at.isoformat(),  # Use actual home_date or created_at as fallback
+            is_summary_prompt=is_summary_prompt,
             created_at=document.created_at.isoformat(),
-            updated_at=document.updated_at.isoformat()
+            updated_at=document.updated_at.isoformat(),
+            affected_summary_docs=affected_summary_docs
         )
 
 
@@ -179,14 +185,127 @@ async def create_document(
                 url=request.url,
                 home_date=home_date
             )
+            
+            # Handle summary prompt designation
+            affected_summary_docs = None
+            if request.is_summary_prompt and request.document_type == "prompt":
+                affected_summary_docs = await _handle_summary_prompt_designation(document.id, document_service)
         
-        return DocumentResponse.from_document(document)
+        # Check summary prompt status for response
+        is_summary_prompt = None
+        if document.document_type == "prompt":
+            is_summary_prompt = await _get_summary_prompt_status(document.id, document_service)
+        
+        return DocumentResponse.from_document(document, is_summary_prompt=is_summary_prompt, affected_summary_docs=affected_summary_docs)
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating document: {e}")
         raise HTTPException(status_code=500, detail="Failed to create document")
+
+
+async def _get_summary_prompt_status(document_id: str, document_service: DocumentService) -> bool:
+    """Helper function to check if a document is the active summary prompt"""
+    try:
+        # Get the startup service to access the database
+        from core.dependencies import get_dependency_registry
+        registry = get_dependency_registry()
+        startup_service = registry.get_startup_service()
+        
+        if not startup_service or not startup_service.database:
+            return False
+        
+        with startup_service.database.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT COUNT(*) as count
+                FROM prompt_settings 
+                WHERE setting_key = ? 
+                  AND prompt_document_id = ? 
+                  AND is_active = TRUE
+            """, (f"daily_summary_prompt_{document_id}", document_id))
+            row = cursor.fetchone()
+            return row and row['count'] > 0
+            
+    except Exception as e:
+        logger.error(f"Error checking summary prompt status for {document_id}: {e}")
+        return False
+
+
+async def _handle_summary_prompt_designation(document_id: str, document_service: DocumentService) -> List[str]:
+    """Helper function to handle summary prompt designation and return affected document IDs"""
+    try:
+        # Get the startup service to access the database
+        from core.dependencies import get_dependency_registry
+        registry = get_dependency_registry()
+        startup_service = registry.get_startup_service()
+        
+        if not startup_service or not startup_service.database:
+            raise Exception("Database service not available")
+        
+        with startup_service.database.get_connection() as conn:
+            # First, get the currently active summary prompt document IDs before deactivating
+            cursor = conn.execute("""
+                SELECT prompt_document_id 
+                FROM prompt_settings 
+                WHERE setting_key LIKE 'daily_summary_prompt_%' AND is_active = TRUE
+            """)
+            previously_active_docs = [row['prompt_document_id'] for row in cursor.fetchall()]
+            
+            # Deactivate all existing summary prompt entries (if any)
+            conn.execute("""
+                UPDATE prompt_settings 
+                SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+                WHERE setting_key LIKE 'daily_summary_prompt_%' AND is_active = TRUE
+            """)
+            
+            # Create a unique key for this document to avoid UNIQUE constraint conflicts
+            unique_key = f"daily_summary_prompt_{document_id}"
+            
+            # Insert or update this document as the active summary prompt
+            conn.execute("""
+                INSERT OR REPLACE INTO prompt_settings (setting_key, prompt_document_id, is_active, updated_at)
+                VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)
+            """, (unique_key, document_id))
+            
+            conn.commit()
+            logger.info(f"Set document {document_id} as summary prompt with key {unique_key}")
+            
+            # Return all affected document IDs (previously active + newly active)
+            affected_docs = list(set(previously_active_docs + [document_id]))
+            logger.info(f"Summary prompt change affected documents: {affected_docs}")
+            return affected_docs
+            
+    except Exception as e:
+        logger.error(f"Error handling summary prompt designation: {e}")
+        raise
+
+
+async def _remove_summary_prompt_designation(document_id: str, document_service: DocumentService) -> None:
+    """Helper function to remove summary prompt designation"""
+    try:
+        # Get the startup service to access the database
+        from core.dependencies import get_dependency_registry
+        registry = get_dependency_registry()
+        startup_service = registry.get_startup_service()
+        
+        if not startup_service or not startup_service.database:
+            raise Exception("Database service not available")
+        
+        with startup_service.database.get_connection() as conn:
+            # Deactivate summary prompt for this specific document
+            conn.execute("""
+                UPDATE prompt_settings 
+                SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+                WHERE setting_key = ? AND prompt_document_id = ?
+            """, (f"daily_summary_prompt_{document_id}", document_id))
+            
+            conn.commit()
+            logger.info(f"Removed summary prompt designation from document {document_id}")
+            
+    except Exception as e:
+        logger.error(f"Error removing summary prompt designation: {e}")
+        raise
 
 
 
@@ -226,7 +345,12 @@ async def list_documents(
         # For now, we'll use the returned count as total (could optimize with separate count query)
         total = len(documents)
         
-        document_responses = [DocumentResponse.from_document(doc) for doc in documents]
+        # Build document responses (skip expensive summary prompt status checks for list operations)
+        document_responses = []
+        for doc in documents:
+            # Skip summary prompt status checks in list view for performance
+            # This information is only needed in document detail view
+            document_responses.append(DocumentResponse.from_document(doc, is_summary_prompt=None))
         
         return DocumentListResponse(
             documents=document_responses,
@@ -421,6 +545,85 @@ async def get_document_service_health(
         raise HTTPException(status_code=500, detail="Failed to get service health")
 
 
+# Summary Prompt Management
+@router.get("/check-summary-prompt", response_model=Dict[str, Any])
+@handle_api_exceptions("Failed to check summary prompt", 500, include_details=True)
+async def check_summary_prompt(
+    startup_service: StartupService = Depends(get_startup_service_dependency)
+) -> Dict[str, Any]:
+    """Check if a summary prompt already exists and return its details"""
+    try:
+        if not startup_service.database:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        
+        with startup_service.database.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT ps.prompt_document_id, d.title
+                FROM prompt_settings ps
+                JOIN user_documents d ON ps.prompt_document_id = d.id
+                WHERE ps.setting_key LIKE 'daily_summary_prompt_%' AND ps.is_active = TRUE
+                ORDER BY ps.updated_at DESC
+                LIMIT 1
+            """)
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    "exists": True,
+                    "current_prompt_title": row['title'],
+                    "current_prompt_id": row['prompt_document_id']
+                }
+            else:
+                return {
+                    "exists": False
+                }
+                
+    except Exception as e:
+        logger.error(f"Error checking summary prompt: {e}")
+        raise HTTPException(status_code=500, detail="Failed to check summary prompt")
+
+
+@router.post("/bulk-summary-status", response_model=Dict[str, Any])
+@handle_api_exceptions("Failed to check bulk summary status", 500, include_details=True)
+async def check_bulk_summary_status(
+    document_ids: List[str],
+    startup_service: StartupService = Depends(get_startup_service_dependency)
+) -> Dict[str, Any]:
+    """Check summary prompt status for multiple document IDs"""
+    try:
+        if not startup_service.database:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        
+        if not document_ids:
+            return {"summary_statuses": {}, "current_summary_id": None}
+            
+        with startup_service.database.get_connection() as conn:
+            # Get the current active summary prompt
+            cursor = conn.execute("""
+                SELECT ps.prompt_document_id
+                FROM prompt_settings ps
+                WHERE ps.setting_key LIKE 'daily_summary_prompt_%' AND ps.is_active = TRUE
+                ORDER BY ps.updated_at DESC
+                LIMIT 1
+            """)
+            current_summary_row = cursor.fetchone()
+            current_summary_id = current_summary_row['prompt_document_id'] if current_summary_row else None
+            
+            # Build status map for requested documents
+            summary_statuses = {}
+            for doc_id in document_ids:
+                summary_statuses[doc_id] = (doc_id == current_summary_id)
+            
+            return {
+                "summary_statuses": summary_statuses,
+                "current_summary_id": current_summary_id
+            }
+                
+    except Exception as e:
+        logger.error(f"Error checking bulk summary status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to check bulk summary status")
+
+
 # Template Processing Routes
 @router.post("/process-template", response_model=ProcessTemplateResponse)
 @handle_api_exceptions("Failed to process template", 500, include_details=True)
@@ -488,7 +691,7 @@ async def process_document_template(
     """Process template variables in a specific document"""
     try:
         # Get the document
-        document = document_service.get_document(document_id)
+        document = await document_service.get_document(document_id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         
@@ -527,11 +730,16 @@ async def get_document(
 ) -> DocumentResponse:
     """Get a specific document by ID"""
     try:
-        document = document_service.get_document(document_id)
+        document = await document_service.get_document(document_id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        return DocumentResponse.from_document(document)
+        # Check if this is a summary prompt for prompts only
+        is_summary_prompt = None
+        if document.document_type == "prompt":
+            is_summary_prompt = await _get_summary_prompt_status(document_id, document_service)
+        
+        return DocumentResponse.from_document(document, is_summary_prompt=is_summary_prompt)
         
     except HTTPException:
         raise
@@ -563,7 +771,21 @@ async def update_document(
             home_date=home_date
         )
         
-        return DocumentResponse.from_document(document)
+        # Handle summary prompt designation after update
+        affected_summary_docs = None
+        if request.is_summary_prompt is not None and request.document_type == "prompt":
+            if request.is_summary_prompt:
+                affected_summary_docs = await _handle_summary_prompt_designation(document.id, document_service)
+            else:
+                # Remove summary prompt designation if unchecked
+                await _remove_summary_prompt_designation(document.id, document_service)
+        
+        # Check current summary prompt status to return accurate state
+        is_summary_prompt = None
+        if document.document_type == "prompt":
+            is_summary_prompt = await _get_summary_prompt_status(document.id, document_service)
+        
+        return DocumentResponse.from_document(document, is_summary_prompt=is_summary_prompt, affected_summary_docs=affected_summary_docs)
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

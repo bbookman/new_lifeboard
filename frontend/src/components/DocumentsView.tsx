@@ -13,6 +13,8 @@ import { Plus, Search, Edit3, Trash2, File, ScrollText, ChevronDown, ChevronRigh
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import './quill-theme.css';
+import { SummaryPromptConflictModal } from './SummaryPromptConflictModal';
+import { apiClient } from '../lib/api';
 
 interface Document {
   id: string;
@@ -23,10 +25,12 @@ interface Document {
   path: string;
   is_folder: boolean;
   home_date: string;
+  is_summary_prompt?: boolean; // Summary prompt status for prompts
   created_at: string;
   updated_at: string;
   url?: string; // For link documents
   selected?: boolean;
+  affected_summary_docs?: string[]; // Documents affected by summary prompt changes
 }
 
 interface DocumentListResponse {
@@ -43,11 +47,12 @@ interface DocumentsViewProps {
 export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [allDocuments, setAllDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'note' | 'prompt' | 'link' | 'home_date' | 'none'>(initialFilter);
   const [currentFolderPath, setCurrentFolderPath] = useState<string>('/');
+  const [lastFetchedPath, setLastFetchedPath] = useState<string>('');
   const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -77,6 +82,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     home_date: new Date()
   });
   const [createFormDelta, setCreateFormDelta] = useState<any>(null);
+  const [createIsSummaryPrompt, setCreateIsSummaryPrompt] = useState(false);
   const createQuillRef = useRef<ReactQuill>(null);
   const [editForm, setEditForm] = useState({
     title: '',
@@ -86,7 +92,14 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     home_date: new Date()
   });
   const [editFormDelta, setEditFormDelta] = useState<any>(null);
+  const [editIsSummaryPrompt, setEditIsSummaryPrompt] = useState(false);
   const quillRef = useRef<ReactQuill>(null);
+  
+  // Summary prompt conflict modal state
+  const [showSummaryConflictModal, setShowSummaryConflictModal] = useState(false);
+  const [conflictCurrentPromptTitle, setConflictCurrentPromptTitle] = useState('');
+  const [pendingCreateSubmit, setPendingCreateSubmit] = useState(false);
+  const [pendingEditSubmit, setPendingEditSubmit] = useState(false);
 
   // Quill configuration for Markdown-compatible editing
   const quillModules = {
@@ -107,8 +120,16 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   ];
 
   useEffect(() => {
-    fetchDocuments();
+    // Only fetch if path actually changed  
+    if (currentFolderPath !== lastFetchedPath) {
+      fetchDocuments();
+    }
   }, [currentFolderPath]);
+
+  // Initial load on component mount
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
 
   useEffect(() => {
     let filtered = allDocuments;
@@ -152,6 +173,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setOpenDocument(null);
       setIsEditing(false);
       setEditForm({ title: '', document_type: 'note', content: '', url: '', home_date: new Date() });
+      setEditIsSummaryPrompt(false);
       setError(null);
     };
 
@@ -167,6 +189,16 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     });
   }, [showDeleteDialog, selectedDocument]);
 
+  // Debug useEffect to monitor summary conflict modal state
+  useEffect(() => {
+    console.log('🔴 Summary conflict modal state changed:', {
+      showSummaryConflictModal,
+      conflictCurrentPromptTitle,
+      pendingCreateSubmit,
+      pendingEditSubmit
+    });
+  }, [showSummaryConflictModal, conflictCurrentPromptTitle, pendingCreateSubmit, pendingEditSubmit]);
+
 
 
   const fetchDocuments = async () => {
@@ -176,44 +208,22 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
       const startTime = performance.now();
 
-      // Performance optimization: Check count first for fast empty state detection
-      const countParams = new URLSearchParams();
-      countParams.append('folder_path', currentFolderPath);
-
-      const countStart = performance.now();
-      const countResponse = await fetch(`/api/documents/count?${countParams}`);
-      if (!countResponse.ok) {
-        throw new Error('Failed to check document count');
-      }
-
-      const countData = await countResponse.json();
-      const countTime = performance.now() - countStart;
-      
-      // Early exit if no documents - much faster than loading full list
-      if (countData.count === 0) {
-        const totalTime = performance.now() - startTime;
-        console.log(`📈 Fast empty detection: ${countTime.toFixed(1)}ms count, ${totalTime.toFixed(1)}ms total`);
-        setAllDocuments([]);
-        return;
-      }
-
-      // If documents exist, fetch the full list
+      // Single API call optimization - fetch documents directly
       const listParams = new URLSearchParams();
       listParams.append('folder_path', currentFolderPath);
       listParams.append('limit', '50');
 
-      const listStart = performance.now();
-      const listResponse = await fetch(`/api/documents?${listParams}`);
-      if (!listResponse.ok) {
+      const response = await fetch(`/api/documents?${listParams}`);
+      if (!response.ok) {
         throw new Error('Failed to fetch documents');
       }
 
-      const listData: DocumentListResponse = await listResponse.json();
-      const listTime = performance.now() - listStart;
+      const listData: DocumentListResponse = await response.json();
       const totalTime = performance.now() - startTime;
       
-      console.log(`📊 Document loading: ${countTime.toFixed(1)}ms count, ${listTime.toFixed(1)}ms list, ${totalTime.toFixed(1)}ms total (${listData.documents.length} docs)`);
+      console.log(`📊 Single-call loading: ${totalTime.toFixed(1)}ms (${listData.documents.length} docs)`);
       setAllDocuments(listData.documents.map(doc => ({ ...doc, selected: false })));
+      setLastFetchedPath(currentFolderPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load documents');
     } finally {
@@ -224,6 +234,15 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const handleSearch = () => {
     // The actual filtering is now done in the useEffect hook
   };
+
+  // Debounced search to avoid excessive filtering
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      // Filtering logic already handled in main filter effect
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -361,6 +380,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       home_date: new Date(document.home_date)
     });
     setEditFormDelta(document.content_delta);
+    setEditIsSummaryPrompt(document.is_summary_prompt || false); // Set summary prompt status from API
     setIsEditing(true); // Start in edit mode when clicking on document
   };
 
@@ -371,6 +391,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     setOpenDocument(null);
     setIsEditing(false);
     setEditForm({ title: '', document_type: 'note', content: '', url: '', home_date: new Date() });
+    setEditIsSummaryPrompt(false);
     setError(null);
     // Clear any open dialogs when navigating back
     setShowDeleteDialog(false);
@@ -395,6 +416,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         url: openDocument.url || '',
         home_date: new Date(openDocument.home_date)
       });
+      setEditIsSummaryPrompt(openDocument.is_summary_prompt || false); // Set summary prompt status from API
       setIsEditing(true);
     }
   };
@@ -412,6 +434,148 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     setCreateFormDelta(editor.getContents());
   };
 
+  // Helper function to check for existing summary prompt and handle conflicts
+  const checkSummaryPromptConflict = async (isCreate: boolean): Promise<boolean> => {
+    try {
+      console.log('🔍 Making API call to check summary prompt...');
+      const response = await apiClient.checkSummaryPromptExists();
+      console.log('🔍 API response:', response);
+      
+      if (response.success && response.data?.exists) {
+        const currentSummaryPromptId = response.data.current_prompt_id;
+        const currentDocumentId = openDocument?.id;
+        
+        // Check if we're editing the same document that's already the summary prompt
+        if (!isCreate && currentDocumentId && currentSummaryPromptId === currentDocumentId) {
+          console.log('✅ This document is already the summary prompt - no conflict');
+          return false; // No conflict, this document is already the summary prompt
+        }
+        
+        console.log('⚠️ Summary prompt conflict detected:', response.data.current_prompt_title);
+        console.log('🔍 Current summary prompt ID:', currentSummaryPromptId);
+        console.log('🔍 Current document ID:', currentDocumentId);
+        
+        setConflictCurrentPromptTitle(response.data.current_prompt_title || 'Unknown');
+        
+        console.log('🔴 SETTING MODAL STATE TO TRUE');
+        setShowSummaryConflictModal(true);
+        
+        if (isCreate) {
+          setPendingCreateSubmit(true);
+          console.log('🔴 SET pendingCreateSubmit = true');
+        } else {
+          setPendingEditSubmit(true);
+          console.log('🔴 SET pendingEditSubmit = true');
+        }
+        
+        
+        return true; // Conflict exists, user needs to confirm
+      }
+      console.log('✅ No summary prompt conflict detected');
+      return false; // No conflict, proceed with save
+    } catch (error) {
+      console.error('💥 Error checking summary prompt:', error);
+      setError('Failed to check existing summary prompt. Please try again.');
+      return true; // Block save on error
+    }
+  };
+
+  // Handle modal confirmation (user wants to make this the new summary prompt)
+  const handleSummaryConflictConfirm = () => {
+    console.log('✅ User confirmed override of existing summary prompt');
+    setShowSummaryConflictModal(false);
+    if (pendingCreateSubmit) {
+      console.log('📝 Processing pending create submit');
+      setPendingCreateSubmit(false);
+      if (openDocument === null) {
+        // Creating from full view - keep editIsSummaryPrompt = true
+        handleCreateDocumentWithSummary();
+      } else {
+        // Creating from modal - keep createIsSummaryPrompt = true
+        handleCreateDocumentModalWithSummary();
+      }
+    } else if (pendingEditSubmit) {
+      console.log('💾 Processing pending edit submit');
+      setPendingEditSubmit(false);
+      // Keep editIsSummaryPrompt = true
+      handleSaveEditWithSummary();
+    }
+  };
+
+  // Handle modal cancel (user doesn't want to override existing summary prompt)
+  const handleSummaryConflictCancel = () => {
+    console.log('❌ User cancelled override of existing summary prompt');
+    setShowSummaryConflictModal(false);
+    const wasPendingCreate = pendingCreateSubmit;
+    const wasPendingEdit = pendingEditSubmit;
+    setPendingCreateSubmit(false);
+    setPendingEditSubmit(false);
+    
+    // Uncheck the summary checkbox in the UI and let user continue editing
+    if (wasPendingCreate) {
+      console.log('📝 Unchecking summary checkbox - user can continue editing');
+      if (openDocument === null) {
+        // Creating from full view - use editIsSummaryPrompt
+        setEditIsSummaryPrompt(false);
+      } else {
+        // Creating from modal - use createIsSummaryPrompt
+        setCreateIsSummaryPrompt(false);
+      }
+    } else if (wasPendingEdit) {
+      console.log('💾 Unchecking summary checkbox - user can continue editing');
+      setEditIsSummaryPrompt(false);
+    }
+    
+    // Don't save automatically - let the user decide when to save
+    console.log('🔄 User can now continue editing or save manually');
+  };
+
+  // Helper function to refresh summary prompt status for affected documents
+  const refreshSummaryPromptStatus = async (affectedDocIds: string[]) => {
+    if (!affectedDocIds || affectedDocIds.length === 0) return;
+    
+    console.log('🔄 Refreshing summary prompt status for affected documents:', affectedDocIds);
+    
+    try {
+      // Get updated summary status for all affected documents
+      const statusResponse = await apiClient.checkBulkSummaryStatus(affectedDocIds);
+      
+      if (statusResponse.success && statusResponse.data) {
+        const { summary_statuses } = statusResponse.data;
+        console.log('📊 Updated summary statuses:', summary_statuses);
+        
+        // Update the document list state
+        setDocuments(prevDocs => prevDocs.map(doc => {
+          if (doc.document_type === 'prompt' && affectedDocIds.includes(doc.id)) {
+            const newSummaryStatus = summary_statuses[doc.id] || false;
+            console.log(`🔄 Updating ${doc.title} summary status: ${doc.is_summary_prompt} → ${newSummaryStatus}`);
+            return {
+              ...doc,
+              is_summary_prompt: newSummaryStatus
+            };
+          }
+          return doc;
+        }));
+        
+        // Update open document if it's affected
+        if (openDocument && affectedDocIds.includes(openDocument.id)) {
+          const newSummaryStatus = summary_statuses[openDocument.id] || false;
+          console.log(`🔄 Updating open document summary status: ${openDocument.is_summary_prompt} → ${newSummaryStatus}`);
+          setOpenDocument(prev => prev ? {
+            ...prev,
+            is_summary_prompt: newSummaryStatus
+          } : null);
+          
+          // Update the edit form state as well
+          setEditIsSummaryPrompt(newSummaryStatus);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error refreshing summary prompt status:', error);
+      // Don't show error to user - this is a background refresh operation
+    }
+  };
+
   const handleSaveEdit = async () => {
     try {
       console.log('🔥 SAVE BUTTON CLICKED - handleSaveEdit function started');
@@ -423,12 +587,29 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         return;
       }
 
+      // Check for summary prompt conflict if this is a prompt and summary is checked
+      if (editForm.document_type === 'prompt' && editIsSummaryPrompt) {
+        console.log('🔍 Checking for summary prompt conflict...');
+        const hasConflict = await checkSummaryPromptConflict(false);
+        console.log('🔍 Conflict check result:', hasConflict);
+        if (hasConflict) {
+          console.log('⚠️ Conflict detected - modal should show');
+          return; // Wait for user to resolve conflict via modal
+        }
+      }
+
+      // No conflict, proceed with save
+      console.log('✅ No conflict detected, proceeding with save');
+      await handleSaveEditWithSummary();
+
     } catch (error) {
       console.error('💥 FATAL ERROR in handleSaveEdit:', error);
       setError('An unexpected error occurred while saving');
       return;
     }
+  };
 
+  const handleSaveEditWithSummary = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -447,7 +628,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         ops: deltaContent.ops || [{ insert: '\n' }]
       };
 
-      const response = await fetch(`/api/documents/${openDocument.id}`, {
+      const response = await fetch(`/api/documents/${openDocument!.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -457,6 +638,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
           document_type: editForm.document_type,
           content_delta: serializedDelta,
           home_date: editForm.home_date.toISOString(),
+          is_summary_prompt: editForm.document_type === 'prompt' ? editIsSummaryPrompt : undefined,
           ...(editForm.document_type === 'link' && { url: editForm.url })
         }),
       });
@@ -467,10 +649,16 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
       const updatedDocument: Document = await response.json();
       setDocuments(prev => prev.map(doc =>
-        doc.id === openDocument.id ? updatedDocument : doc
+        doc.id === openDocument!.id ? updatedDocument : doc
       ));
       setOpenDocument(updatedDocument); // Update the open document with latest data
       setIsEditing(false);
+      
+      // Refresh summary prompt status for affected documents
+      if (updatedDocument.affected_summary_docs) {
+        console.log('🔄 Summary prompt change affected documents:', updatedDocument.affected_summary_docs);
+        await refreshSummaryPromptStatus(updatedDocument.affected_summary_docs);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update document');
     } finally {
@@ -484,7 +672,23 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       return;
     }
 
+    // Check for summary prompt conflict if this is a prompt and summary is checked
+    if (editForm.document_type === 'prompt' && editIsSummaryPrompt) {
+      console.log('🔍 Checking for summary prompt conflict (create from full view)...');
+      const hasConflict = await checkSummaryPromptConflict(true);
+      console.log('🔍 Conflict check result:', hasConflict);
+      if (hasConflict) {
+        console.log('⚠️ Conflict detected - modal should show (create)');
+        return; // Wait for user to resolve conflict via modal
+      }
+    }
 
+    // No conflict, proceed with create
+    console.log('✅ No conflict detected, proceeding with create');
+    await handleCreateDocumentWithSummary();
+  };
+
+  const handleCreateDocumentWithSummary = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -512,6 +716,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         path: currentFolderPath,
         is_folder: false, // Explicitly set as not a folder
         home_date: editForm.home_date.toISOString(),
+        is_summary_prompt: editForm.document_type === 'prompt' ? editIsSummaryPrompt : undefined,
         ...(editForm.document_type === 'link' && { url: editForm.url })
       };
 
@@ -538,6 +743,12 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setOpenDocument(newDocument);
       setIsEditing(false);
 
+      // Refresh summary prompt status for affected documents
+      if (newDocument.affected_summary_docs) {
+        console.log('🔄 Summary prompt change affected documents:', newDocument.affected_summary_docs);
+        await refreshSummaryPromptStatus(newDocument.affected_summary_docs);
+      }
+
     } catch (err) {
       console.error('❌ Error in handleCreateFromFullView:', err);
       setError(err instanceof Error ? err.message : 'Failed to create document');
@@ -552,7 +763,23 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       return;
     }
 
+    // Check for summary prompt conflict if this is a prompt and summary is checked
+    if (createForm.document_type === 'prompt' && createIsSummaryPrompt) {
+      console.log('🔍 Checking for summary prompt conflict (create modal)...');
+      const hasConflict = await checkSummaryPromptConflict(true);
+      console.log('🔍 Conflict check result:', hasConflict);
+      if (hasConflict) {
+        console.log('⚠️ Conflict detected - modal should show (create modal)');
+        return; // Wait for user to resolve conflict via modal
+      }
+    }
 
+    // No conflict, proceed with create
+    console.log('✅ No conflict detected, proceeding with create (modal)');
+    await handleCreateDocumentModalWithSummary();
+  };
+
+  const handleCreateDocumentModalWithSummary = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -579,6 +806,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         path: currentFolderPath,
         is_folder: false, // Explicitly set as not a folder
         home_date: createForm.home_date.toISOString(),
+        is_summary_prompt: createForm.document_type === 'prompt' ? createIsSummaryPrompt : undefined,
         ...(createForm.document_type === 'link' && { url: createForm.url })
       };
 
@@ -603,6 +831,13 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setShowCreateDialog(false);
       setCreateForm({ title: '', document_type: 'note', content: '', url: '', home_date: new Date() });
       setCreateFormDelta(null);
+      setCreateIsSummaryPrompt(false);
+
+      // Refresh summary prompt status for affected documents
+      if (newDocument.affected_summary_docs) {
+        console.log('🔄 Summary prompt change affected documents:', newDocument.affected_summary_docs);
+        await refreshSummaryPromptStatus(newDocument.affected_summary_docs);
+      }
     } catch (err) {
       console.error('❌ Error in handleCreateDocument:', err);
       setError(err instanceof Error ? err.message : 'Failed to create document');
@@ -1064,6 +1299,20 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
                           <SelectItem value="link">Link</SelectItem>
                         </SelectContent>
                       </Select>
+                      {editForm.document_type === 'prompt' && (
+                        <div className="flex items-center space-x-2 ml-3">
+                          <input
+                            type="checkbox"
+                            id="edit-summary-prompt"
+                            checked={editIsSummaryPrompt}
+                            onChange={(e) => setEditIsSummaryPrompt(e.target.checked)}
+                            className="form-checkbox h-4 w-4 text-primary rounded"
+                          />
+                          <Label htmlFor="edit-summary-prompt" className="text-sm">
+                            Summary
+                          </Label>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1178,6 +1427,14 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
           </AlertDialogContent>
         </AlertDialog>
 
+        {/* Summary Prompt Conflict Modal - Available in document view */}
+        <SummaryPromptConflictModal
+          isOpen={showSummaryConflictModal}
+          currentPromptTitle={conflictCurrentPromptTitle}
+          onConfirm={handleSummaryConflictConfirm}
+          onCancel={handleSummaryConflictCancel}
+        />
+
       </>
     );
   }
@@ -1254,7 +1511,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       </div>
 
       {/* Loading State */}
-      {loading && documents.length === 0 && (
+      {loading && allDocuments.length === 0 && (
         <div className="text-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
           <p className="mt-2 text-muted-foreground">Loading documents...</p>
@@ -1274,17 +1531,8 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
 
 
       {/* No Documents State */}
-      {!loading && !error && documents.length === 0 && (
+      {!loading && !error && allDocuments.length === 0 && (
         <div className="text-center py-12">
-          <div className="text-muted-foreground mb-4">
-            <ScrollText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-lg">No documents found</p>
-            <p className="text-sm">Create your first document to get started</p>
-          </div>
-          <Button onClick={openCreateDialog} className="mt-4">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Document
-          </Button>
         </div>
       )}
 
@@ -1675,21 +1923,37 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
               <Label htmlFor="type" className="text-right">
                 Type
               </Label>
-              <Select
-                value={createForm.document_type}
-                onValueChange={(value: 'note' | 'prompt' | 'link') =>
-                  setCreateForm(prev => ({ ...prev, document_type: value }))
-                }
-              >
-                <SelectTrigger className="col-span-3">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="note">Note</SelectItem>
-                  <SelectItem value="prompt">Prompt</SelectItem>
-                  <SelectItem value="link">Link</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="col-span-3 flex items-center gap-2">
+                <Select
+                  value={createForm.document_type}
+                  onValueChange={(value: 'note' | 'prompt' | 'link') =>
+                    setCreateForm(prev => ({ ...prev, document_type: value }))
+                  }
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="note">Note</SelectItem>
+                    <SelectItem value="prompt">Prompt</SelectItem>
+                    <SelectItem value="link">Link</SelectItem>
+                  </SelectContent>
+                </Select>
+                {createForm.document_type === 'prompt' && (
+                  <div className="flex items-center space-x-2 ml-3">
+                    <input
+                      type="checkbox"
+                      id="create-summary-prompt"
+                      checked={createIsSummaryPrompt}
+                      onChange={(e) => setCreateIsSummaryPrompt(e.target.checked)}
+                      className="form-checkbox h-4 w-4 text-primary rounded"
+                    />
+                    <Label htmlFor="create-summary-prompt" className="text-sm">
+                      Summary
+                    </Label>
+                  </div>
+                )}
+              </div>
             </div>
             {createForm.document_type === 'link' && (
               <div className="grid grid-cols-4 items-center gap-4">

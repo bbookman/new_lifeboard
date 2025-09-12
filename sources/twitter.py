@@ -283,12 +283,13 @@ class TwitterSource(BaseSource):
                 if tweets:
                     tweet_ids = [t.get('tweet_id') for t in tweets]
                     logger.info(f"[TWITTER TRACE] Tweet IDs fetched: {tweet_ids}")
+                    # Record successful fetch only when we actually got tweets
+                    logger.info("[TWITTER TRACE] Recording successful fetch attempt for rate limiting")
+                    await self.rate_limit_service.record_fetch_attempt(success=True)
                 else:
                     logger.info("[TWITTER TRACE] No tweets returned from API")
-                
-                # Record successful fetch for rate limiting
-                logger.info("[TWITTER TRACE] Recording successful fetch attempt for rate limiting")
-                await self.rate_limit_service.record_fetch_attempt(success=True)
+                    # Don't record as successful if no tweets - could be rate limited or API returned empty
+                    logger.info("[TWITTER TRACE] No tweets received - not recording as successful fetch to avoid rate limit confusion")
                 
                 total_duration = (time.time() - start_time) * 1000
                 logger.info(f"[TWITTER TRACE] fetch_today_tweets completed successfully in {total_duration:.2f}ms")
