@@ -8,6 +8,7 @@ __pycache__/
 .playwright-mcp/
 .kilocode/
 .vscode/  
+vector_ids.json
 
 CLAUD.md
 Gemini.md

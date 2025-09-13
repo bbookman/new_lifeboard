@@ -75,6 +75,9 @@ class StartupService:
             # 2.6. Initialize document service
             await self._initialize_document_service(startup_result)
             
+            # 2.65. Initialize default prompt if needed
+            await self._initialize_default_prompt(startup_result)
+            
             # 2.7. Initialize LLM service
             await self._initialize_llm_service(startup_result)
             
@@ -246,6 +249,61 @@ class StartupService:
             error_msg = f"Failed to initialize document service: {str(e)}"
             logger.error(error_msg)
             raise Exception(error_msg)
+    
+    async def _initialize_default_prompt(self, startup_result: Dict[str, Any]):
+        """Initialize default summary prompt if none exists"""
+        try:
+            logger.info("Checking for default summary prompt...")
+            
+            # Check if any daily summary prompt already exists
+            with self.database.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT COUNT(*) as count
+                    FROM prompt_settings 
+                    WHERE setting_key LIKE 'daily_summary_prompt_%' 
+                    AND is_active = TRUE
+                """)
+                existing_count = cursor.fetchone()['count']
+            
+            if existing_count > 0:
+                logger.info(f"Found {existing_count} existing daily summary prompt(s), skipping default creation")
+                startup_result["default_prompt_created"] = False
+                return
+            
+            logger.info("No daily summary prompt found, creating default prompt...")
+            
+            # Create default prompt document
+            default_prompt_content = "{{LIMITLESS_DAY}} provide three bullet points that summarize my day. One bullet point will focus on any important meeting or conversation, the second will focus on an upcoming commitment or something to follow up on, and the third will focus on an emotional high note - about a touching or moving or pleasing experience."
+            
+            # Create content in Quill Delta format
+            content_delta = {"ops": [{"insert": default_prompt_content + "\n"}]}
+            
+            document = await self.document_service.create_document(
+                title="DEFAULT SUMMARY",
+                document_type="prompt",
+                content_delta=content_delta,
+                path="/"
+            )
+            
+            # Create prompt setting to activate this document
+            with self.database.get_connection() as conn:
+                conn.execute("""
+                    INSERT INTO prompt_settings 
+                    (setting_key, prompt_document_id, is_active, created_at, updated_at)
+                    VALUES (?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, ("daily_summary_prompt_default", document.id))
+                conn.commit()
+            
+            startup_result["default_prompt_created"] = True
+            startup_result["default_prompt_document_id"] = document.id
+            logger.info(f"Default summary prompt created successfully with document ID: {document.id}")
+            
+        except Exception as e:
+            error_msg = f"Failed to initialize default prompt: {str(e)}"
+            logger.error(error_msg)
+            startup_result["errors"].append(error_msg)
+            startup_result["default_prompt_created"] = False
+            # Don't raise - default prompt creation failure shouldn't block startup
     
     async def _initialize_llm_service(self, startup_result: Dict[str, Any]):
         """Initialize the LLM service"""
