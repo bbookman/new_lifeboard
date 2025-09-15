@@ -1175,10 +1175,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
             <div className="flex items-center gap-2">
               {!isEditing ? (
                 <>
-                  <Button onClick={handleStartEdit} variant="outline" size="sm">
-                    <Edit3 className="h-4 w-4 mr-1" />
-                    Edit
-                  </Button>
                   {openDocument && (
                     <Button
                       onClick={(e) => {
@@ -1200,6 +1196,16 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
                   <Button onClick={handleCancelEdit} variant="outline" size="sm">
                     Cancel
                   </Button>
+                  {editForm.document_type !== 'link' && (
+                    <Button
+                      type="button"
+                      variant={showPreview ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setShowPreview(!showPreview)}
+                    >
+                      Preview
+                    </Button>
+                  )}
                   <Button
                     onClick={() => {
                       console.log('💾 SAVE BUTTON CLICKED - openDocument:', openDocument ? 'EXISTS' : 'NULL');
@@ -1362,24 +1368,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
                       <Label className="text-base font-semibold">
                         Content
                       </Label>
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant={!showPreview ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setShowPreview(false)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={showPreview ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setShowPreview(true)}
-                        >
-                          Preview
-                        </Button>
-                      </div>
                     </div>
                     <div className="border rounded-lg overflow-hidden" style={{ minHeight: '400px' }}>
                       {!showPreview ? (
