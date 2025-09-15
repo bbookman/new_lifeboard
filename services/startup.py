@@ -273,7 +273,17 @@ class StartupService:
             logger.info("No daily summary prompt found, creating default prompt...")
             
             # Create default prompt document
-            default_prompt_content = "{{LIMITLESS_DAY}} provide three bullet points that summarize my day. One bullet point will focus on any important meeting or conversation, the second will focus on an upcoming commitment or something to follow up on, and the third will focus on an emotional high note - about a touching or moving or pleasing experience."
+            default_prompt_content = """The following is speech-to-text transcription of a day.  You are an expert at documenting a day in the life of a person.  You recognize important events and context.  You deeply understand human psychology and emotional makeup. Your goal is to summarize and extract meaning from the transcripts as described.
+
+{{LIMITLESS_DAY}}
+
+Follow-ups: Find indications of important activities that require further action.  This could be an upcoming meeting, contacting a freind, taking a shopping trip or other action.  The follow ups will be structured What, When, Where, Who and Why
+
+Emotional context: Identify times where emotions were high.  Joy, sadness, quite reflection or other experiences.  Structure these Emotion and context
+
+Wisdon: Choose a famous quote that may be pertenant to the activities or summary or emotional context.  Provide the quote and the author
+
+Follow this template.  Your output is markdown formatted.  Examples are given for each topic.  Create from one to three bullet points for each topic and a single famous quote."""
             
             # Create content in Quill Delta format
             content_delta = {"ops": [{"insert": default_prompt_content + "\n"}]}
@@ -372,22 +382,12 @@ class StartupService:
                 else:
                     logger.info("News source not fully configured, skipping source registration")
             
-            # Register Twitter source if enabled and path is provided
+            # Skip Twitter source registration during startup to prevent automatic scheduling
+            # Twitter sources are available for manual operations only (fetch button, archive uploads)
+            # and should not be registered during startup to avoid being automatically discovered
+            # and scheduled by the sync manager
             if self.config.twitter.is_configured():
-                try:
-                    logger.info("Registering Twitter source...")
-                    twitter_source = TwitterSource(
-                        self.config.twitter,
-                        TwitterAPIService(self.config.twitter),
-                        TwitterRateLimitService(self.database, self.config.twitter.rate_limit_minutes)
-                    )
-                    await self.ingestion_service.register_source(twitter_source)
-                    startup_result["sources_registered"].append("twitter")
-                    logger.info("Twitter source registered successfully")
-                except Exception as e:
-                    error_msg = f"Failed to register Twitter source: {str(e)}"
-                    logger.warning(error_msg)
-                    startup_result["errors"].append(error_msg)
+                logger.info("Twitter source configured but skipping startup registration - available for manual operations only")
             else:
                 logger.info("Twitter source not configured, skipping source registration")
 

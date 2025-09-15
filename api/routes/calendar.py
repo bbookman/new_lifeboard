@@ -23,7 +23,9 @@ from core.dependencies import get_startup_service_dependency, get_database_servi
 from config.factory import get_config
 from sources.limitless import LimitlessSource
 from sources.twitter import TwitterSource
+from services.twitter_api_service import TwitterRateLimitError
 from core.dependencies import get_dependency_registry
+from api.dependencies.twitter import get_twitter_source
 
 logger = logging.getLogger(__name__)
 
@@ -592,29 +594,6 @@ async def fetch_limitless_for_date(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-def get_twitter_source() -> TwitterSource:
-    """Get Twitter source instance"""
-    registry = get_dependency_registry()
-    startup_service = registry.get_startup_service()
-    if not startup_service:
-        logger.error("Startup service not available in dependency registry")
-        raise HTTPException(status_code=503, detail="Application not properly initialized")
-    
-    if not startup_service.ingestion_service:
-        logger.error("Ingestion service not available in startup service")
-        raise HTTPException(status_code=503, detail="Ingestion service not available")
-    
-    twitter_source = startup_service.ingestion_service.sources.get("twitter")
-    if not twitter_source:
-        available_sources = list(startup_service.ingestion_service.sources.keys())
-        logger.error(f"Twitter source not found. Available sources: {available_sources}")
-        raise HTTPException(status_code=404, detail="Twitter source not found or not configured")
-    
-    if not isinstance(twitter_source, TwitterSource):
-        logger.error(f"Twitter source is wrong type: {type(twitter_source)}")
-        raise HTTPException(status_code=404, detail="Twitter source not properly configured")
-    
-    return twitter_source
 
 
 @router.get("/twitter/status/{date}")
@@ -713,7 +692,15 @@ async def fetch_twitter_for_date(
         
         # Fetch tweets for today (Twitter API typically only returns recent tweets)
         logger.info(f"[TwitterOnDemandFetch] Fetching tweets from Twitter API")
-        tweets = await twitter_source.fetch_today_tweets()
+        try:
+            tweets = await twitter_source.fetch_today_tweets()
+        except TwitterRateLimitError as e:
+            logger.warning(f"[TwitterOnDemandFetch] Rate limit error during fetch: {e}")
+            raise HTTPException(
+                status_code=429, 
+                detail=str(e), 
+                headers={"Retry-After": str(getattr(e, "retry_after", 900))}
+            )
         
         if not tweets:
             logger.info(f"[TwitterOnDemandFetch] No tweets found for {date}")
@@ -759,7 +746,8 @@ async def fetch_twitter_for_date(
             # Get existing tweet IDs to avoid duplicates
             existing_tweet_ids = await twitter_source._get_existing_tweet_ids()
             
-            # Convert tweets to DataItems and process them
+            # Convert tweets to DataItems for batch processing
+            data_items = []
             for tweet in target_tweets:
                 if tweet['tweet_id'] in existing_tweet_ids:
                     logger.debug(f"[TwitterOnDemandFetch] Tweet {tweet['tweet_id']} already exists, skipping")
@@ -787,18 +775,17 @@ async def fetch_twitter_for_date(
                     
                     # Process through the processor
                     processed_item = twitter_source.processor.process(data_item)
-                    
-                    # Store through ingestion service
-                    logger.debug(f"[TwitterOnDemandFetch] Processing tweet: {tweet['tweet_id']}")
-                    await ingestion_service._process_and_store_item(processed_item, result)
-                    result.items_processed += 1
-                    logger.debug(f"[TwitterOnDemandFetch] Successfully processed tweet: {tweet['tweet_id']}")
+                    data_items.append(processed_item)
                     
                 except Exception as e:
-                    logger.error(f"[TwitterOnDemandFetch] Error processing tweet {tweet.get('tweet_id', 'unknown')}: {e}")
-                    result.errors.append(f"Error processing tweet {tweet.get('tweet_id', 'unknown')}: {str(e)}")
+                    logger.error(f"[TwitterOnDemandFetch] Error creating DataItem for tweet {tweet.get('tweet_id', 'unknown')}: {e}")
+                    result.errors.append(f"Error creating DataItem for tweet {tweet.get('tweet_id', 'unknown')}: {str(e)}")
             
-            result.end_time = datetime.now(timezone.utc)
+            # Use public ingestion method for batch processing
+            if data_items:
+                logger.info(f"[TwitterOnDemandFetch] Processing {len(data_items)} items through ingestion service")
+                result = await ingestion_service.ingest_items("twitter", data_items)
+                
             processed_count = result.items_processed
             stored_count = result.items_stored 
             errors = result.errors

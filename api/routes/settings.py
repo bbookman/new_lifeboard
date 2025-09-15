@@ -12,7 +12,10 @@ from fastapi.responses import JSONResponse
 
 from services.sync_manager_service import SyncManagerService
 from sources.twitter import TwitterSource
+from services.twitter_api_service import TwitterAPIService
+from services.twitter_rate_limit_service import TwitterRateLimitService
 from core.dependencies import get_dependency_registry
+from api.dependencies.twitter import get_twitter_source
 
 logger = logging.getLogger(__name__)
 
@@ -124,28 +127,6 @@ async def save_prompt_selection(request: PromptSelectionRequest) -> Dict[str, bo
         raise HTTPException(status_code=500, detail="Failed to save prompt selection")
 
 
-def get_twitter_source() -> TwitterSource:
-    registry = get_dependency_registry()
-    startup_service = registry.get_startup_service()
-    if not startup_service:
-        logger.error("Startup service not available in dependency registry")
-        raise HTTPException(status_code=503, detail="Application not properly initialized")
-    
-    if not startup_service.ingestion_service:
-        logger.error("Ingestion service not available in startup service")
-        raise HTTPException(status_code=503, detail="Ingestion service not available")
-    
-    twitter_source = startup_service.ingestion_service.sources.get("twitter")
-    if not twitter_source:
-        available_sources = list(startup_service.ingestion_service.sources.keys())
-        logger.error(f"Twitter source not found. Available sources: {available_sources}")
-        raise HTTPException(status_code=404, detail="Twitter source not found or not configured")
-    
-    if not isinstance(twitter_source, TwitterSource):
-        logger.error(f"Twitter source is wrong type: {type(twitter_source)}")
-        raise HTTPException(status_code=404, detail="Twitter source not properly configured")
-    
-    return twitter_source
 
 
 @router.post("/upload/twitter")

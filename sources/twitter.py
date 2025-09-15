@@ -20,12 +20,12 @@ logger = logging.getLogger(__name__)
 class TwitterSource(BaseSource):
     """Twitter data source"""
 
-    def __init__(self, config: TwitterConfig, twitter_api_service: TwitterAPIService = None, rate_limit_service: TwitterRateLimitService = None):
+    def __init__(self, config: TwitterConfig, twitter_api_service: TwitterAPIService = None, rate_limit_service: TwitterRateLimitService = None, db_service: DatabaseService = None):
         super().__init__("twitter")
         self.config = config
         self.processor = TwitterProcessor()
-        # Initialize a local database service for consistency
-        self.db_service = DatabaseService()
+        # Use provided database service or initialize a local one for consistency
+        self.db_service = db_service or DatabaseService()
         # Initialize services in correct order
         self.rate_limit_service = rate_limit_service or TwitterRateLimitService(self.db_service, self.config.rate_limit_minutes)
         self.api_service = twitter_api_service or TwitterAPIService(config)

@@ -225,10 +225,10 @@ async def _get_summary_prompt_status(document_id: str, document_service: Documen
             cursor = conn.execute("""
                 SELECT COUNT(*) as count
                 FROM prompt_settings 
-                WHERE setting_key = ? 
+                WHERE setting_key LIKE 'daily_summary_prompt_%' 
                   AND prompt_document_id = ? 
                   AND is_active = TRUE
-            """, (f"daily_summary_prompt_{document_id}", document_id))
+            """, (document_id,))
             row = cursor.fetchone()
             return row and row['count'] > 0
             
@@ -351,12 +351,14 @@ async def list_documents(
         # For now, we'll use the returned count as total (could optimize with separate count query)
         total = len(documents)
         
-        # Build document responses (skip expensive summary prompt status checks for list operations)
+        # Build document responses with summary prompt status for prompts
         document_responses = []
         for doc in documents:
-            # Skip summary prompt status checks in list view for performance
-            # This information is loaded when user opens document for editing
-            document_responses.append(DocumentResponse.from_document(doc, is_summary_prompt=None))
+            # Check summary prompt status for prompt documents
+            is_summary_prompt = None
+            if doc.document_type == "prompt":
+                is_summary_prompt = await _get_summary_prompt_status(doc.id, document_service)
+            document_responses.append(DocumentResponse.from_document(doc, is_summary_prompt=is_summary_prompt))
         
         return DocumentListResponse(
             documents=document_responses,
