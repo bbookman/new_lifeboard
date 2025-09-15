@@ -10,9 +10,8 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Calendar } from './ui/calendar';
 import { CalendarIcon } from 'lucide-react';
 import { Plus, Search, Edit3, Trash2, File, ScrollText, ChevronDown, ChevronRight, Folder, Link } from 'lucide-react';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
-import './quill-theme.css';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { SummaryPromptConflictModal } from './SummaryPromptConflictModal';
 import { apiClient } from '../lib/api';
 
@@ -81,9 +80,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     url: '',
     home_date: new Date()
   });
-  const [createFormDelta, setCreateFormDelta] = useState<any>(null);
   const [createIsSummaryPrompt, setCreateIsSummaryPrompt] = useState(false);
-  const createQuillRef = useRef<ReactQuill>(null);
   const [editForm, setEditForm] = useState({
     title: '',
     document_type: 'note' as 'note' | 'prompt' | 'link',
@@ -91,9 +88,8 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     url: '',
     home_date: new Date()
   });
-  const [editFormDelta, setEditFormDelta] = useState<any>(null);
   const [editIsSummaryPrompt, setEditIsSummaryPrompt] = useState(false);
-  const quillRef = useRef<ReactQuill>(null);
+  const [showPreview, setShowPreview] = useState(false);
   
   // Summary prompt conflict modal state
   const [showSummaryConflictModal, setShowSummaryConflictModal] = useState(false);
@@ -101,23 +97,12 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   const [pendingCreateSubmit, setPendingCreateSubmit] = useState(false);
   const [pendingEditSubmit, setPendingEditSubmit] = useState(false);
 
-  // Quill configuration for Markdown-compatible editing
-  const quillModules = {
-    toolbar: [
-      [{ 'header': [1, 2, 3, false] }],
-      ['bold', 'italic', 'code'],
-      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-      ['blockquote', 'code-block'],
-      ['link'],
-      ['clean']
-    ],
+  // Helper function to convert markdown to Delta format for backend compatibility
+  const markdownToSimpleDelta = (markdown: string) => {
+    return {
+      ops: [{ insert: markdown + '\n' }]
+    };
   };
-
-  const quillFormats = [
-    'header', 'bold', 'italic', 'code',
-    'list', 'bullet', 'ordered',
-    'blockquote', 'code-block', 'link'
-  ];
 
   useEffect(() => {
     // Only fetch if path actually changed  
@@ -363,23 +348,14 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     setOpenDocument(document);
     setViewMode('document');
 
-    // Set up both Delta and plain text content for editing
-    let plainTextContent = '';
-    if (document.content_delta?.ops) {
-      plainTextContent = document.content_delta.ops
-        .map((op: any) => typeof op.insert === 'string' ? op.insert : '')
-        .join('')
-        .replace(/\n$/, ''); // Remove trailing newline
-    }
-
+    // Use the markdown content directly from the document
     setEditForm({
       title: document.title,
       document_type: document.document_type as 'note' | 'prompt' | 'link',
-      content: plainTextContent,
+      content: document.content_md || '',
       url: document.url || '',
       home_date: new Date(document.home_date)
     });
-    setEditFormDelta(document.content_delta);
     setEditIsSummaryPrompt(document.is_summary_prompt || false); // Set summary prompt status from API
     setIsEditing(true); // Start in edit mode when clicking on document
   };
@@ -414,19 +390,10 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         }
       }
 
-      // Convert Delta content back to plain text for editing
-      let plainTextContent = '';
-      if (documentToEdit.content_delta?.ops) {
-        plainTextContent = documentToEdit.content_delta.ops
-          .map((op: any) => typeof op.insert === 'string' ? op.insert : '')
-          .join('')
-          .replace(/\n$/, ''); // Remove trailing newline
-      }
-
       setEditForm({
         title: documentToEdit.title,
         document_type: documentToEdit.document_type === 'folder' ? 'note' : documentToEdit.document_type,
-        content: plainTextContent,
+        content: documentToEdit.content_md || '',
         url: documentToEdit.url || '',
         home_date: new Date(documentToEdit.home_date)
       });
@@ -440,12 +407,12 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     handleBackToList();
   };
 
-  const handleQuillChange = (content: string, delta: any, source: string, editor: any) => {
-    setEditFormDelta(editor.getContents());
+  const handleContentChange = (content: string) => {
+    setEditForm(prev => ({ ...prev, content }));
   };
 
-  const handleCreateQuillChange = (content: string, delta: any, source: string, editor: any) => {
-    setCreateFormDelta(editor.getContents());
+  const handleCreateContentChange = (content: string) => {
+    setCreateForm(prev => ({ ...prev, content }));
   };
 
   // Helper function to check for existing summary prompt and handle conflicts
@@ -628,19 +595,8 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setLoading(true);
       setError(null);
 
-      // Get the current Delta content from Quill editor
-      const quillEditor = quillRef.current?.getEditor();
-      let deltaContent = quillEditor ? quillEditor.getContents() : editFormDelta;
-
-      // Ensure we have a valid Delta object
-      if (!deltaContent || !deltaContent.ops) {
-        deltaContent = { ops: [{ insert: '\n' }] };
-      }
-
-      // Convert Delta to plain object to ensure proper serialization
-      const serializedDelta = {
-        ops: deltaContent.ops || [{ insert: '\n' }]
-      };
+      // Convert markdown content to Delta format for backend compatibility
+      const serializedDelta = markdownToSimpleDelta(editForm.content);
 
       const response = await fetch(`/api/documents/${openDocument!.id}`, {
         method: 'PUT',
@@ -651,6 +607,7 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
           title: editForm.title,
           document_type: editForm.document_type,
           content_delta: serializedDelta,
+          content_md: editForm.content, // Send markdown content directly
           home_date: editForm.home_date.toISOString(),
           is_summary_prompt: editForm.document_type === 'prompt' ? editIsSummaryPrompt : undefined,
           ...(editForm.document_type === 'link' && { url: editForm.url })
@@ -712,26 +669,15 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         console.log('🔄 Creating summary prompt - this may take a moment due to embedding generation...');
       }
 
-      // Get the current Delta content from Quill editor
-      const quillEditor = quillRef.current?.getEditor();
-      let deltaContent = quillEditor ? quillEditor.getContents() : editFormDelta;
-
-      // Ensure we have a valid Delta object
-      if (!deltaContent || !deltaContent.ops) {
-        deltaContent = { ops: [{ insert: '\n' }] };
-      }
-
-      // Convert Delta to plain object to ensure proper serialization
-      const serializedDelta = {
-        ops: deltaContent.ops || [{ insert: '\n' }]
-      };
+      // Convert markdown content to Delta format for backend compatibility
+      const serializedDelta = markdownToSimpleDelta(editForm.content);
 
       // Prepare the request payload with all potentially required fields
       const payload = {
         title: editForm.title,
         document_type: editForm.document_type,
         content_delta: serializedDelta,
-        content_md: '', // Add empty markdown content as fallback
+        content_md: editForm.content, // Send markdown content directly
         path: currentFolderPath,
         is_folder: false, // Explicitly set as not a folder
         home_date: editForm.home_date.toISOString(),
@@ -827,25 +773,14 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setLoading(true);
       setError(null);
 
-      // Get the current Delta content from Create Quill editor
-      const createQuillEditor = createQuillRef.current?.getEditor();
-      let deltaContent = createQuillEditor ? createQuillEditor.getContents() : createFormDelta;
-
-      // Ensure we have a valid Delta object
-      if (!deltaContent || !deltaContent.ops) {
-        deltaContent = { ops: [{ insert: '\n' }] };
-      }
-
-      // Convert Delta to plain object to ensure proper serialization
-      const serializedDelta = {
-        ops: deltaContent.ops || [{ insert: '\n' }]
-      };
+      // Convert markdown content to Delta format for backend compatibility
+      const serializedDelta = markdownToSimpleDelta(createForm.content);
 
       const payload = {
         title: createForm.title,
         document_type: createForm.document_type,
         content_delta: serializedDelta,
-        content_md: '', // Add empty markdown content as fallback
+        content_md: createForm.content, // Send markdown content directly
         path: currentFolderPath,
         is_folder: false, // Explicitly set as not a folder
         home_date: createForm.home_date.toISOString(),
@@ -883,7 +818,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setDocuments(prev => [newDocument, ...prev]);
       setShowCreateDialog(false);
       setCreateForm({ title: '', document_type: 'note', content: '', url: '', home_date: new Date() });
-      setCreateFormDelta(null);
       setCreateIsSummaryPrompt(false);
 
       // Refresh summary prompt status for affected documents
@@ -941,7 +875,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         url: '',
         home_date: new Date()
       });
-      setEditFormDelta(null);
     }
   };
 
@@ -1313,17 +1246,15 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
           {/* Document Content */}
           <div className="border rounded-lg bg-card">
             {!isEditing ? (
-              // Read-only WYSIWYG view
+              // Read-only markdown view
               <div className="p-6">
                 <div className="prose prose-slate max-w-none">
                   <h1 className="text-3xl font-bold tracking-tight mb-6">{openDocument?.title}</h1>
-                  <ReactQuill
-                    value={openDocument?.content_delta || { ops: [{ insert: '\n' }] }}
-                    readOnly={true}
-                    modules={{ toolbar: false }}
-                    theme="bubble"
-                    className="quill-readonly"
-                  />
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                  >
+                    {openDocument?.content_md || 'No content available.'}
+                  </ReactMarkdown>
                 </div>
               </div>
             ) : (
@@ -1427,20 +1358,46 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
                 {/* Content Section */}
                 {editForm.document_type !== 'link' && (
                   <div className="flex-1">
-                    <Label className="text-base font-semibold mb-2 block">
-                      Content
-                    </Label>
-                    <div className="border rounded-lg overflow-hidden">
-                      <ReactQuill
-                        ref={quillRef}
-                        value={editFormDelta}
-                        onChange={handleQuillChange}
-                        modules={quillModules}
-                        formats={quillFormats}
-                        placeholder="Start writing your content here..."
-                        style={{ minHeight: '400px' }}
-                        theme="snow"
-                      />
+                    <div className="flex justify-between items-center mb-2">
+                      <Label className="text-base font-semibold">
+                        Content
+                      </Label>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant={!showPreview ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setShowPreview(false)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={showPreview ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setShowPreview(true)}
+                        >
+                          Preview
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="border rounded-lg overflow-hidden" style={{ minHeight: '400px' }}>
+                      {!showPreview ? (
+                        <textarea
+                          value={editForm.content}
+                          onChange={(e) => handleContentChange(e.target.value)}
+                          placeholder="Start writing your markdown content here...\n\n**Examples:**\n# Heading 1\n## Heading 2\n**Bold text**\n*Italic text*\n- Bullet point\n1. Numbered list\n[Link](https://example.com)\n```code block```"
+                          className="w-full h-full min-h-[400px] p-4 resize-none border-none outline-none font-mono text-sm leading-relaxed"
+                        />
+                      ) : (
+                        <div className="p-4 min-h-[400px] bg-gray-50 prose prose-slate max-w-none">
+                          <ReactMarkdown 
+                            remarkPlugins={[remarkGfm]}
+                          >
+                            {editForm.content || '*No content to preview*'}
+                          </ReactMarkdown>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2035,15 +1992,11 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
                   Content
                 </Label>
                 <div className="col-span-3 border rounded-lg overflow-hidden">
-                  <ReactQuill
-                    ref={createQuillRef}
-                    value={createFormDelta}
-                    onChange={handleCreateQuillChange}
-                    modules={quillModules}
-                    formats={quillFormats}
-                    placeholder="Enter document content..."
-                    style={{ minHeight: '200px' }}
-                    theme="snow"
+                  <textarea
+                    value={createForm.content}
+                    onChange={(e) => handleCreateContentChange(e.target.value)}
+                    placeholder="Enter document content in markdown format...\n\n**Examples:**\n# Heading 1\n## Heading 2\n**Bold text**\n*Italic text*\n- Bullet point\n[Link](https://example.com)"
+                    className="w-full min-h-[200px] p-3 resize-none border-none outline-none font-mono text-sm leading-relaxed"
                   />
                 </div>
               </div>

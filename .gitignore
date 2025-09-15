@@ -9,6 +9,7 @@ __pycache__/
 .kilocode/
 .vscode/  
 vector_ids.json
+.serena/
 
 CLAUD.md
 Gemini.md

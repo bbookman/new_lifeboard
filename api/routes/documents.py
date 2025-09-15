@@ -32,7 +32,7 @@ class CreateDocumentRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     document_type: str = Field(..., pattern="^(note|prompt|folder|link)$")
     content_delta: Optional[Dict[str, Any]] = Field(None, description="Quill Delta format content")
-    content_md: Optional[str] = Field(None, description="Markdown content (ignored, generated from delta)")
+    content_md: Optional[str] = Field(None, description="Markdown content for direct markdown editing")
     path: str = Field("/", description="Virtual directory path")
     is_folder: Optional[bool] = Field(None, description="Whether this is a folder (ignored, determined by document_type)")
     url: Optional[str] = Field(None, description="URL for link documents")
@@ -68,7 +68,7 @@ class UpdateDocumentRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     document_type: Optional[str] = Field(None, pattern="^(note|prompt|link)$", description="Document type")
     content_delta: Optional[Dict[str, Any]] = Field(None, description="Quill Delta format content")
-    content_md: Optional[str] = Field(None, description="Markdown content (ignored, generated from delta)")
+    content_md: Optional[str] = Field(None, description="Markdown content for direct markdown editing")
     url: Optional[str] = Field(None, description="URL for link documents")
     home_date: Optional[str] = Field(None, description="Home date for the document")
     is_summary_prompt: Optional[bool] = Field(None, description="Whether this prompt should be set as the summary prompt")
@@ -182,6 +182,7 @@ async def create_document(
                 title=request.title,
                 document_type=request.document_type,
                 content_delta=content_delta,
+                content_md=request.content_md,
                 path=request.path,
                 url=request.url,
                 home_date=home_date
@@ -641,7 +642,7 @@ async def process_template(
 ) -> ProcessTemplateResponse:
     """Process template variables in content"""
     try:
-        resolved_content = document_service.process_template(
+        resolved_content = await document_service.process_template(
             content=request.content,
             target_date=request.target_date
         )
@@ -704,7 +705,7 @@ async def process_document_template(
             raise HTTPException(status_code=404, detail="Document not found")
         
         # Process template in markdown content
-        resolved_content = document_service.process_template(
+        resolved_content = await document_service.process_template(
             content=document.content_md,
             target_date=target_date
         )
@@ -775,6 +776,7 @@ async def update_document(
             title=request.title,
             document_type=request.document_type,
             content_delta=request.content_delta,
+            content_md=request.content_md,
             url=request.url,
             home_date=home_date
         )

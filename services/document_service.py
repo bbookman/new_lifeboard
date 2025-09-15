@@ -66,7 +66,8 @@ class DocumentService(BaseService):
     async def create_document(self,
                              title: str,
                              document_type: str,
-                             content_delta: Dict[str, Any],
+                             content_delta: Optional[Dict[str, Any]] = None,
+                             content_md: Optional[str] = None,
                              path: str = "/",
                              url: Optional[str] = None,
                              home_date: Optional[datetime] = None) -> Document:
@@ -81,8 +82,16 @@ class DocumentService(BaseService):
         # Generate document ID
         doc_id = str(uuid.uuid4())
         
-        # Convert Delta to Markdown
-        content_md = self._delta_to_markdown(content_delta)
+        # Handle content: prefer markdown if provided, otherwise convert from delta
+        if content_md is not None:
+            # Direct markdown input - ensure we have a delta for backward compatibility
+            if content_delta is None:
+                content_delta = {"ops": [{"insert": content_md + "\n"}]}
+        else:
+            # Convert Delta to Markdown (legacy path)
+            if content_delta is None:
+                content_delta = {"ops": [{"insert": "\n"}]}
+            content_md = self._delta_to_markdown(content_delta)
         
         # Validate content length
         if len(content_md) > self.config.documents.max_content_length:
@@ -128,6 +137,7 @@ class DocumentService(BaseService):
                              title: Optional[str] = None,
                              document_type: Optional[str] = None,  # Added parameter
                              content_delta: Optional[Dict[str, Any]] = None,
+                             content_md: Optional[str] = None,
                              url: Optional[str] = None,
                              home_date: Optional[datetime] = None) -> Document:
         """Update an existing document"""
@@ -156,16 +166,28 @@ class DocumentService(BaseService):
             logger.info(f"[DEBUG] Updating document type from {document.document_type} to {document_type}")
             document.document_type = document_type
         
-        if content_delta is not None:
-            # Convert Delta to Markdown
-            content_md = self._delta_to_markdown(content_delta)
-            
-            # Validate content length
+        # Handle content updates: prefer markdown if provided, otherwise convert from delta
+        content_updated = False
+        if content_md is not None:
+            # Direct markdown input - ensure we have a delta for backward compatibility
             if len(content_md) > self.config.documents.max_content_length:
                 raise ValueError(f"Content too long (max {self.config.documents.max_content_length} characters)")
             
-            document.content_delta = content_delta
             document.content_md = content_md
+            # Create a simple delta for backward compatibility
+            document.content_delta = {"ops": [{"insert": content_md + "\n"}]}
+            content_updated = True
+        elif content_delta is not None:
+            # Convert Delta to Markdown (legacy path)
+            converted_md = self._delta_to_markdown(content_delta)
+            
+            # Validate content length
+            if len(converted_md) > self.config.documents.max_content_length:
+                raise ValueError(f"Content too long (max {self.config.documents.max_content_length} characters)")
+            
+            document.content_delta = content_delta
+            document.content_md = converted_md
+            content_updated = True
         
         # Update URL if provided (for link documents)
         if url is not None:
@@ -184,7 +206,7 @@ class DocumentService(BaseService):
         await self._store_document(document)
         
         # Update vector embeddings if content changed
-        if content_delta is not None:
+        if content_updated:
             await self._update_document_embeddings(document)
         
         logger.info(f"Updated document: {doc_id} - {document.title} (type: {document.document_type})")
@@ -601,12 +623,12 @@ class DocumentService(BaseService):
                 # Handle text with attributes
                 attributes = op.get('attributes', {})
                 
-                # Apply formatting
-                if attributes.get('bold'):
+                # Apply formatting - avoid double-wrapping already formatted text
+                if attributes.get('bold') and not (text.startswith('**') and text.endswith('**')):
                     text = f"**{text}**"
-                if attributes.get('italic'):
+                if attributes.get('italic') and not (text.startswith('*') and text.endswith('*')):
                     text = f"*{text}*"
-                if attributes.get('code'):
+                if attributes.get('code') and not (text.startswith('`') and text.endswith('`')):
                     text = f"`{text}`"
                 if attributes.get('link'):
                     text = f"[{text}]({attributes['link']})"
@@ -928,6 +950,9 @@ class DocumentService(BaseService):
                 database=self.database,
                 config=self.config
             )
+            
+            # Initialize the service properly
+            await template_processor._initialize_service()
             
             # Resolve template
             result = await template_processor.resolve_template(content, target_date)

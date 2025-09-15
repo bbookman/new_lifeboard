@@ -43,8 +43,8 @@ class TwitterRateLimitService:
             
             # Log the DB-stored last fetch timestamp
             last_fetch_iso = last_fetch_time.isoformat() if last_fetch_time else 'None'
-            logger.info(f"[TWITTER TRACE] Last successful fetch (DB): {last_fetch_iso}")
-            logger.info(f"[TWITTER TRACE] Elapsed minutes: {elapsed_minutes:.1f}, minutes remaining: {max(0, self.rate_limit_minutes - elapsed_minutes):.1f}")
+            logger.debug(f"Last successful fetch (DB): {last_fetch_iso}")
+            logger.debug(f"Elapsed minutes: {elapsed_minutes:.1f}, minutes remaining: {max(0, self.rate_limit_minutes - elapsed_minutes):.1f}")
             
             if elapsed_minutes >= self.rate_limit_minutes:
                 logger.info(f"[TWITTER TRACE] {elapsed_minutes:.1f} minutes elapsed, allowing fetch")
@@ -73,7 +73,7 @@ class TwitterRateLimitService:
                 await self._update_last_fetch_time(now)
                 logger.info(f"[TWITTER TRACE] Recorded successful fetch at {now.isoformat()}")
             else:
-                logger.info("[TWITTER TRACE] Failed fetch not recorded for rate limiting")
+                logger.debug("Failed fetch not recorded for rate limiting")
                 
         except Exception as e:
             logger.error(f"[TWITTER TRACE] Error recording fetch attempt: {e}")

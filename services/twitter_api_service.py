@@ -126,7 +126,7 @@ class TwitterAPIService:
         # Start timing and log request start
         request_start_time = time.time()
         start_timestamp = datetime.now(timezone.utc).isoformat()
-        logger.info(f"[TWITTER TRACE] API Request starting at {start_timestamp}")
+        logger.debug(f"[TWITTER TRACE] API Request starting at {start_timestamp}")
         
         # Log complete request details with sanitized headers
         sanitized_headers = dict(self.session.headers)
@@ -144,13 +144,13 @@ class TwitterAPIService:
                 # Non-bearer authorization, mask completely
                 sanitized_headers['Authorization'] = "***MASKED***"
         
-        logger.info(f"[TWITTER TRACE] Request URL: {url}")
+        logger.debug(f"[TWITTER TRACE] Request URL: {url}")
         if self.config.diagnostic_mode:
             logger.info(f"[TWITTER TRACE] Request parameters: {json.dumps(params, indent=2) if params else 'None'}")
             logger.info(f"[TWITTER TRACE] Request headers (sanitized): {json.dumps(sanitized_headers, indent=2)}")
         else:
-            logger.info(f"[TWITTER TRACE] Request parameters: {'Present' if params else 'None'}")
-            logger.info(f"[TWITTER TRACE] Request headers: Configured")
+            logger.debug(f"[TWITTER TRACE] Request parameters: {'Present' if params else 'None'}")
+            logger.debug(f"[TWITTER TRACE] Request headers: Configured")
         
         # Retry counter for server errors and network issues (not rate limits)
         other_error_attempts = 0
@@ -159,7 +159,7 @@ class TwitterAPIService:
             try:
                 attempt_number = other_error_attempts + 1
                 attempt_start_time = time.time()
-                logger.info(f"[TWITTER TRACE] Making attempt {attempt_number}")
+                logger.debug(f"[TWITTER TRACE] Making attempt {attempt_number}")
                 
                 async with self.session.get(url, params=params) as response:
                     try:
@@ -179,14 +179,14 @@ class TwitterAPIService:
                     request_duration = (time.time() - request_start_time) * 1000  # Convert to milliseconds
                     
                     # Log response details (conditional on diagnostic mode)
-                    logger.info(f"[TWITTER TRACE] Response status: {response.status}")
-                    logger.info(f"[TWITTER TRACE] Request duration: {request_duration:.2f}ms")
+                    logger.debug(f"[TWITTER TRACE] Response status: {response.status}")
+                    logger.debug(f"[TWITTER TRACE] Request duration: {request_duration:.2f}ms")
                     if self.config.diagnostic_mode:
                         logger.info(f"[TWITTER TRACE] Response headers: {json.dumps(dict(response.headers), indent=2)}")
                         logger.info(f"[TWITTER TRACE] Response body: {json.dumps(response_data, indent=2)}")
                     else:
-                        logger.info(f"[TWITTER TRACE] Response headers: Present")
-                        logger.info(f"[TWITTER TRACE] Response body: Present")
+                        logger.debug(f"[TWITTER TRACE] Response headers: Present")
+                        logger.debug(f"[TWITTER TRACE] Response body: Present")
                     
                     # Log rate limit info in structured format
                     try:
@@ -196,7 +196,7 @@ class TwitterAPIService:
                             'limit': response.headers.get('x-rate-limit-limit')
                         }
                         if any(rate_limit_info.values()):
-                            logger.info(f"[TWITTER TRACE] Rate limit info: {json.dumps(rate_limit_info, indent=2)}")
+                            logger.debug(f"[TWITTER TRACE] Rate limit info: {json.dumps(rate_limit_info, indent=2)}")
                     except Exception as e:
                         logger.debug(f"[TWITTER TRACE] Could not log rate limit headers: {e}")
                     
@@ -299,20 +299,20 @@ class TwitterAPIService:
         Kept for backwards compatibility and testing purposes.
         """
         url = f"{self.base_url}/users/by/username/{username}"
-        logger.info(f"[TWITTER TRACE] Fetching user ID for username: {username}")
-        logger.info(f"[TWITTER TRACE] Request URL: {url}")
-        logger.info(f"[TWITTER TRACE] Headers: {self.session.headers if self.session else 'No session'}")
+        logger.debug(f"[TWITTER TRACE] Fetching user ID for username: {username}")
+        logger.debug(f"[TWITTER TRACE] Request URL: {url}")
+        logger.debug(f"[TWITTER TRACE] Headers: {self.session.headers if self.session else 'No session'}")
         
         try:
             response_data = await self._make_request(url)
-            logger.info(f"[TWITTER TRACE] Response data: {response_data}")
+            logger.debug(f"[TWITTER TRACE] Response data: {response_data}")
             
             if 'data' not in response_data:
                 logger.error(f"[TWITTER TRACE] User data not found in response: {response_data}")
                 raise TwitterNotFoundError(f"User data not found for username: {username}", response_data=response_data)
                 
             user_id = response_data['data']['id']
-            logger.info(f"[TWITTER TRACE] Found user ID {user_id} for username {username}")
+            logger.debug(f"[TWITTER TRACE] Found user ID {user_id} for username {username}")
             return user_id
             
         except (TwitterAuthError, TwitterPermissionError, TwitterNotFoundError) as e:
@@ -331,7 +331,7 @@ class TwitterAPIService:
         from datetime import timedelta
         
         method_start_time = time.time()
-        logger.info(f"[TWITTER TRACE] get_todays_tweets starting at {datetime.now(timezone.utc).isoformat()}")
+        logger.debug(f"[TWITTER TRACE] get_todays_tweets starting at {datetime.now(timezone.utc).isoformat()}")
         
         user_id = user_id or self.config.user_id
         if not user_id or not str(user_id).strip():
@@ -355,19 +355,19 @@ class TwitterAPIService:
             'max_results': 100  # Maximum allowed by API
         }
 
-        logger.info(f"[TWITTER TRACE] API call parameters:")
-        logger.info(f"[TWITTER TRACE] - User ID: {user_id}")
-        logger.info(f"[TWITTER TRACE] - Lookback days: {self.config.lookback_days}")
-        logger.info(f"[TWITTER TRACE] - Time range: {start_time} to {end_time}")
-        logger.info(f"[TWITTER TRACE] - URL: {url}")
-        logger.info(f"[TWITTER TRACE] - Query parameters: {json.dumps(params, indent=2)}")
+        logger.debug(f"[TWITTER TRACE] API call parameters:")
+        logger.debug(f"[TWITTER TRACE] - User ID: {user_id}")
+        logger.debug(f"[TWITTER TRACE] - Lookback days: {self.config.lookback_days}")
+        logger.debug(f"[TWITTER TRACE] - Time range: {start_time} to {end_time}")
+        logger.debug(f"[TWITTER TRACE] - URL: {url}")
+        logger.debug(f"[TWITTER TRACE] - Query parameters: {json.dumps(params, indent=2)}")
         
         # Time the API call phase
         api_call_start = time.time()
         response_data = await self._make_request(url, params)
         api_call_duration = (time.time() - api_call_start) * 1000
-        
-        logger.info(f"[TWITTER TRACE] API call completed in {api_call_duration:.2f}ms")
+
+        logger.debug(f"[TWITTER TRACE] API call completed in {api_call_duration:.2f}ms")
         
         # Time the processing phase
         processing_start = time.time()
@@ -377,15 +377,15 @@ class TwitterAPIService:
         places = {place['id']: place for place in includes.get('places', [])}
         media = {media_item['media_key']: media_item for media_item in includes.get('media', [])}
         
-        logger.info(f"[TWITTER TRACE] Response processing:")
-        logger.info(f"[TWITTER TRACE] - Tweet count: {len(tweets)}")
-        logger.info(f"[TWITTER TRACE] - Includes data: {json.dumps(includes, indent=2) if includes else 'None'}")
-        logger.info(f"[TWITTER TRACE] - Places count: {len(places)}")
-        logger.info(f"[TWITTER TRACE] - Media count: {len(media)}")
+        logger.debug(f"[TWITTER TRACE] Response processing:")
+        logger.debug(f"[TWITTER TRACE] - Tweet count: {len(tweets)}")
+        logger.debug(f"[TWITTER TRACE] - Includes data: {json.dumps(includes, indent=2) if includes else 'None'}")
+        logger.debug(f"[TWITTER TRACE] - Places count: {len(places)}")
+        logger.debug(f"[TWITTER TRACE] - Media count: {len(media)}")
         if places:
-            logger.info(f"[TWITTER TRACE] - Place IDs: {list(places.keys())}")
+            logger.debug(f"[TWITTER TRACE] - Place IDs: {list(places.keys())}")
         if media:
-            logger.info(f"[TWITTER TRACE] - Media keys: {list(media.keys())}")
+            logger.debug(f"[TWITTER TRACE] - Media keys: {list(media.keys())}")
 
         # Add place and media data to tweets
         for tweet in tweets:
@@ -394,7 +394,7 @@ class TwitterAPIService:
                 place_id = tweet['geo']['place_id']
                 if place_id in places:
                     tweet['place'] = places[place_id]
-                    logger.info(f"[TWITTER TRACE] Added place data to tweet {tweet['id']}: {places[place_id].get('full_name', 'Unknown')}")
+                    logger.debug(f"[TWITTER TRACE] Added place data to tweet {tweet['id']}: {places[place_id].get('full_name', 'Unknown')}")
             
             # Add media data
             if tweet.get('attachments') and tweet['attachments'].get('media_keys'):
@@ -403,15 +403,15 @@ class TwitterAPIService:
                     if media_key in media:
                         media_item = media[media_key]
                         tweet_media.append(media_item)
-                        logger.info(f"[TWITTER TRACE] Added media to tweet {tweet['id']}: {media_item.get('type', 'unknown')} - {media_item.get('url', media_item.get('preview_image_url', 'no_url'))}")
+                        logger.debug(f"[TWITTER TRACE] Added media to tweet {tweet['id']}: {media_item.get('type', 'unknown')} - {media_item.get('url', media_item.get('preview_image_url', 'no_url'))}")
                 tweet['media_items'] = tweet_media
 
         processing_duration = (time.time() - processing_start) * 1000
         total_duration = (time.time() - method_start_time) * 1000
         
-        logger.info(f"[TWITTER TRACE] Processing completed in {processing_duration:.2f}ms")
-        logger.info(f"[TWITTER TRACE] get_todays_tweets total duration: {total_duration:.2f}ms")
-        logger.info(f"[TWITTER TRACE] Returning {len(tweets)} tweets")
+        logger.debug(f"[TWITTER TRACE] Processing completed in {processing_duration:.2f}ms")
+        logger.debug(f"[TWITTER TRACE] get_todays_tweets total duration: {total_duration:.2f}ms")
+        logger.debug(f"[TWITTER TRACE] Returning {len(tweets)} tweets")
 
         return tweets
     
@@ -419,35 +419,35 @@ class TwitterAPIService:
         """Fetch today's tweets for the configured user"""
         method_start_time = time.time()
         start_timestamp = datetime.now(timezone.utc).isoformat()
-        logger.info(f"[TWITTER TRACE] fetch_user_tweets_today starting at {start_timestamp}")
+        logger.debug(f"[TWITTER TRACE] fetch_user_tweets_today starting at {start_timestamp}")
         
         # Log configuration validation details
-        logger.info(f"[TWITTER TRACE] Configuration validation:")
-        logger.info(f"[TWITTER TRACE] - Bearer token present: {bool(self.config.bearer_token)}")
-        logger.info(f"[TWITTER TRACE] - Bearer token length: {len(self.config.bearer_token or '')}")
-        logger.info(f"[TWITTER TRACE] - User ID present: {bool(self.config.user_id)}")
-        logger.info(f"[TWITTER TRACE] - User ID value: {self.config.user_id}")
-        logger.info(f"[TWITTER TRACE] - Username: {self.config.username}")
-        logger.info(f"[TWITTER TRACE] - API configured check: {self.config.is_api_configured()}")
+        logger.debug(f"[TWITTER TRACE] Configuration validation:")
+        logger.debug(f"[TWITTER TRACE] - Bearer token present: {bool(self.config.bearer_token)}")
+        logger.debug(f"[TWITTER TRACE] - Bearer token length: {len(self.config.bearer_token or '')}")
+        logger.debug(f"[TWITTER TRACE] - User ID present: {bool(self.config.user_id)}")
+        logger.debug(f"[TWITTER TRACE] - User ID value: {self.config.user_id}")
+        logger.debug(f"[TWITTER TRACE] - Username: {self.config.username}")
+        logger.debug(f"[TWITTER TRACE] - API configured check: {self.config.is_api_configured()}")
         
         if not self.config.is_api_configured():
             logger.error("[TWITTER TRACE] API Configuration validation failed - returning empty list")
             return []
         
-        logger.info(f"[TWITTER TRACE] Using configured user_id: {self.config.user_id}")
+        logger.debug(f"[TWITTER TRACE] Using configured user_id: {self.config.user_id}")
         try:
             # Time the tweet fetching phase
             fetch_start_time = time.time()
             tweets = await self.get_todays_tweets()
             fetch_duration = (time.time() - fetch_start_time) * 1000
             
-            logger.info(f"[TWITTER TRACE] Fetched {len(tweets)} raw tweets in {fetch_duration:.2f}ms")
+            logger.debug(f"[TWITTER TRACE] Fetched {len(tweets)} raw tweets in {fetch_duration:.2f}ms")
             
             # Time the tweet processing phase
             processing_start_time = time.time()
             transformed_tweets = []
             
-            logger.info(f"[TWITTER TRACE] Starting transformation of {len(tweets)} tweets")
+            logger.debug(f"[TWITTER TRACE] Starting transformation of {len(tweets)} tweets")
 
             for i, tweet in enumerate(tweets):
                 tweet_start_time = time.time()
@@ -476,9 +476,9 @@ class TwitterAPIService:
             processing_duration = (time.time() - processing_start_time) * 1000
             total_duration = (time.time() - method_start_time) * 1000
             
-            logger.info(f"[TWITTER TRACE] Processed {len(transformed_tweets)} tweets in {processing_duration:.2f}ms")
-            logger.info(f"[TWITTER TRACE] fetch_user_tweets_today completed at {datetime.now(timezone.utc).isoformat()}")
-            logger.info(f"[TWITTER TRACE] Total duration: {total_duration:.2f}ms")
+            logger.debug(f"[TWITTER TRACE] Processed {len(transformed_tweets)} tweets in {processing_duration:.2f}ms")
+            logger.debug(f"[TWITTER TRACE] fetch_user_tweets_today completed at {datetime.now(timezone.utc).isoformat()}")
+            logger.debug(f"[TWITTER TRACE] Total duration: {total_duration:.2f}ms")
             
             return transformed_tweets
             
@@ -532,36 +532,36 @@ class TwitterAPIService:
     
     def log_configuration_diagnostics(self) -> None:
         """Log comprehensive configuration state for diagnostics"""
-        logger.info("[TWITTER TRACE] Configuration Diagnostics:")
-        logger.info(f"[TWITTER TRACE] - Bearer token present: {bool(self.config.bearer_token)}")
+        logger.debug("[TWITTER TRACE] Configuration Diagnostics:")
+        logger.debug(f"[TWITTER TRACE] - Bearer token present: {bool(self.config.bearer_token)}")
         if self.config.bearer_token:
             token_length = len(self.config.bearer_token)
-            logger.info(f"[TWITTER TRACE] - Bearer token length: {token_length}")
-            logger.info(f"[TWITTER TRACE] - Bearer token format: {'Valid' if token_length > 10 else 'Invalid'}")
+            logger.debug(f"[TWITTER TRACE] - Bearer token length: {token_length}")
+            logger.debug(f"[TWITTER TRACE] - Bearer token format: {'Valid' if token_length > 10 else 'Invalid'}")
         else:
-            logger.info("[TWITTER TRACE] - Bearer token: None")
-        
-        logger.info(f"[TWITTER TRACE] - Username present: {bool(self.config.username)}")
-        logger.info(f"[TWITTER TRACE] - Username value: {self.config.username}")
-        logger.info(f"[TWITTER TRACE] - User ID present: {bool(self.config.user_id)}")
-        logger.info(f"[TWITTER TRACE] - User ID value: {self.config.user_id}")
-        logger.info(f"[TWITTER TRACE] - Request timeout: {self.config.request_timeout}")
-        logger.info(f"[TWITTER TRACE] - Retry delay: {self.config.retry_delay}")
-        logger.info(f"[TWITTER TRACE] - Max retries: {self.config.other_error_max_retries}")
-        logger.info(f"[TWITTER TRACE] - API configured check: {self.config.is_api_configured()}")
-        logger.info(f"[TWITTER TRACE] - Base URL: {self.base_url}")
+            logger.debug("[TWITTER TRACE] - Bearer token: None")
+
+        logger.debug(f"[TWITTER TRACE] - Username present: {bool(self.config.username)}")
+        logger.debug(f"[TWITTER TRACE] - Username value: {self.config.username}")
+        logger.debug(f"[TWITTER TRACE] - User ID present: {bool(self.config.user_id)}")
+        logger.debug(f"[TWITTER TRACE] - User ID value: {self.config.user_id}")
+        logger.debug(f"[TWITTER TRACE] - Request timeout: {self.config.request_timeout}")
+        logger.debug(f"[TWITTER TRACE] - Retry delay: {self.config.retry_delay}")
+        logger.debug(f"[TWITTER TRACE] - Max retries: {self.config.other_error_max_retries}")
+        logger.debug(f"[TWITTER TRACE] - API configured check: {self.config.is_api_configured()}")
+        logger.debug(f"[TWITTER TRACE] - Base URL: {self.base_url}")
         
     def is_configured(self) -> bool:
         """Check if the service is properly configured"""
-        logger.info("[TWITTER TRACE] Checking if Twitter API is configured...")
+        logger.debug("[TWITTER TRACE] Checking if Twitter API is configured...")
         self.log_configuration_diagnostics()
         result = self.config.is_api_configured()
-        logger.info(f"[TWITTER TRACE] Final configuration result: {result}")
+        logger.debug(f"[TWITTER TRACE] Final configuration result: {result}")
         return result
     
     async def test_api_connectivity(self) -> Dict[str, Any]:
         """Test API connectivity and return detailed results for diagnostics"""
-        logger.info("[TWITTER TRACE] Testing API connectivity...")
+        logger.debug("[TWITTER TRACE] Testing API connectivity...")
         test_start_time = time.time()
         
         if not self.config.is_api_configured():
@@ -571,7 +571,7 @@ class TwitterAPIService:
                 'details': 'Missing bearer token or user ID',
                 'duration_ms': 0
             }
-            logger.error(f"[TWITTER TRACE] API connectivity test failed: {result}")
+            logger.debug(f"[TWITTER TRACE] API connectivity test failed: {result}")
             return result
         
         try:
@@ -579,7 +579,7 @@ class TwitterAPIService:
             url = f"{self.base_url}/users/{self.config.user_id}"
             params = {'user.fields': 'id,username,name'}
             
-            logger.info(f"[TWITTER TRACE] Testing connectivity with URL: {url}")
+            logger.debug(f"[TWITTER TRACE] Testing connectivity with URL: {url}")
             response_data = await self._make_request(url, params)
             
             test_duration = (time.time() - test_start_time) * 1000
@@ -589,7 +589,7 @@ class TwitterAPIService:
                 'duration_ms': test_duration,
                 'user_info': response_data.get('data', {})
             }
-            logger.info(f"[TWITTER TRACE] API connectivity test successful: {result}")
+            logger.debug(f"[TWITTER TRACE] API connectivity test successful: {result}")
             return result
             
         except Exception as e:
@@ -600,5 +600,5 @@ class TwitterAPIService:
                 'error_type': type(e).__name__,
                 'duration_ms': test_duration
             }
-            logger.error(f"[TWITTER TRACE] API connectivity test failed: {result}")
+            logger.debug(f"[TWITTER TRACE] API connectivity test failed: {result}")
             return result

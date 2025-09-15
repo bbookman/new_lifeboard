@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+from pathlib import Path
 
 from services.scheduler import AsyncScheduler
 from services.ingestion import IngestionService
@@ -270,20 +271,21 @@ class StartupService:
                 startup_result["default_prompt_created"] = False
                 return
             
-            logger.info("No daily summary prompt found, creating default prompt...")
+            logger.info("No daily summary prompt found, creating default from file...")
             
-            # Create default prompt document
-            default_prompt_content = """The following is speech-to-text transcription of a day.  You are an expert at documenting a day in the life of a person.  You recognize important events and context.  You deeply understand human psychology and emotional makeup. Your goal is to summarize and extract meaning from the transcripts as described.
-
-{{LIMITLESS_DAY}}
-
-Follow-ups: Find indications of important activities that require further action.  This could be an upcoming meeting, contacting a freind, taking a shopping trip or other action.  The follow ups will be structured What, When, Where, Who and Why
-
-Emotional context: Identify times where emotions were high.  Joy, sadness, quite reflection or other experiences.  Structure these Emotion and context
-
-Wisdon: Choose a famous quote that may be pertenant to the activities or summary or emotional context.  Provide the quote and the author
-
-Follow this template.  Your output is markdown formatted.  Examples are given for each topic.  Create from one to three bullet points for each topic and a single famous quote."""
+            # Load content from external file
+            file_path = Path("supporting_documents/default_summary.md")
+            
+            if not file_path.exists():
+                raise FileNotFoundError(f"Default summary file not found: {file_path}")
+            
+            with open(file_path, 'r', encoding='utf-8') as f:
+                default_prompt_content = f.read().strip()
+            
+            if not default_prompt_content:
+                raise ValueError("Default summary file is empty")
+            
+            logger.info(f"Loaded default summary content from {file_path} ({len(default_prompt_content)} characters)")
             
             # Create content in Quill Delta format
             content_delta = {"ops": [{"insert": default_prompt_content + "\n"}]}
@@ -295,18 +297,26 @@ Follow this template.  Your output is markdown formatted.  Examples are given fo
                 path="/"
             )
             
-            # Create prompt setting to activate this document
+            # Create prompt setting to activate this document with is_active = 1
             with self.database.get_connection() as conn:
                 conn.execute("""
                     INSERT INTO prompt_settings 
                     (setting_key, prompt_document_id, is_active, created_at, updated_at)
-                    VALUES (?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, ("daily_summary_prompt_default", document.id))
                 conn.commit()
             
             startup_result["default_prompt_created"] = True
             startup_result["default_prompt_document_id"] = document.id
-            logger.info(f"Default summary prompt created successfully with document ID: {document.id}")
+            startup_result["default_prompt_source"] = str(file_path)
+            logger.info(f"Default summary prompt created from file with document ID: {document.id}")
+            
+        except (FileNotFoundError, PermissionError, UnicodeDecodeError, ValueError) as e:
+            error_msg = f"Failed to load default prompt from file: {str(e)}"
+            logger.error(error_msg)
+            startup_result["errors"].append(error_msg)
+            startup_result["default_prompt_created"] = False
+            # Don't raise - default prompt creation failure shouldn't block startup
             
         except Exception as e:
             error_msg = f"Failed to initialize default prompt: {str(e)}"
@@ -476,6 +486,12 @@ Follow this template.  Your output is markdown formatted.  Examples are given fo
                 check_interval_seconds=self.config.scheduler.check_interval_seconds,
                 max_concurrent_jobs=self.config.scheduler.max_concurrent_jobs
             )
+            # Clean up any existing Twitter scheduler jobs from previous runs
+            purged_count = await self.scheduler.purge_jobs_by_namespace('twitter')
+            if purged_count > 0:
+                logger.info(f'Cleaned up {purged_count} existing Twitter scheduler jobs - Twitter operates in manual-only mode')
+
+            # Initialize sync manager
             
             # Initialize sync manager
             self.sync_manager = SyncManagerService(
