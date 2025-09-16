@@ -117,6 +117,11 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
   }, []);
 
   useEffect(() => {
+    // Only apply client-side filtering when not searching
+    if (searchQuery.trim()) {
+      return; // Let handleSearch manage the documents when searching
+    }
+
     let filtered = allDocuments;
 
     // Filter by type
@@ -137,13 +142,6 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
         filtered = filtered.filter(doc => doc.document_type === 'link');
     }
 
-    // Filter by search query
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(doc =>
-        doc.title.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
     setDocuments(filtered);
   }, [selectedType, allDocuments, searchQuery]);
 
@@ -160,6 +158,8 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       setEditForm({ title: '', document_type: 'note', content: '', url: '', home_date: new Date() });
       setEditIsSummaryPrompt(false);
       setError(null);
+      // Clear search query to prevent stale search on return
+      setSearchQuery('');
     };
 
     window.addEventListener('forceDocumentsList', handleForceList);
@@ -190,6 +190,9 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     try {
       setLoading(true);
       setError(null);
+      
+      // Clear search query when fetching fresh documents to prevent stale search
+      setSearchQuery('');
 
       const startTime = performance.now();
 
@@ -216,18 +219,51 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
     }
   };
 
-  const handleSearch = () => {
-    // The actual filtering is now done in the useEffect hook
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      setDocuments(allDocuments);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const searchParams = new URLSearchParams();
+      searchParams.append('q', searchQuery.trim());
+      searchParams.append('limit', '50');
+
+      const response = await fetch(`/api/documents/search?${searchParams}`);
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
+
+      const searchData = await response.json();
+      const searchResults = searchData.results.map((result: any) => ({
+        ...result.document,
+        selected: false
+      }));
+      
+      setDocuments(searchResults);
+    } catch (err) {
+      console.error('Search error:', err);
+      setError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Debounced search to avoid excessive filtering
+  // Debounced search to avoid excessive API calls
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
-      // Filtering logic already handled in main filter effect
+      if (searchQuery.trim()) {
+        handleSearch();
+      } else {
+        // Reset to show all documents when search is cleared
+        setDocuments(allDocuments);
+      }
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [searchQuery]);
+  }, [searchQuery, allDocuments]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -1501,18 +1537,49 @@ export const DocumentsView = ({ initialFilter = 'all' }: DocumentsViewProps) => 
       {/* Search Bar */}
       <div className="flex items-center gap-4">
         <div className="flex-1 flex gap-2">
-          <Input
-            placeholder="Search documents..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-            className="flex-1"
-          />
-          <Button onClick={handleSearch} variant="outline" size="icon">
+          <div className="relative flex-1">
+            <Input
+              placeholder="Search documents... (case-insensitive, partial matches supported)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              className="flex-1"
+            />
+            {loading && searchQuery && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+              </div>
+            )}
+          </div>
+          <Button onClick={handleSearch} variant="outline" size="icon" disabled={loading}>
             <Search className="h-4 w-4" />
           </Button>
+          {searchQuery && (
+            <Button 
+              onClick={() => {
+                setSearchQuery('');
+                setDocuments(allDocuments);
+              }} 
+              variant="outline" 
+              size="sm"
+              title="Clear search"
+            >
+              Clear
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Search Results Info */}
+      {searchQuery && !loading && (
+        <div className="text-sm text-muted-foreground">
+          {documents.length > 0 ? (
+            <span>Found {documents.length} result{documents.length !== 1 ? 's' : ''} for "{searchQuery}"</span>
+          ) : (
+            <span>No documents found for "{searchQuery}". Try different keywords or check spelling.</span>
+          )}
+        </div>
+      )}
 
       {/* Loading State */}
       {loading && allDocuments.length === 0 && (

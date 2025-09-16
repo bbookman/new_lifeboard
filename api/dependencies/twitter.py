@@ -30,11 +30,11 @@ def get_twitter_source() -> TwitterSource:
     # First, try to get existing Twitter source from ingestion service
     twitter_source = startup_service.ingestion_service.sources.get("twitter")
     if twitter_source and isinstance(twitter_source, TwitterSource):
-        logger.info("Using existing registered Twitter source")
+        logger.debug("Using existing registered Twitter source")
         return twitter_source
 
-    # If no registered source exists, create one on-demand
-    logger.info("No registered Twitter source found, creating on-demand instance")
+    # If no registered source exists, create one on-demand (fallback for testing/edge cases)
+    logger.debug("No registered Twitter source found, creating on-demand instance")
 
     # Get Twitter configuration from startup service
     if not startup_service.config or not startup_service.config.twitter:
@@ -63,7 +63,7 @@ def get_twitter_source() -> TwitterSource:
             rate_limit_service=twitter_rate_limit_service
         )
 
-        logger.info("Successfully created on-demand Twitter source")
+        logger.debug("Successfully created on-demand Twitter source")
         return twitter_source
 
     except Exception as e:

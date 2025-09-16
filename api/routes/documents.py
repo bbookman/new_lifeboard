@@ -164,6 +164,9 @@ async def create_document(
     """Create a new document or folder"""
     logger.info(f"🚀 Creating document: {request.dict()}")
     try:
+        # Initialize affected_summary_docs to avoid UnboundLocalError
+        affected_summary_docs = None
+        
         if request.document_type == "folder":
             # Handle folder creation
             document = await document_service.create_folder(
@@ -189,7 +192,6 @@ async def create_document(
             )
             
             # Handle summary prompt designation
-            affected_summary_docs = None
             if request.is_summary_prompt and request.document_type == "prompt":
                 affected_summary_docs = await _handle_summary_prompt_designation(document.id, document_service)
         
@@ -383,7 +385,7 @@ async def search_documents(
 ) -> DocumentSearchResponse:
     """Search documents using full-text and semantic search"""
     try:
-        search_results = document_service.search_documents(
+        search_results = await document_service.search_documents(
             query=q,
             document_type=document_type,
             limit=limit

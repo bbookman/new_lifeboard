@@ -392,12 +392,36 @@ class StartupService:
                 else:
                     logger.info("News source not fully configured, skipping source registration")
             
-            # Skip Twitter source registration during startup to prevent automatic scheduling
+            # Register Twitter source if configured, but it will be excluded from automatic scheduling
             # Twitter sources are available for manual operations only (fetch button, archive uploads)
-            # and should not be registered during startup to avoid being automatically discovered
-            # and scheduled by the sync manager
             if self.config.twitter.is_configured():
-                logger.info("Twitter source configured but skipping startup registration - available for manual operations only")
+                try:
+                    logger.info("Registering Twitter source for manual operations...")
+                    # Create Twitter services
+                    from services.twitter_api_service import TwitterAPIService
+                    from services.twitter_rate_limit_service import TwitterRateLimitService
+                    
+                    twitter_api_service = TwitterAPIService(self.config.twitter) if self.config.twitter.is_api_configured() else None
+                    twitter_rate_limit_service = TwitterRateLimitService(
+                        self.database,
+                        self.config.twitter.rate_limit_minutes
+                    )
+                    
+                    twitter_source = TwitterSource(
+                        config=self.config.twitter,
+                        twitter_api_service=twitter_api_service,
+                        rate_limit_service=twitter_rate_limit_service,
+                        db_service=self.database
+                    )
+                    
+                    await self.ingestion_service.register_source(twitter_source)
+                    startup_result["sources_registered"].append("twitter")
+                    logger.info("Twitter source registered successfully (manual operations only)")
+                    
+                except Exception as e:
+                    error_msg = f"Failed to register Twitter source: {str(e)}"
+                    logger.warning(error_msg)
+                    startup_result["errors"].append(error_msg)
             else:
                 logger.info("Twitter source not configured, skipping source registration")
 

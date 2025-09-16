@@ -756,15 +756,59 @@ class DocumentService(BaseService):
                              query: str,
                              document_type: Optional[str],
                              limit: int) -> List[Tuple[Document, float]]:
-        """Search documents using FTS5"""
+        """Search documents using FTS5 with case-insensitive prefix matching and LIKE fallback"""
         try:
-            # Build FTS query
-            fts_query = query.replace("'", "''")  # Escape single quotes
+            # Clean and prepare the query
+            clean_query = query.strip()
+            if not clean_query:
+                return []
+            
+            # First try FTS5 with enhanced query processing
+            fts_results = await self._try_fts5_search(clean_query, document_type, limit)
+            
+            # If FTS5 returns no results, try fallback LIKE search
+            if not fts_results:
+                logger.debug(f"FTS5 returned no results for '{clean_query}', trying LIKE search")
+                fts_results = await self._try_like_search(clean_query, document_type, limit)
+            
+            return fts_results
+            
+        except Exception as e:
+            logger.error(f"Error in FTS search: {e}")
+            # Final fallback to LIKE search if FTS5 completely fails
+            try:
+                return await self._try_like_search(query.strip(), document_type, limit)
+            except Exception as fallback_error:
+                logger.error(f"Fallback LIKE search also failed: {fallback_error}")
+                return []
+
+    async def _try_fts5_search(self,
+                              query: str,
+                              document_type: Optional[str],
+                              limit: int) -> List[Tuple[Document, float]]:
+        """Attempt FTS5 search with improved query handling"""
+        try:
+            # Build enhanced FTS query with case-insensitive prefix matching
+            # Split query into words for better matching
+            words = query.lower().split()
+            if not words:
+                return []
+            
+            # Build FTS5 query with prefix matching for each word
+            fts_terms = []
+            for word in words:
+                # Escape FTS5 special characters
+                escaped_word = word.replace('"', '""').replace("'", "''")
+                # Add prefix matching with asterisk
+                fts_terms.append(f'"{escaped_word}"*')
+            
+            # Join terms with AND for multi-word queries
+            fts_query = ' AND '.join(fts_terms)
             
             sql = """
                 SELECT d.id, d.title, d.document_type, d.content_delta, 
-                       d.content_md, d.path, d.is_folder, d.url, d.created_at, d.updated_at, 
-                       bm25(fts) as score
+                       d.content_md, d.path, d.is_folder, d.url, d.home_date, d.created_at, d.updated_at, 
+                       bm25(user_documents_fts) as score
                 FROM user_documents_fts fts
                 JOIN user_documents d ON d.rowid = fts.rowid
                 WHERE fts MATCH ?
@@ -788,10 +832,58 @@ class DocumentService(BaseService):
                         score = abs(row['score']) if row['score'] else 0.0  # BM25 scores can be negative
                         results.append((document, score))
             
+            logger.debug(f"FTS5 search for '{query}' returned {len(results)} results")
             return results
             
         except Exception as e:
-            logger.error(f"Error in FTS search: {e}")
+            logger.warning(f"FTS5 search failed for query '{query}': {e}")
+            raise
+
+    async def _try_like_search(self,
+                              query: str,
+                              document_type: Optional[str],
+                              limit: int) -> List[Tuple[Document, float]]:
+        """Fallback LIKE search for when FTS5 fails or returns no results"""
+        try:
+            # Prepare LIKE pattern with case-insensitive search
+            like_pattern = f"%{query.lower()}%"
+            
+            sql = """
+                SELECT d.id, d.title, d.document_type, d.content_delta, 
+                       d.content_md, d.path, d.is_folder, d.url, d.home_date, d.created_at, d.updated_at,
+                       CASE 
+                           WHEN LOWER(d.title) LIKE ? THEN 2.0
+                           WHEN LOWER(d.content_md) LIKE ? THEN 1.0
+                           ELSE 0.5
+                       END as score
+                FROM user_documents d
+                WHERE (LOWER(d.title) LIKE ? OR LOWER(d.content_md) LIKE ?)
+                  AND d.is_folder = FALSE
+            """
+            params = [like_pattern, like_pattern, like_pattern, like_pattern]
+            
+            if document_type:
+                sql += " AND d.document_type = ?"
+                params.append(document_type)
+            
+            sql += " ORDER BY score DESC, d.updated_at DESC LIMIT ?"
+            params.append(limit)
+            
+            async with self.database.get_async_connection() as conn:
+                async with conn.execute(sql, params) as cursor:
+                    rows = await cursor.fetchall()
+                    
+                    results = []
+                    for row in rows:
+                        document = self._row_to_document(row)
+                        score = float(row['score']) if row['score'] else 0.5
+                        results.append((document, score))
+            
+            logger.debug(f"LIKE search for '{query}' returned {len(results)} results")
+            return results
+            
+        except Exception as e:
+            logger.error(f"LIKE search failed for query '{query}': {e}")
             return []
     
     async def _search_documents_vector(self,
