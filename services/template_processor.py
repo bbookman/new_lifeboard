@@ -18,6 +18,7 @@ import pytz
 
 from core.base_service import BaseService
 from core.database import DatabaseService
+from core.repositories.repository_factory import RepositoryFactory
 from config.models import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -58,13 +59,20 @@ class TemplateProcessor(BaseService):
     TIME_RANGES = ['DAY', 'WEEK', 'MONTH']
     
     def __init__(self, 
-                 database: DatabaseService,
+                 repository_factory: RepositoryFactory,
                  config: AppConfig,
                  timezone: str = 'America/New_York',
                  cache_enabled: bool = True,
                  cache_ttl_hours: int = 1):
         super().__init__(service_name="TemplateProcessor", config=config)
-        self.database = database
+        self.repository_factory = repository_factory
+        
+        # Get repository instances
+        self.data_item_repo = repository_factory.get_data_item_repository()
+        
+        # Keep backwards compatibility for direct database access (for template_cache operations)
+        self.database = repository_factory.database_service
+        
         self.timezone = timezone
         self.sources = self.DEFAULT_SOURCES.copy()
         self.cache_enabled = cache_enabled
@@ -278,13 +286,13 @@ class TemplateProcessor(BaseService):
         date_range = self._calculate_date_range(variable.time_range, target_date)
         
         if variable.time_range == 'DAY':
-            data_items = await self.database.async_get_data_items_by_date(
+            data_items = await self.data_item_repo.async_get_data_items_by_date(
                 target_date, 
                 namespaces=[namespace]
             )
         else:
             start_date, end_date = date_range
-            data_items = await self.database.async_get_data_items_by_date_range(
+            data_items = await self.data_item_repo.async_get_data_items_by_date_range(
                 start_date,
                 end_date,
                 namespaces=[namespace]

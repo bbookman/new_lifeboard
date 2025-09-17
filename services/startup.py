@@ -20,6 +20,7 @@ from sources.weather import WeatherSource
 from sources.twitter import TwitterSource
 from sources.spotify import SpotifySource
 from core.database import DatabaseService
+from core.repositories.repository_factory import RepositoryFactory
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from core.logging_config import setup_application_logging
@@ -34,6 +35,7 @@ class StartupService:
     def __init__(self, config: AppConfig):
         self.config = config
         self.database: Optional[DatabaseService] = None
+        self.repository_factory: Optional[RepositoryFactory] = None
         self.vector_store: Optional[VectorStoreService] = None
         self.embedding_service: Optional[EmbeddingService] = None
         self.ingestion_service: Optional[IngestionService] = None
@@ -159,6 +161,11 @@ class StartupService:
             self.database = DatabaseService(self.config.database.path)
             startup_result["services_initialized"].append("database")
             
+            # Repository factory (depends on database)
+            logger.info("Initializing repository factory...")
+            self.repository_factory = RepositoryFactory(self.database)
+            startup_result["services_initialized"].append("repository_factory")
+            
             # Spotify token service (depends on database) - only if Spotify is enabled
             if self.config.spotify.enabled:
                 logger.info("Initializing Spotify token service...")
@@ -191,7 +198,7 @@ class StartupService:
             logger.info("Initializing ingestion service...")
             
             self.ingestion_service = IngestionService(
-                database=self.database,
+                repository_factory=self.repository_factory,
                 vector_store=self.vector_store,
                 embedding_service=self.embedding_service,
                 config=self.config
@@ -212,7 +219,7 @@ class StartupService:
             
             self.chat_service = ChatService(
                 config=self.config,
-                database=self.database,
+                repository_factory=self.repository_factory,
                 vector_store=self.vector_store,
                 embeddings=self.embedding_service
             )
@@ -331,7 +338,7 @@ class StartupService:
             logger.info("Initializing LLM service...")
             
             self.llm_service = LLMService(
-                database=self.database,
+                repository_factory=self.repository_factory,
                 document_service=self.document_service,
                 config=self.config
             )

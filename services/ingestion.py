@@ -10,6 +10,7 @@ from sources.base import DataItem, BaseSource
 from sources.sync_manager import SyncManager
 from sources.limitless_processor import LimitlessProcessor, BaseProcessor
 from core.database import DatabaseService
+from core.repositories.repository_factory import RepositoryFactory
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
 from core.ids import NamespacedIDManager
@@ -53,19 +54,27 @@ class IngestionService(BaseService, ServiceDebugMixin):
     """Service for ingesting data from various sources into the Lifeboard system"""
     
     def __init__(self,
-                 database: DatabaseService,
+                 repository_factory: RepositoryFactory,
                  vector_store: VectorStoreService,
                  embedding_service: EmbeddingService,
                  config: AppConfig):
         BaseService.__init__(self, service_name="IngestionService", config=config)
         ServiceDebugMixin.__init__(self, "ingestion_service")
-        self.database = database
+        self.repository_factory = repository_factory
         self.vector_store = vector_store
         self.embedding_service = embedding_service
         
+        # Get repository instances
+        self.data_item_repo = repository_factory.get_data_item_repository()
+        self.settings_repo = repository_factory.get_settings_repository()
+        self.data_source_repo = repository_factory.get_data_source_repository()
+        
+        # Keep backwards compatibility for direct database access where needed
+        self.database = repository_factory.database_service
+        
         # Log service initialization
         self.log_service_call("__init__", {
-            "database_available": database is not None,
+            "repository_factory_available": repository_factory is not None,
             "vector_store_available": vector_store is not None,
             "embedding_service_available": embedding_service is not None
         })
@@ -85,7 +94,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
         self.sources: Dict[str, BaseSource] = {}
         
         # Add dependencies and capabilities
-        self.add_dependency("DatabaseService")
+        self.add_dependency("RepositoryFactory")
         self.add_dependency("VectorStoreService")
         self.add_dependency("EmbeddingService")
         self.add_capability("data_ingestion")
@@ -98,7 +107,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
         self.sources[source.namespace] = source
         
         # Register in database
-        await self.database.async_register_data_source(
+        await self.data_source_repo.async_register_data_source(
             namespace=source.namespace,
             source_type=source.get_source_type(),
             metadata={"registered_at": datetime.now(timezone.utc).isoformat()}
@@ -127,7 +136,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
             logger.info(f"Starting ingestion from {namespace}")
             
             # Unified source handling for all sources
-            last_sync = await self.database.async_get_setting(f"{namespace}_last_sync")
+            last_sync = await self.settings_repo.async_get_setting(f"{namespace}_last_sync")
             since = None
             if last_sync and not force_full_sync:
                 try:
@@ -215,7 +224,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
                     logger.debug(f"[TWITTER TRACE] Twitter processing phase completed in {processing_duration:.2f}ms")
             
             # Update last sync time after successful processing
-            await self.database.async_set_setting(
+            await self.settings_repo.async_set_setting(
                 f"{namespace}_last_sync", 
                 datetime.now(timezone.utc).isoformat()
             )
@@ -242,7 +251,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
                 # Query database for Twitter data_items to verify storage
                 try:
                     query_start_time = time.time()
-                    twitter_items = await self.database.async_get_data_items_by_namespace('twitter', limit=5)
+                    twitter_items = await self.data_item_repo.async_get_data_items_by_namespace('twitter', limit=5)
                     query_duration = (time.time() - query_start_time) * 1000
                     total_count = len(twitter_items)
                     sample_ids = [item.get('id', item.get('source_id', 'unknown'))[:20] for item in twitter_items[:3]]
@@ -274,7 +283,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
                 logger.debug(f"[TWITTER TRACE] Starting Twitter database storage: id={namespaced_id}, content_length={content_length}, days_date={days_date}")
             
             # Store in database
-            await self.database.async_store_data_item(
+            await self.data_item_repo.async_store_data_item(
                 id=namespaced_id,
                 namespace=processed_item.namespace,
                 source_id=processed_item.source_id,
@@ -340,7 +349,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
         
         try:
             # Get items needing embeddings
-            pending_items = await self.database.async_get_pending_embeddings(limit=batch_size * 2)
+            pending_items = await self.data_item_repo.async_get_pending_embeddings(limit=batch_size * 2)
             
             if not pending_items:
                 logger.info("No pending embeddings")
@@ -386,16 +395,16 @@ class IngestionService(BaseService, ServiceDebugMixin):
                     
                     if success:
                         # Update embedding status
-                        await self.database.async_update_embedding_status(item['id'], 'completed')
+                        await self.data_item_repo.async_update_embedding_status(item['id'], 'completed')
                         result["successful"] += 1
                         logger.debug(f"Generated embedding for: {item['id']}")
                     else:
-                        await self.database.async_update_embedding_status(item['id'], 'failed')
+                        await self.data_item_repo.async_update_embedding_status(item['id'], 'failed')
                         result["failed"] += 1
                         result["errors"].append(f"Failed to add vector for {item['id']}")
                 
                 except Exception as e:
-                    await self.database.async_update_embedding_status(item['id'], 'failed')
+                    await self.data_item_repo.async_update_embedding_status(item['id'], 'failed')
                     result["failed"] += 1
                     result["errors"].append(f"Error processing {item['id']}: {str(e)}")
                 
@@ -408,7 +417,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
             
             # Mark all items in batch as failed
             for item in batch:
-                await self.database.async_update_embedding_status(item['id'], 'failed')
+                await self.data_item_repo.async_update_embedding_status(item['id'], 'failed')
                 result["failed"] += 1
                 result["processed"] += 1
     
@@ -583,7 +592,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
         
         try:
             # Check database connectivity
-            db_stats = await self.database.async_get_database_stats()
+            db_stats = await self.data_item_repo.async_get_database_stats()
             health_info["database_available"] = True
             health_info["total_items"] = db_stats.get("total_items", 0)
             
@@ -593,7 +602,7 @@ class IngestionService(BaseService, ServiceDebugMixin):
             health_info["total_vectors"] = vs_stats.get("total_vectors", 0)
             
             # Check pending embeddings
-            pending_items = await self.database.async_get_pending_embeddings(limit=100)
+            pending_items = await self.data_item_repo.async_get_pending_embeddings(limit=100)
             pending = len(pending_items)
             health_info["pending_embeddings"] = pending
             
@@ -606,8 +615,8 @@ class IngestionService(BaseService, ServiceDebugMixin):
     async def async_get_ingestion_status(self) -> Dict[str, Any]:
         """Get current ingestion status"""
         # Async version - properly handles async database calls
-        db_stats = await self.database.async_get_database_stats()
-        pending_items = await self.database.async_get_pending_embeddings(limit=1000)
+        db_stats = await self.data_item_repo.async_get_database_stats()
+        pending_items = await self.data_item_repo.async_get_pending_embeddings(limit=1000)
         
         status = {
             "registered_sources": list(self.sources.keys()),
@@ -619,8 +628,8 @@ class IngestionService(BaseService, ServiceDebugMixin):
         # Add per-source stats
         source_stats = {}
         for namespace in self.sources.keys():
-            items = await self.database.async_get_data_items_by_namespace(namespace, limit=1)
-            last_sync = await self.database.async_get_setting(f"{namespace}_last_sync")
+            items = await self.data_item_repo.async_get_data_items_by_namespace(namespace, limit=1)
+            last_sync = await self.settings_repo.async_get_setting(f"{namespace}_last_sync")
             source_stats[namespace] = {
                 "source_type": self.sources[namespace].get_source_type(),
                 "has_data": len(items) > 0,

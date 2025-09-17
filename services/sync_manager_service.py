@@ -127,7 +127,7 @@ class SyncManagerService(BaseService, ServiceDebugMixin):
                 })
                 
                 # Add timeout protection - longer timeout for Twitter due to rate limiting
-                timeout_seconds = 1200.0 if namespace == "twitter" else 300.0  # 20 minutes for Twitter, 5 minutes for others
+                timeout_seconds = 1200.0 if namespace == "twitter" else 600.0  # 20 minutes for Twitter, 10 minutes for others
                 
                 if namespace == "twitter":
                     logger.debug(f"Twitter ingestion timeout set to {timeout_seconds} seconds")

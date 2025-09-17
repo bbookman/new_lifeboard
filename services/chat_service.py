@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 from core.database import DatabaseService
+from core.repositories.repository_factory import RepositoryFactory
 from services.debug_mixin import ServiceDebugMixin
 from core.vector_store import VectorStoreService
 from core.embeddings import EmbeddingService
@@ -33,18 +34,25 @@ class ChatContext:
 class ChatService(ServiceDebugMixin):
     """Service for handling chat interactions with hybrid data access"""
     
-    def __init__(self, config: AppConfig, database: DatabaseService, 
+    def __init__(self, config: AppConfig, repository_factory: RepositoryFactory, 
                  vector_store: VectorStoreService, embeddings: EmbeddingService):
         super().__init__("chat_service")
         self.config = config
-        self.database = database
+        self.repository_factory = repository_factory
         self.vector_store = vector_store
         self.embeddings = embeddings
         self.llm_provider = None
         
+        # Get repository instances
+        self.chat_repo = repository_factory.get_chat_repository()
+        self.data_item_repo = repository_factory.get_data_item_repository()
+        
+        # Keep backwards compatibility for direct database access where needed
+        self.database = repository_factory.database_service
+        
         # Log service initialization
         self.log_service_call("__init__", {
-            "database_available": database is not None,
+            "repository_factory_available": repository_factory is not None,
             "vector_store_available": vector_store is not None,
             "embeddings_available": embeddings is not None
         })
@@ -115,7 +123,7 @@ class ChatService(ServiceDebugMixin):
             
             # Step 3: Store chat exchange
             db_start = time.time()
-            await self.database.async_store_chat_message(user_message, response.content)
+            await self.chat_repo.async_store_chat_message(user_message, response.content)
             db_duration = (time.time() - db_start) * 1000
             self.log_database_operation("INSERT", "chat_messages", db_duration)
             
@@ -136,7 +144,7 @@ class ChatService(ServiceDebugMixin):
         """Store error message for debugging (fallback action)"""
         error_msg = "I'm sorry, I encountered an error processing your message. Please try again."
         with safe_operation("store_error_message", log_errors=False):
-            await self.database.async_store_chat_message(user_message, error_msg)
+            await self.chat_repo.async_store_chat_message(user_message, error_msg)
     
     async def _get_chat_context(self, query: str, max_results: int = 10) -> ChatContext:
         """Get relevant context using hybrid approach (vector + SQL)"""
@@ -196,7 +204,7 @@ class ChatService(ServiceDebugMixin):
         # Get full data items from database
         if similar_ids:
             ids = [item_id for item_id, _ in similar_ids]
-            return await self.database.async_get_data_items_by_ids(ids)
+            return await self.data_item_repo.async_get_data_items_by_ids(ids)
         
         return []
     
@@ -312,7 +320,7 @@ If the context doesn't contain relevant information to answer the question, plea
         self.log_service_call("get_chat_history", {"limit": limit})
         
         db_start = time.time()
-        history = await self.database.async_get_chat_history(limit)
+        history = await self.chat_repo.async_get_chat_history(limit)
         db_duration = (time.time() - db_start) * 1000
         
         self.log_database_operation("SELECT", "chat_messages", db_duration)

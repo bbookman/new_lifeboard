@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from core.base_service import BaseService
 from core.database import DatabaseService
+from core.repositories.repository_factory import RepositoryFactory
 from services.document_service import DocumentService
 from services.template_processor import TemplateProcessor
 from llm.factory import LLMProviderFactory
@@ -41,24 +42,31 @@ class LLMService(BaseService, ServiceDebugMixin):
     """Service for LLM-powered content generation"""
     
     def __init__(self,
-                 database: DatabaseService,
+                 repository_factory: RepositoryFactory,
                  document_service: DocumentService,
                  config: AppConfig):
         BaseService.__init__(self, service_name="LLMService", config=config)
         ServiceDebugMixin.__init__(self, "llm_service")
-        self.database = database
+        self.repository_factory = repository_factory
         self.document_service = document_service
         self.config = config
         
+        # Get repository instances
+        self.llm_repo = repository_factory.get_llm_repository()
+        self.data_item_repo = repository_factory.get_data_item_repository()
+        
+        # Keep backwards compatibility with database access for debug_db
+        self.database = repository_factory.database_service
+        
         # Set up database debug monitoring if path is available
-        if hasattr(database, 'db_path'):
-            self.debug_db = DebugDatabaseConnection(database.db_path)
+        if hasattr(self.database, 'db_path'):
+            self.debug_db = DebugDatabaseConnection(self.database.db_path)
         else:
             self.debug_db = None
         
         # Initialize template processor for resolving prompt variables
         self.template_processor = TemplateProcessor(
-            database=database,
+            repository_factory=repository_factory,
             config=config
         )
         
@@ -67,7 +75,7 @@ class LLMService(BaseService, ServiceDebugMixin):
         self.llm_provider = None
         
         # Add dependencies and capabilities
-        self.add_dependency("DatabaseService")
+        self.add_dependency("RepositoryFactory")
         self.add_dependency("DocumentService")
         self.add_capability("llm_generation")
         self.add_capability("daily_summary")
@@ -75,7 +83,7 @@ class LLMService(BaseService, ServiceDebugMixin):
         
         # Log service initialization
         self.log_service_call("__init__", {
-            "has_database": database is not None,
+            "has_repository_factory": repository_factory is not None,
             "has_document_service": document_service is not None,
             "debug_db_available": self.debug_db is not None,
             "llm_provider_config": config.llm_provider.provider if config.llm_provider else "none"
@@ -340,31 +348,21 @@ class LLMService(BaseService, ServiceDebugMixin):
         
         db_start = time.time()
         try:
-            connection_context = self.debug_db.get_connection() if self.debug_db else self.database.get_connection()
+            # Use repository method instead of direct database access
+            content = await self.llm_repo.async_get_cached_summary(days_date)
             
-            with connection_context as conn:
-                cursor = conn.execute("""
-                    SELECT content
-                    FROM generated_summaries 
-                    WHERE days_date = ? AND is_active = TRUE
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """, (days_date,))
-                
-                row = cursor.fetchone()
-                
-                db_duration = (time.time() - db_start) * 1000
-                self.log_database_operation("SELECT", "generated_summaries", db_duration)
-                
-                if row:
-                    self.logger.debug(f"Found active cached summary for {days_date}.")
-                    self.log_service_performance_metric("llm_cache_hit", 1, "count")
-                    self.log_service_performance_metric("llm_cached_content_length", len(row['content']), "chars")
-                    return row['content']
-                else:
-                    self.logger.debug(f"No active cached summary found for {days_date}.")
-                    self.log_service_performance_metric("llm_cache_miss", 1, "count")
-                    return None
+            db_duration = (time.time() - db_start) * 1000
+            self.log_database_operation("SELECT", "generated_summaries", db_duration)
+            
+            if content:
+                self.logger.debug(f"Found active cached summary for {days_date}.")
+                self.log_service_performance_metric("llm_cache_hit", 1, "count")
+                self.log_service_performance_metric("llm_cached_content_length", len(content), "chars")
+                return content
+            else:
+                self.logger.debug(f"No active cached summary found for {days_date}.")
+                self.log_service_performance_metric("llm_cache_miss", 1, "count")
+                return None
                 
         except Exception as e:
             self.log_service_error("get_cached_summary", e, {"days_date": days_date})
@@ -375,44 +373,35 @@ class LLMService(BaseService, ServiceDebugMixin):
         """Get the currently selected prompt for daily summaries with template resolution"""
         self.logger.info("Retrieving selected prompt for daily summary.")
         try:
-            with self.database.get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT ps.prompt_document_id
-                    FROM prompt_settings ps
-                    WHERE ps.setting_key LIKE 'daily_summary_prompt_%' 
-                    AND ps.is_active = TRUE
-                    ORDER BY ps.updated_at DESC
-                    LIMIT 1
-                """)
-                
-                row = cursor.fetchone()
-                if not row or not row['prompt_document_id']:
-                    self.logger.warning("No daily summary prompt configured in database.")
-                    return None
-                
-                prompt_id = row['prompt_document_id']
-                self.logger.debug(f"Found prompt setting, document_id: {prompt_id}")
+            # Use repository method to get prompt document ID
+            prompt_id = await self.llm_repo.async_get_active_prompt_document_id("daily_summary")
+            
+            if not prompt_id:
+                self.logger.warning("No daily summary prompt configured in database.")
+                return None
+            
+            self.logger.debug(f"Found prompt setting, document_id: {prompt_id}")
 
-                # Get the prompt document
-                document = await self.document_service.get_document(prompt_id)
-                if not document or document.document_type != 'prompt':
-                    self.logger.warning(f"Selected prompt document not found or invalid: {prompt_id}")
-                    return None
-                
-                self.logger.info(f"Successfully retrieved prompt document with ID: {document.id}")
-                
-                # Process template variables in the prompt
-                self.logger.debug("Processing template variables in prompt...")
-                resolved_template = await self.template_processor.resolve_template(
-                    content=document.content_md,
-                    target_date=target_date
-                )
-                
-                if resolved_template.errors:
-                    self.logger.warning(f"Template resolution errors: {resolved_template.errors}")
-                
-                self.logger.debug(f"Template resolution complete. Variables resolved: {resolved_template.variables_resolved}")
-                return resolved_template.resolved_content
+            # Get the prompt document
+            document = await self.document_service.get_document(prompt_id)
+            if not document or document.document_type != 'prompt':
+                self.logger.warning(f"Selected prompt document not found or invalid: {prompt_id}")
+                return None
+            
+            self.logger.info(f"Successfully retrieved prompt document with ID: {document.id}")
+            
+            # Process template variables in the prompt
+            self.logger.debug("Processing template variables in prompt...")
+            resolved_template = await self.template_processor.resolve_template(
+                content=document.content_md,
+                target_date=target_date
+            )
+            
+            if resolved_template.errors:
+                self.logger.warning(f"Template resolution errors: {resolved_template.errors}")
+            
+            self.logger.debug(f"Template resolution complete. Variables resolved: {resolved_template.variables_resolved}")
+            return resolved_template.resolved_content
                 
         except Exception as e:
             self.logger.error(f"Error getting selected prompt: {e}", exc_info=True)
@@ -426,115 +415,25 @@ class LLMService(BaseService, ServiceDebugMixin):
         context_start = time.time()
         
         try:
-            context_parts = []
-            news_items_count = 0
-            weather_found = False
-            activity_items_count = 0
+            # Use repository method to build complete context
+            context = await self.llm_repo.async_build_daily_context(days_date)
             
-            # Add date context
-            context_parts.append(f"Date: {days_date}")
-            
-            # Get daily data from various sources
-            db_start = time.time()
-            connection_context = self.debug_db.get_connection() if self.debug_db else self.database.get_connection()
-            
-            with connection_context as conn:
-                # Get news headlines
-                news_query_start = time.time()
-                self.logger.debug(f"Fetching news data for context.")
-                cursor = conn.execute("""
-                    SELECT title, snippet FROM news 
-                    WHERE days_date = ? 
-                    ORDER BY created_at DESC 
-                    LIMIT 5
-                """, (days_date,))
-                news_items = cursor.fetchall()
-                news_query_duration = (time.time() - news_query_start) * 1000
-                
-                news_items_count = len(news_items)
-                self.log_database_operation("SELECT", "news", news_query_duration)
-                
-                if news_items:
-                    self.logger.debug(f"Found {len(news_items)} news items.")
-                    context_parts.append("News Headlines:")
-                    for item in news_items:
-                        context_parts.append(f"- {item['title']}")
-                        if item['snippet']:
-                            context_parts.append(f"  {item['snippet']}")
-                else:
-                    self.logger.debug(f"No news data found for {days_date}.")
-
-                # Get weather data
-                weather_query_start = time.time()
-                self.logger.debug(f"Fetching weather data for context.")
-                cursor = conn.execute("""
-                    SELECT response_json FROM weather 
-                    WHERE days_date = ? 
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                """, (days_date,))
-                weather_row = cursor.fetchone()
-                weather_query_duration = (time.time() - weather_query_start) * 1000
-                
-                self.log_database_operation("SELECT", "weather", weather_query_duration)
-                
-                if weather_row:
-                    weather_found = True
-                    self.logger.debug("Found weather data.")
-                    import json
-                    try:
-                        weather_data = json.loads(weather_row['response_json'])
-                        if 'data' in weather_data and weather_data['data']:
-                            weather_info = weather_data['data'][0]
-                            context_parts.append(f"Weather: {weather_info.get('weather', 'N/A')}")
-                            if 'temperature' in weather_info:
-                                context_parts.append(f"Temperature: {weather_info['temperature']}°C")
-                    except json.JSONDecodeError:
-                        self.logger.warning(f"Could not decode weather JSON for {days_date}")
-                        pass
-                else:
-                    self.logger.debug(f"No weather data found for {days_date}.")
-
-                # Get limitless/activity data
-                activity_query_start = time.time()
-                self.logger.debug(f"Fetching limitless data for context.")
-                cursor = conn.execute("""
-                    SELECT processed_content FROM limitless 
-                    WHERE days_date = ? 
-                    ORDER BY created_at DESC 
-                    LIMIT 3
-                """, (days_date,))
-                activity_items = cursor.fetchall()
-                activity_query_duration = (time.time() - activity_query_start) * 1000
-                
-                activity_items_count = len(activity_items)
-                self.log_database_operation("SELECT", "limitless", activity_query_duration)
-                
-                if activity_items:
-                    self.logger.debug(f"Found {len(activity_items)} limitless items.")
-                    context_parts.append("Activities:")
-                    for item in activity_items:
-                        if item['processed_content']:
-                            # Truncate long content
-                            content = item['processed_content'][:200]
-                            if len(item['processed_content']) > 200:
-                                content += "..."
-                            context_parts.append(f"- {content}")
-                else:
-                    self.logger.debug(f"No limitless data found for {days_date}.")
-
             context_build_duration = (time.time() - context_start) * 1000
-            final_context = "\n".join(context_parts)
+            
+            # Count items for logging
+            news_items = await self.llm_repo.async_get_news_for_context(days_date)
+            weather_data = await self.llm_repo.async_get_weather_for_context(days_date)
+            activity_items = await self.llm_repo.async_get_activities_for_context(days_date)
             
             # Log context building metrics
-            self.log_service_performance_metric("llm_context_news_items", news_items_count, "count")
-            self.log_service_performance_metric("llm_context_weather_found", 1 if weather_found else 0, "count")
-            self.log_service_performance_metric("llm_context_activity_items", activity_items_count, "count")
-            self.log_service_performance_metric("llm_context_final_length", len(final_context), "chars")
+            self.log_service_performance_metric("llm_context_news_items", len(news_items), "count")
+            self.log_service_performance_metric("llm_context_weather_found", 1 if weather_data else 0, "count")
+            self.log_service_performance_metric("llm_context_activity_items", len(activity_items), "count")
+            self.log_service_performance_metric("llm_context_final_length", len(context), "chars")
             self.log_service_performance_metric("llm_context_total_duration", context_build_duration, "ms")
 
             self.logger.info(f"Finished building context for {days_date}.")
-            return final_context
+            return context
             
         except Exception as e:
             self.log_service_error("_build_daily_context", e, {"days_date": days_date})
@@ -553,47 +452,22 @@ class LLMService(BaseService, ServiceDebugMixin):
         
         storage_start = time.time()
         try:
-            connection_context = self.debug_db.get_connection() if self.debug_db else self.database.get_connection()
+            # Use repository method to store generated content
+            await self.llm_repo.async_store_generated_summary(days_date, content, prompt_used)
             
-            with connection_context as conn:
-                # Deactivate any existing summaries for this date
-                self.logger.debug(f"Deactivating existing summaries for {days_date}.")
-                deactivate_start = time.time()
-                conn.execute("""
-                    UPDATE generated_summaries 
-                    SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
-                    WHERE days_date = ?
-                """, (days_date,))
-                deactivate_duration = (time.time() - deactivate_start) * 1000
-                
-                self.log_database_operation("UPDATE", "generated_summaries", deactivate_duration)
-                
-                # Insert new summary
-                self.logger.debug(f"Inserting new summary for {days_date}.")
-                insert_start = time.time()
-                conn.execute("""
-                    INSERT INTO generated_summaries 
-                    (days_date, content, prompt_used, is_active, created_at, updated_at)
-                    VALUES (?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, (days_date, content, prompt_used))
-                insert_duration = (time.time() - insert_start) * 1000
-                
-                self.log_database_operation("INSERT", "generated_summaries", insert_duration)
-                
-                conn.commit()
-                
-                total_storage_duration = (time.time() - storage_start) * 1000
-                
-                self.log_service_performance_metric("llm_storage_total_duration", total_storage_duration, "ms")
-                self.log_service_performance_metric("llm_content_stored", 1, "count")
-                
-                self.logger.info(f"Successfully cached new summary for {days_date}.")
-                
+            total_storage_duration = (time.time() - storage_start) * 1000
+            
+            self.log_service_performance_metric("llm_storage_total_duration", total_storage_duration, "ms")
+            self.log_service_performance_metric("llm_content_stored", 1, "count")
+            
+            self.logger.info(f"Successfully cached new summary for {days_date}.")
+            
         except Exception as e:
             self.log_service_error("_store_generated_content", e, {
                 "days_date": days_date,
                 "content_length": len(content)
             })
             self.logger.error(f"Error storing generated content for {days_date}: {e}", exc_info=True)
+            # Don't raise - this is just caching, not critical
             # Don't raise - this is just caching, not critical
     

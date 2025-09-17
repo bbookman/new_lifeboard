@@ -1037,9 +1037,11 @@ class DocumentService(BaseService):
         try:
             from services.template_processor import TemplateProcessor
             
-            # Initialize template processor
+            # Initialize template processor with temporary repository factory
+            from core.repositories.repository_factory import RepositoryFactory
+            temp_factory = RepositoryFactory(self.database)
             template_processor = TemplateProcessor(
-                database=self.database,
+                repository_factory=temp_factory,
                 config=self.config
             )
             
@@ -1073,9 +1075,11 @@ class DocumentService(BaseService):
         try:
             from services.template_processor import TemplateProcessor
             
-            # Initialize template processor
+            # Initialize template processor with temporary repository factory
+            from core.repositories.repository_factory import RepositoryFactory
+            temp_factory = RepositoryFactory(self.database)
             template_processor = TemplateProcessor(
-                database=self.database,
+                repository_factory=temp_factory,
                 config=self.config
             )
             
