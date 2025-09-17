@@ -101,7 +101,7 @@ class TemplateProcessor(BaseService):
             async with self.database.get_async_connection() as conn:
                 async with conn.execute("""
                     SELECT resolved_content FROM template_cache 
-                    WHERE template_hash = ? AND expires_at > CURRENT_TIMESTAMP
+                    WHERE template_hash = ? AND datetime(expires_at) > datetime('now')
                 """, (template_hash,)) as cursor:
                     
                     row = await cursor.fetchone()
@@ -155,7 +155,7 @@ class TemplateProcessor(BaseService):
             async with self.database.get_async_connection() as conn:
                 async with conn.execute("""
                     DELETE FROM template_cache 
-                    WHERE expires_at <= CURRENT_TIMESTAMP
+                    WHERE datetime(expires_at) <= datetime('now')
                 """) as cursor:
                     
                     deleted_count = cursor.rowcount
