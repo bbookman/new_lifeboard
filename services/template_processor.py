@@ -350,21 +350,17 @@ class TemplateProcessor(BaseService):
             content = item.get('content', '')
             days_date = item.get('days_date', '')
             
-            # Truncate very long content
-            if len(content) > 500:
-                content = content[:500] + "..."
+            # Content is used as-is without truncation
             
             if days_date:
                 formatted_items.append(f"[{days_date}] {content}")
             else:
                 formatted_items.append(content)
         
-        # Join with newlines, but limit total output size
+        # Join with newlines
         result = "\n".join(formatted_items)
         
-        # Limit total output size to prevent overwhelming the prompt
-        if len(result) > 5000:
-            result = result[:5000] + f"\n... ({len(data_items)} total items, truncated)"
+        # Return full result without size limits
             
         return result
     

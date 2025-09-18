@@ -294,7 +294,7 @@ If the context doesn't contain relevant information to answer the question, plea
         if context.vector_results:
             context_parts.append("=== Relevant Information (Semantic Search) ===")
             for i, item in enumerate(context.vector_results[:5], 1):
-                content = item.get('content', '')[:500]  # Limit content length
+                content = item.get('content', '')  # Use full content without truncation
                 context_parts.append(f"{i}. {content}")
         
         # Add SQL search results (avoiding duplicates)
@@ -307,7 +307,7 @@ If the context doesn't contain relevant information to answer the question, plea
         if unique_sql_results:
             context_parts.append("\n=== Additional Relevant Information (Keyword Search) ===")
             for i, item in enumerate(unique_sql_results[:3], 1):
-                content = item.get('content', '')[:500]  # Limit content length
+                content = item.get('content', '')  # Use full content without truncation
                 context_parts.append(f"{i}. {content}")
         
         if not context_parts:

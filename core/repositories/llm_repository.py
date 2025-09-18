@@ -270,10 +270,8 @@ class LLMRepository:
             context_parts.append("Activities:")
             for item in activity_items:
                 if item['content']:
-                    # Truncate long content
-                    content = item['content'][:200]
-                    if len(item['content']) > 200:
-                        content += "..."
+                    # Use full content without truncation
+                    content = item['content']
                     context_parts.append(f"- {content}")
         
         return "\n".join(context_parts)
