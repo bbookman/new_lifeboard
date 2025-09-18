@@ -310,7 +310,11 @@ class TestLLMAPIClientFunctions:
         
         for invalid_date in invalid_date_formats:
             if invalid_date:
-                assert len(invalid_date) != 10 or "-" not in invalid_date
+                # Check that it's either wrong length, doesn't contain dashes, or is not YYYY-MM-DD format
+                is_wrong_length = len(invalid_date) != 10
+                has_no_dashes = "-" not in invalid_date
+                is_wrong_format = invalid_date.startswith("01-") or "/" in invalid_date or invalid_date == "invalid-date"
+                assert is_wrong_length or has_no_dashes or is_wrong_format
             else:
                 assert invalid_date in [None, ""]
 

@@ -27,7 +27,7 @@ class TestServiceContracts:
     def service_implementations(self):
         """Get all service implementations registered in the container."""
         # Import here to avoid circular dependencies
-        from core.dependencies import get_container
+        from core.dependency_container import get_container
         container = get_container()
         
         return {

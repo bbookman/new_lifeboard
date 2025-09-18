@@ -44,7 +44,7 @@ class DatabaseServiceInterface(ServiceInterface):
     """Interface for database services."""
     
     @abstractmethod
-    def get_connection(self):
+    def get_connection(self) -> Any:
         """Get a database connection.
         
         Returns:
