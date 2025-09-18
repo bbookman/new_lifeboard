@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import newsImage from "@/assets/news-placeholder.jpg";
 import { ExtendedNewsCard } from "./ExtendedNewsCard";
 import { ContentCard, DailySummaryData } from "./ContentCard";
+import { DataAvailabilityAlert } from "./DataAvailabilityAlert";
 import { useState, useEffect, useCallback } from "react";
 import { apiClient, LLMSummaryResponse } from "@/lib/api";
 
@@ -55,11 +56,19 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
   const [dailySummary, setDailySummary] = useState<DailySummaryData | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [dataAvailabilityMessages, setDataAvailabilityMessages] = useState<string[]>([]);
 
   const convertToSummaryData = (response: LLMSummaryResponse, date: string): DailySummaryData => {
     const content = response.content || "";
     const highlights: string[] = [];
     const keyThemes: string[] = [];
+    
+    // Update data availability messages state
+    if (response.data_availability?.messages) {
+      setDataAvailabilityMessages(response.data_availability.messages);
+    } else {
+      setDataAvailabilityMessages([]);
+    }
     
     const bulletPoints = content.match(/[-*•]\s+([^\n]+)/g);
     if (bulletPoints) {
@@ -163,11 +172,21 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
         const errorMsg = generateResponse.data?.error_message || generateResponse.error || 'Failed to generate summary';
         console.error(`[SummarySection] ❌ Step 2 FAILED: ${errorMsg}`);
         console.error(`[SummarySection] 📋 Full error context:`, generateResponse);
+        
+        // Check if this is a data availability issue (blocked generation)
+        if (generateResponse.success && generateResponse.data?.data_availability?.messages) {
+          console.log(`[SummarySection] 📋 Generation blocked due to missing data sources`);
+          setDataAvailabilityMessages(generateResponse.data.data_availability.messages);
+        } else {
+          setDataAvailabilityMessages([]); // Clear messages on other errors
+        }
+        
         setDailySummary(null);
       }
     } catch (error) {
       console.error('[SummarySection] 💥 CRITICAL ERROR in summary workflow:', error);
       setDailySummary(null);
+      setDataAvailabilityMessages([]); // Clear messages on critical error
     } finally {
       setSummaryLoading(false);
       console.log(`[SummarySection] 🏁 Summary load workflow completed`);
@@ -197,9 +216,21 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
       } else {
         const errorMsg = generateResponse.data?.error_message || generateResponse.error || 'Failed to regenerate summary';
         console.error(`[SummarySection] Failed to regenerate summary:`, errorMsg);
+        
+        // Check if this is a data availability issue (blocked generation)
+        if (generateResponse.success && generateResponse.data?.data_availability?.messages) {
+          console.log(`[SummarySection] Force regeneration blocked due to missing data sources`);
+          setDataAvailabilityMessages(generateResponse.data.data_availability.messages);
+        } else {
+          setDataAvailabilityMessages([]); // Clear messages on other errors
+        }
+        
+        setDailySummary(null);
       }
     } catch (error) {
       console.error('[SummarySection] Error force regenerating summary:', error);
+      setDailySummary(null);
+      setDataAvailabilityMessages([]); // Clear messages on critical error
     } finally {
       setSummaryLoading(false);
     }
@@ -243,6 +274,14 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
               </div>
             )}
 
+            {/* Data Availability Alert */}
+            {dataAvailabilityMessages.length > 0 && (
+              <DataAvailabilityAlert 
+                messages={dataAvailabilityMessages}
+                className="mb-4"
+              />
+            )}
+
             {summaryLoading ? (
               <div className="card p-6">
                 <div className="flex items-center justify-center">
@@ -262,12 +301,22 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
                   </button>
                 </div>
               ) : (
-                <div className="card p-6">
+                <div className="card p-6 relative">
                   <div className="text-center text-newspaper-byline">
                     {debugInfo?.summary_ready === false 
                       ? "Summary system not ready - check debug info above" 
                       : "No summary available for this date"}
                   </div>
+                  {/* Show refresh button when data availability messages are present */}
+                  {dataAvailabilityMessages.length > 0 && (
+                    <button
+                      onClick={forceRegenerateSummary}
+                      className="absolute top-4 right-4 button button-outline button-sm"
+                      title="Retry summary generation"
+                    >
+                      ↻
+                    </button>
+                  )}
                 </div>
               )}
           </>

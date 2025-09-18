@@ -35,11 +35,13 @@ class TemplateVariable:
 
 @dataclass
 class ResolvedTemplate:
-    """Represents a template with resolved variables"""
+    """Represents a template with resolved variables and data availability tracking"""
     original_content: str
     resolved_content: str
     variables_resolved: int
     errors: List[str]
+    variables_without_data: List[TemplateVariable]
+    data_availability_messages: List[str]
 
 
 class TemplateProcessor(BaseService):
@@ -206,7 +208,7 @@ class TemplateProcessor(BaseService):
     
     async def resolve_template(self, content: str, target_date: Optional[str] = None) -> ResolvedTemplate:
         """
-        Resolve all template variables in content
+        Resolve all template variables in content with data availability tracking
         
         Args:
             content: The content containing template variables
@@ -217,19 +219,24 @@ class TemplateProcessor(BaseService):
         """
         if target_date is None:
             target_date = self._get_current_date()
+        
+        # Reset tracking for this resolution
+        self._missing_data_variables = []
             
         # Check cache first
         template_hash = self._generate_template_hash(content, target_date)
         cached_result = await self._get_cached_result(template_hash)
         
         if cached_result:
-            # Return cached result
+            # Return cached result (note: cached results don't track missing data)
             variables = self.parse_template_variables(content)
             return ResolvedTemplate(
                 original_content=content,
                 resolved_content=cached_result,
                 variables_resolved=len(variables),  # Assume all were resolved from cache
-                errors=[]
+                errors=[],
+                variables_without_data=[],
+                data_availability_messages=[]
             )
         
         # Clean up expired cache entries periodically (10% chance)
@@ -261,11 +268,16 @@ class TemplateProcessor(BaseService):
         if not errors and variables_resolved > 0:
             await self._cache_result(template_hash, content, target_date, resolved_content, variables_resolved)
         
+        # Generate data availability messages
+        data_availability_messages = self._generate_data_availability_messages()
+        
         return ResolvedTemplate(
             original_content=content,
             resolved_content=resolved_content,
             variables_resolved=variables_resolved,
-            errors=errors
+            errors=errors,
+            variables_without_data=getattr(self, '_missing_data_variables', []),
+            data_availability_messages=data_availability_messages
         )
     
     async def _resolve_variable(self, variable: TemplateVariable, target_date: str) -> str:
@@ -331,7 +343,7 @@ class TemplateProcessor(BaseService):
     
     def _format_data_items(self, data_items: List[Dict], variable: TemplateVariable) -> str:
         """
-        Format data items into a readable string
+        Format data items into a readable string with availability tracking
         
         Args:
             data_items: List of data items from database
@@ -341,7 +353,9 @@ class TemplateProcessor(BaseService):
             Formatted string representation of the data
         """
         if not data_items:
-            return f"[No data available for {variable.source}_{variable.time_range}]"
+            # Track this variable as having no data for UI messaging
+            self._track_missing_data_variable(variable)
+            return f"[NO_DATA:{variable.source}_{variable.time_range}]"
         
         # Basic formatting - can be enhanced with different strategies
         formatted_items = []
@@ -363,6 +377,35 @@ class TemplateProcessor(BaseService):
         # Return full result without size limits
             
         return result
+    
+    def _track_missing_data_variable(self, variable: TemplateVariable) -> None:
+        """Track variables that were defined in template but have no data"""
+        if not hasattr(self, '_missing_data_variables'):
+            self._missing_data_variables = []
+        
+        # Check if this variable is already tracked to prevent duplicates
+        for existing_var in self._missing_data_variables:
+            if existing_var.source == variable.source and existing_var.time_range == variable.time_range:
+                return  # Already tracked, don't add duplicate
+        
+        self._missing_data_variables.append(variable)
+    
+    def _generate_data_availability_messages(self) -> List[str]:
+        """Generate user-friendly messages for missing data variables"""
+        messages = []
+        seen_sources = set()
+        
+        for var in getattr(self, '_missing_data_variables', []):
+            # Convert technical source names to user-friendly names
+            source_display = var.source.lower().replace('_', ' ')
+            
+            # Only add message if we haven't seen this source before (deduplication)
+            if source_display not in seen_sources:
+                message = f"No data available for {source_display} at the moment, try again soon"
+                messages.append(message)
+                seen_sources.add(source_display)
+        
+        return messages
     
     def _get_namespace_for_source(self, source: str) -> Optional[str]:
         """

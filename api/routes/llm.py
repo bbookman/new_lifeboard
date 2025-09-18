@@ -7,7 +7,7 @@ specifically for daily summaries and other AI-generated content.
 
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -38,6 +38,11 @@ class GenerateSummaryRequest(BaseModel):
     force_regenerate: bool = Field(False, description="Force regeneration even if cached")
 
 
+class DataAvailabilityInfo(BaseModel):
+    missing_sources: List[str] = []
+    messages: List[str] = []
+
+
 class GenerateSummaryResponse(BaseModel):
     success: bool
     content: str
@@ -47,9 +52,17 @@ class GenerateSummaryResponse(BaseModel):
     generation_time: float
     error_message: Optional[str] = None
     cached: bool = False
+    data_availability: Optional[DataAvailabilityInfo] = None
 
     @classmethod
     def from_generation_result(cls, result: LLMGenerationResult, days_date: str, cached: bool = False) -> 'GenerateSummaryResponse':
+        data_availability = None
+        if result.data_availability_messages or result.missing_data_sources:
+            data_availability = DataAvailabilityInfo(
+                missing_sources=result.missing_data_sources or [],
+                messages=result.data_availability_messages or []
+            )
+        
         return cls(
             success=result.success,
             content=result.content,
@@ -58,7 +71,8 @@ class GenerateSummaryResponse(BaseModel):
             model_info=result.model_info,
             generation_time=result.generation_time,
             error_message=result.error_message,
-            cached=cached
+            cached=cached,
+            data_availability=data_availability
         )
 
 
