@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { useLimitlessData } from "../hooks/useLimitlessData";
 import { useAutoFetch } from "../hooks/useAutoFetch";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -25,6 +25,18 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
   // Use custom hooks for data management and auto-fetch logic
   const limitlessData = useLimitlessData();
   useAutoFetch(selectedDate, limitlessData);
+
+  const handleRefresh = async () => {
+    // Get today's date as fallback if selectedDate is not provided
+    const today = new Date().toISOString().split('T')[0];
+    const targetDate = selectedDate || today;
+    
+    // Reset fetch attempted state for the targeted date only
+    limitlessData.resetFetchAttempted(targetDate);
+    
+    // Trigger a fresh data fetch (loading state will prevent flicker)
+    await limitlessData.fetchData(targetDate, true);
+  };
 
   const handleExpandContent = () => {
     if (limitlessData.markdownContent) {
@@ -66,17 +78,29 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
               Limitless
             </Badge>
           </div>
-          {limitlessData.markdownContent && (
+          <div className="flex items-center space-x-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={handleExpandContent}
+              onClick={handleRefresh}
+              disabled={limitlessData.loading || limitlessData.autoFetching}
               className="p-2 bg-white hover:bg-gray-50 border-gray-200"
-              title="Open in new page"
+              title="Refresh limitless data"
             >
-              <ExternalLink className="w-4 h-4 text-gray-600" />
+              <RefreshCw className={`w-4 h-4 text-gray-600 ${limitlessData.loading || limitlessData.autoFetching ? 'animate-spin' : ''}`} />
             </Button>
-          )}
+            {limitlessData.markdownContent && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExpandContent}
+                className="p-2 bg-white hover:bg-gray-50 border-gray-200"
+                title="Open in new page"
+              >
+                <ExternalLink className="w-4 h-4 text-gray-600" />
+              </Button>
+            )}
+          </div>
         </div>
 
       </div>

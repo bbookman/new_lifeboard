@@ -1,5 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 import newsImage from "@/assets/news-placeholder.jpg";
 import { ExtendedNewsCard } from "./ExtendedNewsCard";
 import { ContentCard, DailySummaryData } from "./ContentCard";
@@ -55,6 +57,7 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
   // Daily Summary state management
   const [dailySummary, setDailySummary] = useState<DailySummaryData | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [dataAvailabilityMessages, setDataAvailabilityMessages] = useState<string[]>([]);
 
@@ -204,7 +207,7 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
     if (!selectedDate) return; 
     
     console.log(`[SummarySection] Force regenerating summary for date: ${selectedDate}`);
-    setSummaryLoading(true);
+    setRegenerating(true);
     
     try {
       const generateResponse = await apiClient.generateDailySummary(selectedDate, true);
@@ -232,7 +235,7 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
       setDailySummary(null);
       setDataAvailabilityMessages([]); // Clear messages on critical error
     } finally {
-      setSummaryLoading(false);
+      setRegenerating(false);
     }
   };
 
@@ -292,13 +295,18 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
             ) : dailySummary ? (
                 <div className="relative">
                   <ContentCard data={dailySummary} />
-                  <button
-                    onClick={forceRegenerateSummary}
-                    className="absolute top-4 right-4 button button-outline button-sm"
-                    title="Regenerate summary"
-                  >
-                    ↻
-                  </button>
+                  <div className="absolute top-4 right-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={forceRegenerateSummary}
+                      disabled={regenerating || summaryLoading}
+                      className="p-2 bg-white hover:bg-gray-50 border-gray-200"
+                      title="Regenerate summary"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-gray-600 ${regenerating ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="card p-6 relative">
@@ -309,13 +317,18 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
                   </div>
                   {/* Show refresh button when data availability messages are present */}
                   {dataAvailabilityMessages.length > 0 && (
-                    <button
-                      onClick={forceRegenerateSummary}
-                      className="absolute top-4 right-4 button button-outline button-sm"
-                      title="Retry summary generation"
-                    >
-                      ↻
-                    </button>
+                    <div className="absolute top-4 right-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={forceRegenerateSummary}
+                        disabled={regenerating || summaryLoading}
+                        className="p-2 bg-white hover:bg-gray-50 border-gray-200"
+                        title="Retry summary generation"
+                      >
+                        <RefreshCw className={`w-4 h-4 text-gray-600 ${regenerating ? 'animate-spin' : ''}`} />
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}

@@ -1,13 +1,15 @@
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Clock } from "lucide-react";
+import { ChevronDown, Clock, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useLimitlessData } from "../hooks/useLimitlessData";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { LimitlessContentData } from "./ContentCard";
+import { extractDateFromLimitlessId } from "../utils/limitless";
 
 interface ConversationNode {
   content: string;
@@ -139,11 +141,16 @@ const ConversationNode = ({
 export const LimitlessContentExpanded = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [data, setData] = useState<LimitlessContentData | null>(null);
   const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
+  const limitlessData = useLimitlessData();
 
   useEffect(() => {
     const dataParam = searchParams.get('data');
+    const keyParam = searchParams.get('key');
+    
     if (dataParam) {
       try {
         const parsedData = JSON.parse(decodeURIComponent(dataParam));
@@ -151,8 +158,63 @@ export const LimitlessContentExpanded = () => {
       } catch (error) {
         console.error('Failed to parse content data:', error);
       }
+    } else if (keyParam) {
+      try {
+        const storedData = sessionStorage.getItem(keyParam);
+        if (storedData) {
+          const parsedData = JSON.parse(storedData);
+          setData(parsedData);
+        }
+      } catch (error) {
+        console.error('Failed to parse stored content data:', error);
+      }
     }
   }, [searchParams]);
+
+  const handleRefresh = async () => {
+    if (!data) return;
+    
+    const extractedDate = extractDateFromLimitlessId(data.id);
+    if (!extractedDate) {
+      console.error('Could not extract date from data ID:', data.id);
+      return;
+    }
+
+    try {
+      setRefreshing(true);
+      
+      // Note: This refresh only updates markdown content, not conversation data
+      // The conversation view displays displayConversation, semanticClusters, and semanticMetadata
+      // which are not updated by the current refresh mechanism
+      
+      // Clear current limitless data
+      limitlessData.clearContent();
+      
+      // Reset fetch attempted state for the extracted date only
+      limitlessData.resetFetchAttempted(extractedDate);
+      
+      // Trigger server-side refresh by fetching fresh data
+      const md = await limitlessData.fetchData(extractedDate, true);
+      
+      // Navigate back to the day view where conversation data will be refreshed
+      console.log('Refresh completed - navigating back to day view for updated conversation data');
+      
+      // Create a toast/notification message
+      const message = 'Data refresh initiated. Returning to day view where updated conversation will be available.';
+      
+      // For now, we'll navigate back and let the user know via console
+      // In a full implementation, you would show a toast/snackbar here
+      console.log(message);
+      
+      // Navigate back to the day view
+      navigate(-1);
+      
+    } catch (error) {
+      console.error('Error refreshing limitless data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const toggleClusterExpansion = (clusterId: string) => {
     const newExpanded = new Set(expandedClusters);
@@ -181,18 +243,34 @@ export const LimitlessContentExpanded = () => {
       {/* Header */}
       <div className="sticky top-0 bg-white shadow-sm z-10 p-4 border-b">
         <div className="max-w-4xl mx-auto">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-newspaper-headline">
-              {data.title || "Conversation"}
-            </h1>
-            <div className="flex items-center justify-center space-x-2 mt-1">
-              <Clock className="w-4 h-4 text-newspaper-byline" />
-              <span className="text-sm text-newspaper-byline">{data.timestamp}</span>
+          <div className="relative">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-newspaper-headline">
+                {data.title || "Conversation"}
+              </h1>
+              <div className="flex items-center justify-center space-x-2 mt-1">
+                <Clock className="w-4 h-4 text-newspaper-byline" />
+                <span className="text-sm text-newspaper-byline">{data.timestamp}</span>
+              </div>
+              <div className="flex items-center justify-center space-x-2 mt-2">
+                <Badge variant="secondary">
+                  {data.semanticMetadata.clusteredLines} of {data.semanticMetadata.totalLines} lines
+                </Badge>
+              </div>
             </div>
-            <div className="flex items-center justify-center space-x-2 mt-2">
-              <Badge variant="secondary">
-                {data.semanticMetadata.clusteredLines} of {data.semanticMetadata.totalLines} lines
-              </Badge>
+            
+            {/* Refresh button positioned in top right */}
+            <div className="absolute top-0 right-0 z-20">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="p-2 bg-white hover:bg-gray-50 border-gray-200 shadow-sm"
+                title="Trigger server refresh and return to day view (conversation data will update there)"
+              >
+                <RefreshCw className={`w-4 h-4 text-gray-600 ${refreshing ? 'animate-spin' : ''}`} />
+              </Button>
             </div>
           </div>
         </div>

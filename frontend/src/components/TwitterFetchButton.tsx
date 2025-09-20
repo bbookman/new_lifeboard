@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTwitterStatus } from '@/hooks/useTwitterStatus';
 
@@ -12,6 +12,10 @@ interface TwitterFetchButtonProps {
  * TwitterFetchButton component provides manual Twitter data fetching functionality
  * with configurable rate limiting support. Works with any rate limiting interval
  * configured by the user via TWITTER_RATE_LIMIT_IN_MINUTES environment variable.
+ * 
+ * Shows "Fetch now" for first-time visitors and only displays countdown timer
+ * after user has manually triggered a fetch, preventing confusion about 
+ * automatic background rate limiting.
  */
 const TwitterFetchButton: React.FC<TwitterFetchButtonProps> = ({
   selectedDate,
@@ -19,8 +23,13 @@ const TwitterFetchButton: React.FC<TwitterFetchButtonProps> = ({
 }) => {
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasUserFetched, setHasUserFetched] = useState(false);
   const { canFetch, minutesUntil, loading: statusLoading, error: statusError, checkStatus } = useTwitterStatus(selectedDate);
 
+  // Reset user fetch state when date changes
+  useEffect(() => {
+    setHasUserFetched(false);
+  }, [selectedDate]);
 
   /**
    * Handle fetch button click
@@ -50,6 +59,9 @@ const TwitterFetchButton: React.FC<TwitterFetchButtonProps> = ({
         
         if (result.success) {
           console.log(`[TwitterFetchButton] Fetch successful: ${result.message}`);
+          
+          // Mark that user has successfully fetched data
+          setHasUserFetched(true);
           
           // Refresh rate limit status after successful fetch
           await checkStatus();
@@ -98,7 +110,8 @@ const TwitterFetchButton: React.FC<TwitterFetchButtonProps> = ({
       );
     }
     
-    if (!canFetch && minutesUntil > 0) {
+    // Only show countdown timer if user has manually fetched and is rate limited
+    if (!canFetch && minutesUntil > 0 && hasUserFetched) {
       // Adapt display for different time intervals
       if (minutesUntil >= 60) {
         const hours = Math.floor(minutesUntil / 60);
@@ -117,14 +130,14 @@ const TwitterFetchButton: React.FC<TwitterFetchButtonProps> = ({
   };
 
   const getButtonVariant = () => {
-    if (fetchLoading || (!canFetch && minutesUntil > 0)) {
+    if (fetchLoading || (!canFetch && minutesUntil > 0 && hasUserFetched)) {
       return 'secondary';
     }
     return 'default';
   };
 
   const isButtonDisabled = () => {
-    return fetchLoading || statusLoading || (!canFetch && minutesUntil > 0);
+    return fetchLoading || statusLoading || (!canFetch && minutesUntil > 0 && hasUserFetched);
   };
 
   return (

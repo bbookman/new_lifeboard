@@ -32,10 +32,11 @@ export interface LimitlessDataState {
 }
 
 export interface LimitlessDataActions {
-  fetchData: (targetDate: string, allowAutoFetch?: boolean) => Promise<void>;
+  fetchData: (targetDate: string, allowAutoFetch?: boolean) => Promise<string | null>;
   triggerAutoFetch: (targetDate: string) => Promise<void>;
   resetState: () => void;
   clearContent: () => void;
+  resetFetchAttempted: (date?: string) => void;
 }
 
 /**
@@ -110,7 +111,16 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
   /**
    * Trigger automatic fetch for a specific date when no data exists
    */
-  const triggerAutoFetch = useCallback(async (targetDate: string): Promise<void> => {
+  // TEMPORARY: Replace useCallback with direct function to eliminate stale closure
+  const triggerAutoFetch = async (targetDate: string): Promise<void> => {
+    const uniqueId = `CODE_LOADED_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`[useLimitlessData] ===== TRIGGER AUTO FETCH ENTRY POINT ===== ${uniqueId}`);
+    console.log(`[useLimitlessData] CODE VERIFICATION: This log confirms new code is loaded at ${new Date().toISOString()}`);
+    console.log(`[useLimitlessData] Function called with targetDate: ${targetDate}`);
+    console.log(`[useLimitlessData] Current autoFetching state: ${autoFetching}`);
+    console.log(`[useLimitlessData] Current fetchAttempted set:`, Array.from(fetchAttempted));
+    console.log(`[useLimitlessData] Has targetDate been attempted: ${fetchAttempted.has(targetDate)}`);
+    
     try {
       console.log(`[useLimitlessData] Starting automatic fetch for date: ${targetDate}`);
       setAutoFetching(true);
@@ -192,25 +202,37 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
       setAutoFetching(false);
       setLoading(false);
     }
-  }, []);
+  };
 
   /**
    * Fetch cleaned markdown from limitless data_items
    */
-  const fetchData = useCallback(async (targetDate: string, allowAutoFetch: boolean = true): Promise<void> => {
+  const fetchData = useCallback(async (targetDate: string, allowAutoFetch: boolean = true): Promise<string | null> => {
+    const fetchStartTime = Date.now();
+    console.log(`[useLimitlessData] ===== FETCH DATA CALLED at ${new Date().toISOString()} =====`);
+    console.log(`[useLimitlessData] Parameters: targetDate=${targetDate}, allowAutoFetch=${allowAutoFetch}`);
+    
     // Don't make API call if targetDate is empty or invalid
     if (!targetDate || !targetDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      console.log(`[useLimitlessData] Skipping API call for invalid date: ${targetDate}`);
-      return;
+      console.log(`[useLimitlessData] ABORT: Skipping API call for invalid date: ${targetDate}`);
+      return null;
     }
 
     try {
-      console.log(`[useLimitlessData] Fetching data for targetDate: ${targetDate}`);
+      console.log(`[useLimitlessData] Step 1: Date validation passed for: ${targetDate}`);
+      console.log(`[useLimitlessData] Current state - loading: ${loading}, autoFetching: ${autoFetching}`);
+      console.log(`[useLimitlessData] Fetch attempted dates:`, Array.from(fetchAttempted));
+      setLoading(true);
+      console.log(`[useLimitlessData] Step 2: Setting loading state to true`);
       
       // Fetch data for the target date with cache-busting timestamp
       const timestamp = Date.now();
       const apiUrl = `/api/calendar/data_items/${targetDate}?namespaces=limitless&_t=${timestamp}`;
-      console.log(`[useLimitlessData] API URL: ${apiUrl}`);
+      console.log(`[useLimitlessData] Step 3: Constructed API URL: ${apiUrl}`);
+      console.log(`[useLimitlessData] Cache-busting timestamp: ${timestamp}`);
+      
+      console.log(`[useLimitlessData] Step 4: Making fetch request to API`);
+      const fetchRequestTime = Date.now();
       
       const response = await fetch(apiUrl, {
         headers: {
@@ -220,11 +242,21 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
         }
       });
       
+      const fetchResponseTime = Date.now();
+      console.log(`[useLimitlessData] Step 5: Fetch completed in ${fetchResponseTime - fetchRequestTime}ms`);
       console.log(`[useLimitlessData] Response status: ${response.status}`);
+      console.log(`[useLimitlessData] Response ok: ${response.ok}`);
+      console.log(`[useLimitlessData] Response headers:`, Object.fromEntries(response.headers.entries()));
       
       if (response.ok) {
+        console.log(`[useLimitlessData] Step 6: Response successful, parsing JSON`);
+        const jsonParseTime = Date.now();
         const dataItems: DataItem[] = await response.json();
+        const jsonParsedTime = Date.now();
+        
+        console.log(`[useLimitlessData] Step 7: JSON parsed in ${jsonParsedTime - jsonParseTime}ms`);
         console.log(`[useLimitlessData] RECEIVED: ${dataItems.length} items for targetDate=${targetDate}`);
+        console.log(`[useLimitlessData] Item IDs:`, dataItems.map(item => item.id));
         
         // Verify all items have correct days_date
         const dateMismatchItems = dataItems.filter(item => item.days_date !== targetDate);
@@ -234,45 +266,86 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
         }
         
         if (dataItems.length > 0) {
+          console.log(`[useLimitlessData] Step 8: Processing ${dataItems.length} data items`);
+          const extractTime = Date.now();
           const combinedMarkdown = extractMarkdownContent(dataItems);
+          const extractedTime = Date.now();
+          
+          console.log(`[useLimitlessData] Step 9: Markdown extraction completed in ${extractedTime - extractTime}ms`);
+          console.log(`[useLimitlessData] Combined markdown length: ${combinedMarkdown.length}`);
+          console.log(`[useLimitlessData] Combined markdown trimmed length: ${combinedMarkdown.trim().length}`);
+          console.log(`[useLimitlessData] Combined markdown preview: ${combinedMarkdown.substring(0, 200)}...`);
           
           if (combinedMarkdown.trim().length > 0) {
+            console.log(`[useLimitlessData] Step 10: Setting markdown content and updating state`);
             setMarkdownContent(combinedMarkdown);
-            console.log(`[useLimitlessData] Set markdown content length: ${combinedMarkdown.length}`);
+            console.log(`[useLimitlessData] Markdown content set successfully`);
+            setLoading(false);
+            console.log(`[useLimitlessData] Loading state set to false`);
+            const finalTime = Date.now();
+            console.log(`[useLimitlessData] ===== FETCH SUCCESS: Returning data after ${finalTime - fetchStartTime}ms =====`);
+            return combinedMarkdown;
           } else {
-            console.log(`[useLimitlessData] No displayable markdown content found for ${targetDate}`);
+            console.log(`[useLimitlessData] Step 10: No displayable markdown content found for ${targetDate}`);
+            console.log(`[useLimitlessData] Auto-fetch evaluation: allowAutoFetch=${allowAutoFetch}, attempted=${fetchAttempted.has(targetDate)}, autoFetching=${autoFetching}`);
             
             // Trigger automatic fetch if no data and not already attempted
             if (allowAutoFetch && !fetchAttempted.has(targetDate) && !autoFetching) {
               console.log(`[useLimitlessData] Triggering automatic fetch for ${targetDate} - no displayable content`);
               await triggerAutoFetch(targetDate);
+              setLoading(false);
+              const finalTime = Date.now();
+              console.log(`[useLimitlessData] ===== FETCH TRIGGERED AUTO-FETCH after ${finalTime - fetchStartTime}ms =====`);
+              return markdownContent || null;
             } else {
               console.log(`[useLimitlessData] Not triggering automatic fetch for ${targetDate}: attempted=${fetchAttempted.has(targetDate)}, fetching=${autoFetching}, allowAuto=${allowAutoFetch}`);
               setMarkdownContent('');
+              setLoading(false);
+              const finalTime = Date.now();
+              console.log(`[useLimitlessData] ===== FETCH COMPLETED (no content) after ${finalTime - fetchStartTime}ms =====`);
+              return null;
             }
           }
         } else {
-          console.log(`[useLimitlessData] No data items found for ${targetDate}`);
+          console.log(`[useLimitlessData] Step 8: No data items found for ${targetDate}`);
+          console.log(`[useLimitlessData] Auto-fetch evaluation: allowAutoFetch=${allowAutoFetch}, attempted=${fetchAttempted.has(targetDate)}, autoFetching=${autoFetching}`);
           
           // Trigger automatic fetch if no data and not already attempted
           if (allowAutoFetch && !fetchAttempted.has(targetDate) && !autoFetching) {
             console.log(`[useLimitlessData] Triggering automatic fetch for ${targetDate} (no items)`);
             await triggerAutoFetch(targetDate);
+            setLoading(false);
+            const finalTime = Date.now();
+            console.log(`[useLimitlessData] ===== FETCH TRIGGERED AUTO-FETCH (no items) after ${finalTime - fetchStartTime}ms =====`);
+            return markdownContent || null;
           } else {
             console.log(`[useLimitlessData] Automatic fetch already attempted or in progress for ${targetDate}, or auto-fetch disabled`);
             setMarkdownContent('');
+            setLoading(false);
+            const finalTime = Date.now();
+            console.log(`[useLimitlessData] ===== FETCH COMPLETED (no items, no auto-fetch) after ${finalTime - fetchStartTime}ms =====`);
+            return null;
           }
         }
       } else {
-        console.error('[useLimitlessData] Failed to fetch limitless data:', response.status);
+        console.error('[useLimitlessData] Step 6: Failed to fetch limitless data:', response.status);
+        console.error('[useLimitlessData] Response not ok, status text:', response.statusText);
         setMarkdownContent('');
+        setLoading(false);
+        const finalTime = Date.now();
+        console.log(`[useLimitlessData] ===== FETCH FAILED after ${finalTime - fetchStartTime}ms =====`);
+        return null;
       }
-      
-      setLoading(false);
     } catch (error) {
-      console.error('[useLimitlessData] Error fetching limitless data:', error);
+      console.error('[useLimitlessData] ERROR during fetch operation:', error);
+      console.error('[useLimitlessData] Error name:', error instanceof Error ? error.name : 'Unknown');
+      console.error('[useLimitlessData] Error message:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('[useLimitlessData] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       setMarkdownContent('');
       setLoading(false);
+      const finalTime = Date.now();
+      console.log(`[useLimitlessData] ===== FETCH ERROR after ${finalTime - fetchStartTime}ms =====`);
+      return null;
     }
   }, [extractMarkdownContent, fetchAttempted, autoFetching]);
 
@@ -295,6 +368,25 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
     setFetchError(null);
   }, []);
 
+  /**
+   * Reset fetch attempted state for a specific date or all dates
+   * @param date - Optional date to reset. If not provided, clears all dates
+   */
+  const resetFetchAttempted = useCallback((date?: string) => {
+    if (date) {
+      console.log(`[useLimitlessData] Resetting fetch attempts for date: ${date}`);
+      setFetchAttempted(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(date);
+        console.log(`[useLimitlessData] Removed ${date} from fetch attempts. Remaining attempts:`, Array.from(newSet));
+        return newSet;
+      });
+    } else {
+      console.log(`[useLimitlessData] Clearing all fetch attempts`);
+      setFetchAttempted(new Set());
+    }
+  }, []);
+
   return {
     // State
     markdownContent,
@@ -307,6 +399,7 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
     fetchData,
     triggerAutoFetch,
     resetState,
-    clearContent
+    clearContent,
+    resetFetchAttempted
   };
 };

@@ -300,12 +300,86 @@ class DatabaseService:
         except (ValueError, TypeError) as e:
             return None
     
+    def _extract_start_time_for_sorting(self, item_dict: Dict) -> Optional[datetime]:
+        """
+        Extract start_time from item metadata for chronological sorting.
+        Returns datetime object if found, None otherwise.
+        """
+        try:
+            metadata = item_dict.get('metadata', {})
+            if not metadata:
+                return None
+            
+            # Parse metadata if it's a JSON string
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except (json.JSONDecodeError, TypeError):
+                    return None
+            
+            if not isinstance(metadata, dict):
+                return None
+            
+            # Try different possible locations for start_time
+            start_time = None
+            
+            # Check processed_response first (new metadata structure)
+            if 'processed_response' in metadata:
+                start_time = metadata['processed_response'].get('start_time')
+            
+            # Check original_response (new metadata structure)
+            if not start_time and 'original_response' in metadata:
+                start_time = metadata['original_response'].get('startTime')
+            
+            # Check original_lifelog (legacy structure)
+            if not start_time and 'original_lifelog' in metadata:
+                original = metadata['original_lifelog']
+                if isinstance(original, dict):
+                    start_time = original.get('startTime')
+            
+            # Check top-level metadata (legacy)
+            if not start_time:
+                start_time = metadata.get('start_time') or metadata.get('startTime')
+            
+            if start_time:
+                # Parse the timestamp
+                if start_time.endswith('Z'):
+                    dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                elif '+' in start_time or start_time.endswith('UTC'):
+                    dt = datetime.fromisoformat(start_time.replace('UTC', '+00:00'))
+                else:
+                    dt = datetime.fromisoformat(start_time)
+                
+                return dt
+            
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.debug(f"Could not extract start_time for sorting: {e}")
+            
+        return None
+    
+    def _sort_items_chronologically(self, items: List[Dict]) -> List[Dict]:
+        """
+        Sort items chronologically within each day, maintaining database ordering as fallback.
+        """
+        def sort_key(item):
+            # Extract start_time for sorting
+            start_time = self._extract_start_time_for_sorting(item)
+            
+            if start_time:
+                # Use actual start_time for chronological ordering (ascending within day)
+                return (item.get('days_date', ''), start_time, item.get('updated_at', ''))
+            else:
+                # Fallback to existing ordering for items without start_time
+                return (item.get('days_date', ''), datetime.min, item.get('updated_at', ''))
+        
+        return sorted(items, key=sort_key)
+    
     def get_data_items_by_date_range(self, start_date: str, end_date: str, 
                                    namespaces: Optional[List[str]] = None,
                                    limit: int = 100) -> List[Dict]:
-        """Get data items within a date range"""
+        """Get data items within a date range, sorted chronologically within each day"""
         with self.get_connection() as conn:
-            # Base query
+            # Base query - fetch more items initially to allow for proper sorting
             query = """
                 SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
                 FROM data_items 
@@ -319,15 +393,21 @@ class DatabaseService:
                 query += f" AND namespace IN ({placeholders})"
                 params.extend(namespaces)
             
-            # Add ordering and limit
-            query += " ORDER BY days_date DESC, updated_at DESC LIMIT ?"
-            params.append(limit)
+            # Initial ordering by days_date and updated_at for database efficiency
+            # We'll do chronological sorting in Python after fetching
+            query += " ORDER BY days_date DESC, updated_at DESC"
             
             cursor = conn.execute(query, params)
+            raw_items = [dict(row) for row in cursor.fetchall()]
             
-            return DatabaseRowParser.parse_rows_with_metadata(
-                [dict(row) for row in cursor.fetchall()]
-            )
+            # Parse metadata
+            parsed_items = DatabaseRowParser.parse_rows_with_metadata(raw_items)
+            
+            # Apply chronological sorting (this will sort by start_time within each day)
+            sorted_items = self._sort_items_chronologically(parsed_items)
+            
+            # Apply limit after sorting to ensure we get the right items
+            return sorted_items[:limit] if limit else sorted_items
     
     def get_data_items_by_date(self, date: str, namespaces: Optional[List[str]] = None) -> List[Dict]:
         """Get all data items for a specific date"""
@@ -709,7 +789,7 @@ class DatabaseService:
     async def async_get_data_items_by_date_range(self, start_date: str, end_date: str, 
                                                namespaces: Optional[List[str]] = None,
                                                limit: int = 100) -> List[Dict]:
-        """Async version of get_data_items_by_date_range"""
+        """Async version of get_data_items_by_date_range, sorted chronologically within each day"""
         start_time = time.time()
         
         # Twitter-specific logging
@@ -719,7 +799,7 @@ class DatabaseService:
                        f"start_date={start_date}, end_date={end_date}, limit={limit}")
         
         try:
-            # Base query
+            # Base query - fetch more items initially to allow for proper sorting
             query = """
                 SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
                 FROM data_items 
@@ -733,9 +813,9 @@ class DatabaseService:
                 query += f" AND namespace IN ({placeholders})"
                 params.extend(namespaces)
             
-            # Add ordering and limit
-            query += " ORDER BY days_date DESC, updated_at DESC LIMIT ?"
-            params.append(limit)
+            # Initial ordering by days_date and updated_at for database efficiency
+            # We'll do chronological sorting in Python after fetching
+            query += " ORDER BY days_date DESC, updated_at DESC"
             
             if is_twitter_query:
                 logger.info(f"[TWITTER TRACE] Twitter date query SQL: {query}")
@@ -758,15 +838,22 @@ class DatabaseService:
                             logger.info(f"[TWITTER TRACE] Twitter sample from date range: "
                                        f"id={sample_twitter.get('id')}, days_date={sample_twitter.get('days_date')}")
                     
+                    # Parse metadata
                     parsed_rows = DatabaseRowParser.parse_rows_with_metadata(
                         [dict(row) for row in rows]
                     )
                     
+                    # Apply chronological sorting (this will sort by start_time within each day)
+                    sorted_items = self._sort_items_chronologically(parsed_rows)
+                    
+                    # Apply limit after sorting to ensure we get the right items
+                    final_items = sorted_items[:limit] if limit else sorted_items
+                    
                     if is_twitter_query:
-                        twitter_parsed = [item for item in parsed_rows if item.get('namespace') == 'twitter']
+                        twitter_parsed = [item for item in final_items if item.get('namespace') == 'twitter']
                         logger.info(f"[TWITTER TRACE] Twitter date range parsing completed: {len(twitter_parsed)} Twitter items")
                     
-                    return parsed_rows
+                    return final_items
                     
         except Exception as e:
             execution_time = (time.time() - start_time) * 1000
