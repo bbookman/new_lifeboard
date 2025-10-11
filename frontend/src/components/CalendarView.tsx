@@ -9,6 +9,7 @@ interface CalendarDay {
   hasNewsEvents?: boolean;
   hasLimitlessEvents?: boolean;
   hasTwitterEvents?: boolean;
+  hasAppleMusicEvents?: boolean;
 }
 
 interface SyncStatus {
@@ -46,6 +47,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   const [newsDaysWithData, setNewsDaysWithData] = useState<Set<string>>(new Set());
   const [limitlessDaysWithData, setLimitlessDaysWithData] = useState<Set<string>>(new Set());
   const [twitterDaysWithData, setTwitterDaysWithData] = useState<Set<string>>(new Set());
+  const [appleMusicDaysWithData, setAppleMusicDaysWithData] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [serverToday, setServerToday] = useState<string>('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
@@ -147,7 +149,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         all: [],
         news: [],
         limitless: [],
-        twitter: []
+        twitter: [],
+        apple_music: []
       };
       
       let latestSyncStatus: SyncStatus | null = null;
@@ -173,13 +176,14 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         combinedData[key] = [...new Set(combinedData[key])];
       });
       
-      console.log(`[CALENDAR] Combined data: all=${combinedData.all?.length || 0}, news=${combinedData.news?.length || 0}, limitless=${combinedData.limitless?.length || 0}, twitter=${combinedData.twitter?.length || 0}`);
+      console.log(`[CALENDAR] Combined data: all=${combinedData.all?.length || 0}, news=${combinedData.news?.length || 0}, limitless=${combinedData.limitless?.length || 0}, twitter=${combinedData.twitter?.length || 0}, apple_music=${combinedData.apple_music?.length || 0}`);
       
       if (!signal?.aborted) {
         setAllDaysWithData(new Set(combinedData.all || []));
         setNewsDaysWithData(new Set(combinedData.news || []));
         setLimitlessDaysWithData(new Set(combinedData.limitless || []));
         setTwitterDaysWithData(new Set(combinedData.twitter || []));
+        setAppleMusicDaysWithData(new Set(combinedData.apple_music || []));
         
         // Update sync status
         setSyncStatus(latestSyncStatus);
@@ -201,6 +205,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         setNewsDaysWithData(new Set());
         setLimitlessDaysWithData(new Set());
         setTwitterDaysWithData(new Set());
+        setAppleMusicDaysWithData(new Set());
         setSyncStatus(null);
       }
     } finally {
@@ -257,12 +262,13 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     for (let i = firstDayOfWeek - 1; i >= 0; i--) {
       const dayNumber = prevMonth.getDate() - i;
       const dateString = `${prevMonthYear}-${String(prevMonthMonth + 1).padStart(2, '0')}-${String(dayNumber).padStart(2, '0')}`;
-      
+
       const hasEvents = allDaysWithData.has(dateString);
       const hasNewsEvents = newsDaysWithData.has(dateString);
       const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
       const hasTwitterEvents = twitterDaysWithData.has(dateString);
-      
+      const hasAppleMusicEvents = appleMusicDaysWithData.has(dateString);
+
       days.push({
         date: dayNumber,
         isCurrentMonth: false,
@@ -270,7 +276,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         hasEvents,
         hasNewsEvents,
         hasLimitlessEvents,
-        hasTwitterEvents
+        hasTwitterEvents,
+        hasAppleMusicEvents
       });
     }
     
@@ -283,7 +290,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       const hasNewsEvents = newsDaysWithData.has(dateString);
       const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
       const hasTwitterEvents = twitterDaysWithData.has(dateString);
-      
+      const hasAppleMusicEvents = appleMusicDaysWithData.has(dateString);
+
       days.push({
         date: day,
         isCurrentMonth: true,
@@ -291,7 +299,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         hasEvents,
         hasNewsEvents,
         hasLimitlessEvents,
-        hasTwitterEvents
+        hasTwitterEvents,
+        hasAppleMusicEvents
       });
     }
     
@@ -302,12 +311,13 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
     
     for (let day = 1; day <= remainingDays; day++) {
       const dateString = `${nextMonthYear}-${String(nextMonthMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      
+
       const hasEvents = allDaysWithData.has(dateString);
       const hasNewsEvents = newsDaysWithData.has(dateString);
       const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
       const hasTwitterEvents = twitterDaysWithData.has(dateString);
-      
+      const hasAppleMusicEvents = appleMusicDaysWithData.has(dateString);
+
       days.push({
         date: day,
         isCurrentMonth: false,
@@ -315,7 +325,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         hasEvents,
         hasNewsEvents,
         hasLimitlessEvents,
-        hasTwitterEvents
+        hasTwitterEvents,
+        hasAppleMusicEvents
       });
     }
     
@@ -523,8 +534,11 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
                     }}
                   >
                     <span className="calendar-day-number">{day.date}</span>
-                    {(day.hasNewsEvents || day.hasLimitlessEvents || day.hasTwitterEvents) && (
+                    {(day.hasAppleMusicEvents || day.hasNewsEvents || day.hasLimitlessEvents || day.hasTwitterEvents) && (
                       <div className="calendar-icons-container">
+                        {day.hasAppleMusicEvents && (
+                          <span className="calendar-icon apple-music-icon">🎵</span>
+                        )}
                         {day.hasLimitlessEvents && (
                           <img src="/src/assets/limitless-logo.svg" alt="Limitless Data" className="calendar-icon limitless-icon" />
                         )}

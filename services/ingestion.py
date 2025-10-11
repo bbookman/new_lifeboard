@@ -666,7 +666,21 @@ class IngestionService(BaseService, ServiceDebugMixin):
     def _extract_days_date(self, item: DataItem) -> Optional[str]:
         """Extract days_date from DataItem for calendar support"""
         try:
-            # First try to use created_at if available
+            # FIRST: Check for explicit days_date in metadata (authoritative for sources like Apple Music)
+            if item.metadata:
+                metadata_dict = item.metadata
+                if isinstance(item.metadata, str):
+                    from core.json_utils import JSONMetadataParser
+                    metadata_dict = JSONMetadataParser.parse_metadata(item.metadata)
+
+                if metadata_dict and 'days_date' in metadata_dict:
+                    days_date_value = metadata_dict['days_date']
+                    # Validate format (YYYY-MM-DD)
+                    if isinstance(days_date_value, str) and len(days_date_value) == 10 and days_date_value[4] == '-' and days_date_value[7] == '-':
+                        logger.debug(f"Extracted days_date from metadata for {item.source_id}: {days_date_value}")
+                        return days_date_value
+
+            # SECOND: Try to use created_at if available
             if item.created_at:
                 # Ensure created_at is timezone-aware (assume UTC if naive)
                 if item.created_at.tzinfo is None or item.created_at.tzinfo.utcoffset(item.created_at) is None:

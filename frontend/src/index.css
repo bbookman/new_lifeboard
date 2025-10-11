@@ -606,6 +606,14 @@ All colors MUST be HSL.
   /* Specific styles for news emoji if needed */
 }
 
+.apple-music-icon {
+  /* Specific styles for Apple Music icon if needed */
+}
+
+.twitter-icon {
+  /* Specific styles for Twitter icon if needed */
+}
+
 /* Additional utility classes */
 .justify-between {
   justify-content: space-between;
