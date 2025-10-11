@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
-    LimitlessConfig, NewsConfig, WeatherConfig, TwitterConfig, SpotifyConfig, SearchConfig, SchedulerConfig, LoggingConfig,
+    LimitlessConfig, NewsConfig, WeatherConfig, TwitterConfig, SpotifyConfig, AppleMusicConfig, SearchConfig, SchedulerConfig, LoggingConfig,
     LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
 )
 
@@ -182,6 +182,9 @@ def create_production_config() -> AppConfig:
             request_timeout=float(os.getenv("SPOTIFY__REQUEST_TIMEOUT", "30.0")),
             rate_limit_max_delay=int(os.getenv("SPOTIFY__RATE_LIMIT_MAX_DELAY", "60")),
             respect_retry_after=os.getenv("SPOTIFY__RATE_LIMIT_RESPECT_RETRY_AFTER", "true").lower() == "true"
+        ),
+        apple_music=AppleMusicConfig(
+            enabled=os.getenv("APPLE_MUSIC__ENABLED", "true").lower() == "true"
         ),
         search=SearchConfig(
             default_limit=int(os.getenv("SEARCH_DEFAULT_LIMIT", "20")),

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from services.sync_manager_service import SyncManagerService
 from sources.twitter import TwitterSource
+from sources.apple_music import AppleMusicSource
 from services.twitter_api_service import TwitterAPIService
 from services.twitter_rate_limit_service import TwitterRateLimitService
 from core.dependencies import get_dependency_registry
@@ -200,3 +201,73 @@ async def upload_twitter_archive(
                 logger.debug(f"Cleaned up temporary file: {temp_zip_path}")
         except Exception as cleanup_error:
             logger.warning(f"Could not clean up temporary file {temp_zip_path}: {cleanup_error}")
+
+
+@router.post("/process/apple")
+async def process_apple_music_directory(
+    files: list[UploadFile] = File(...)
+):
+    """Process Apple Music directory files"""
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    logger.info(f"[APPLE MUSIC] Starting Apple Music directory processing with {len(files)} files")
+
+    try:
+        # Get the Apple Music source and config from dependency registry
+        registry = get_dependency_registry()
+        startup_service = registry.get_startup_service()
+
+        if not startup_service:
+            logger.error("[APPLE MUSIC] Startup service not available")
+            return JSONResponse(content={"message": "Service not available"}, status_code=500)
+
+        # Get config and create Apple Music source
+        config = startup_service.config
+        if not config or not hasattr(config, 'apple_music'):
+            logger.error("[APPLE MUSIC] Apple Music configuration not found")
+            return JSONResponse(content={"message": "Apple Music configuration not available"}, status_code=500)
+
+        apple_music_source = AppleMusicSource(
+            config=config.apple_music,
+            db_service=startup_service.database
+        )
+
+        # Read all uploaded files into memory
+        uploaded_files = []
+        for file in files:
+            filename = file.filename or "unknown"
+            content = await file.read()
+            uploaded_files.append((filename, content))
+            logger.debug(f"[APPLE MUSIC] Read file: {filename} ({len(content)} bytes)")
+
+        # Process the directory
+        result = await apple_music_source.process_directory(uploaded_files)
+
+        if result["success"]:
+            # Ingest the data items if they were returned
+            if result.get("data_items"):
+                if not startup_service.ingestion_service:
+                    logger.error("[APPLE MUSIC] Ingestion service not available")
+                    return JSONResponse(content={"message": "Ingestion service not available"}, status_code=500)
+
+                logger.info(f"[APPLE MUSIC] Ingesting {len(result['data_items'])} data items into database")
+                ingestion_result = await startup_service.ingestion_service.ingest_items(
+                    "apple_music",
+                    result["data_items"]
+                )
+                logger.info(f"[APPLE MUSIC] Successfully ingested {ingestion_result.items_stored} track plays "
+                          f"({ingestion_result.items_processed} processed, {ingestion_result.embeddings_generated} embeddings generated)")
+
+            logger.info(f"[APPLE MUSIC] Apple Music import successful: {result['message']}")
+            return JSONResponse(content={"message": result["message"]})
+        else:
+            logger.error(f"[APPLE MUSIC] Apple Music import failed: {result['message']}")
+            return JSONResponse(content={"message": result["message"]}, status_code=400)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[APPLE MUSIC] Error processing Apple Music directory: {e}", exc_info=True)
+        error_msg = f"An error occurred during Apple Music import: {str(e)}"
+        return JSONResponse(content={"message": error_msg}, status_code=500)

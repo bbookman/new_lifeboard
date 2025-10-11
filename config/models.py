@@ -606,6 +606,15 @@ class SpotifyConfig(BaseModel, BaseConfigMixin):
         return self.enabled and self.is_api_configured()
 
 
+class AppleMusicConfig(BaseModel):
+    """Apple Music source configuration"""
+    enabled: bool = True
+
+    def is_configured(self) -> bool:
+        """Check if Apple Music source is enabled"""
+        return self.enabled
+
+
 class DocumentsConfig(BaseModel):
     """User documents configuration"""
     enabled: bool = True
@@ -617,20 +626,20 @@ class DocumentsConfig(BaseModel):
     chunk_size: int = 1000  # Characters per chunk for vector indexing
     chunk_overlap: int = 200  # Overlap between chunks
     search_results_limit: int = 20
-    
+
     @field_validator('max_title_length', 'max_content_length', 'chunk_size', 'chunk_overlap', 'search_results_limit')
     @classmethod
     def validate_positive_ints(cls, v, info):
         field_name = info.field_name.replace('_', ' ').title()
         return NumericValidator.validate_positive_int(v, field_name)
-    
+
     @field_validator('auto_save_interval_seconds')
     @classmethod
     def validate_auto_save_interval(cls, v):
         if v < 10:  # Minimum 10 seconds to avoid excessive saves
             raise ValueError("Auto-save interval must be at least 10 seconds")
         return v
-    
+
     @field_validator('default_user_id')
     @classmethod
     def validate_user_id(cls, v):
@@ -647,6 +656,7 @@ class AppConfig(BaseModel):
     weather: WeatherConfig = WeatherConfig()
     twitter: TwitterConfig = TwitterConfig()
     spotify: SpotifyConfig = SpotifyConfig()
+    apple_music: AppleMusicConfig = AppleMusicConfig()
     documents: DocumentsConfig = DocumentsConfig()
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
