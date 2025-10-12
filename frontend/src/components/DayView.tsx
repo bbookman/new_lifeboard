@@ -2,7 +2,6 @@ import { SummarySection } from "./SummarySection";
 import { NewsFeed } from "./NewsFeed";
 import { TwitterFeed } from "./TwitterFeed";
 import { MusicHistory } from "./MusicHistory";
-import { PhotoGallery } from "./PhotoGallery";
 import { useEffect, useState } from "react";
 import { getTodayYYYYMMDD } from "../lib/utils";
 import { useConfig } from "../hooks/useConfig";
@@ -83,16 +82,8 @@ export const DayView = ({ selectedDate, onDateChange, setFormattedDate }: DayVie
         </div>
       </div>
       
-      {/* Horizontal divider */}
-      <div className="my-12 border-t-2 border-newspaper-divider"></div>
-      
-      {/* Bottom sections */}
-      <div>
-        {/* Photo gallery */}
-        <PhotoGallery selectedDate={effectiveDate} key={`gallery-${effectiveDate}`} />
-      </div>
-      
-      
+
+
     </div>
   );
 };

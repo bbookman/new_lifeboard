@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import newsImage from "@/assets/news-placeholder.jpg";
 import { ExtendedNewsCard } from "./ExtendedNewsCard";
+import { AppleMusicCard } from "./AppleMusicCard";
 import { ContentCard, DailySummaryData } from "./ContentCard";
 import { DataAvailabilityAlert } from "./DataAvailabilityAlert";
 import { useState, useEffect, useCallback } from "react";
@@ -348,6 +349,11 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
             selectedDate={selectedDate}
           />
         ))}
+
+        {/* Apple Music Card */}
+        <Card className="overflow-hidden hover:shadow-lg transition-shadow flex flex-col">
+          <AppleMusicCard selectedDate={selectedDate} />
+        </Card>
       </div>
     </div>
   );

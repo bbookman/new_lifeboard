@@ -31,7 +31,7 @@ from config.factory import create_production_config
 from core.dependencies import get_dependency_registry
 
 # Import route modules
-from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings, sync_status, documents, llm, news, data_items, sources, processing, spotify, config, debug
+from api.routes import health, sync, chat, embeddings, system, calendar, weather, settings, headings, sync_status, documents, llm, news, data_items, sources, processing, spotify, config, debug, apple_music
 
 logger = logging.getLogger(__name__)
 
@@ -496,6 +496,7 @@ app.include_router(health.router, prefix="/api")  # health.py has "" prefix -> /
 app.include_router(sync.router, prefix="/api")  # sync.py has "" prefix -> /api/sync
 app.include_router(weather.router, prefix="/api")  # weather.py has no prefix -> /api/weather
 app.include_router(spotify.router, prefix="/api")  # spotify.py has "/spotify" -> /api/spotify
+app.include_router(apple_music.router, prefix="/api")  # apple_music.py has "/apple-music" -> /api/apple-music
 app.include_router(headings.router, prefix="/api")  # headings.py has "/headings" -> /api/headings
 app.include_router(sync_status.router, prefix="/api")  # sync_status.py has "/sync-status" -> /api/sync-status
 app.include_router(data_items.router, prefix="/api")  # data_items.py has "/data_items" -> /api/data_items
