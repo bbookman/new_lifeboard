@@ -28,9 +28,7 @@ export const AppleMusicCard = ({ selectedDate }: AppleMusicCardProps) => {
             <h3 className="font-headline text-xl font-bold text-newspaper-headline">
               Music of the Day
             </h3>
-            <Badge variant="outline" className="text-xs">
-              Apple Music
-            </Badge>
+            
           </div>
           <div className="flex items-center space-x-2">
             <Button

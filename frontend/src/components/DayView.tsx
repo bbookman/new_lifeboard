@@ -2,6 +2,7 @@ import { SummarySection } from "./SummarySection";
 import { NewsFeed } from "./NewsFeed";
 import { TwitterFeed } from "./TwitterFeed";
 import { MusicHistory } from "./MusicHistory";
+import { YelpReviews } from "./YelpReviews";
 import { useEffect, useState } from "react";
 import { getTodayYYYYMMDD } from "../lib/utils";
 import { useConfig } from "../hooks/useConfig";
@@ -72,13 +73,14 @@ export const DayView = ({ selectedDate, onDateChange, setFormattedDate }: DayVie
           <SummarySection selectedDate={effectiveDate} key={`summary-${effectiveDate}`} />
         </div>
         
-        {/* Right column - News feed, Twitter, and Music */}
+        {/* Right column - News feed, Twitter, Music, and Yelp */}
         <div className="lg:col-span-1 space-y-8">
           {!configLoading && config?.news?.enabled && (
             <NewsFeed selectedDate={effectiveDate} key={`newsfeed-${effectiveDate}`} />
           )}
           <TwitterFeed selectedDate={effectiveDate} key={`twitter-${effectiveDate}`} />
           {false && <MusicHistory selectedDate={effectiveDate} key={`music-${effectiveDate}`} />}
+          <YelpReviews selectedDate={effectiveDate} key={`yelp-${effectiveDate}`} />
         </div>
       </div>
       

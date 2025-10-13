@@ -10,6 +10,7 @@ interface CalendarDay {
   hasLimitlessEvents?: boolean;
   hasTwitterEvents?: boolean;
   hasAppleMusicEvents?: boolean;
+  hasYelpEvents?: boolean;
 }
 
 interface SyncStatus {
@@ -48,6 +49,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
   const [limitlessDaysWithData, setLimitlessDaysWithData] = useState<Set<string>>(new Set());
   const [twitterDaysWithData, setTwitterDaysWithData] = useState<Set<string>>(new Set());
   const [appleMusicDaysWithData, setAppleMusicDaysWithData] = useState<Set<string>>(new Set());
+  const [yelpDaysWithData, setYelpDaysWithData] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [serverToday, setServerToday] = useState<string>('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
@@ -150,7 +152,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         news: [],
         limitless: [],
         twitter: [],
-        apple_music: []
+        apple_music: [],
+        yelp: []
       };
       
       let latestSyncStatus: SyncStatus | null = null;
@@ -176,7 +179,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         combinedData[key] = [...new Set(combinedData[key])];
       });
       
-      console.log(`[CALENDAR] Combined data: all=${combinedData.all?.length || 0}, news=${combinedData.news?.length || 0}, limitless=${combinedData.limitless?.length || 0}, twitter=${combinedData.twitter?.length || 0}, apple_music=${combinedData.apple_music?.length || 0}`);
+      console.log(`[CALENDAR] Combined data: all=${combinedData.all?.length || 0}, news=${combinedData.news?.length || 0}, limitless=${combinedData.limitless?.length || 0}, twitter=${combinedData.twitter?.length || 0}, apple_music=${combinedData.apple_music?.length || 0}, yelp=${combinedData.yelp?.length || 0}`);
       
       if (!signal?.aborted) {
         setAllDaysWithData(new Set(combinedData.all || []));
@@ -184,6 +187,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         setLimitlessDaysWithData(new Set(combinedData.limitless || []));
         setTwitterDaysWithData(new Set(combinedData.twitter || []));
         setAppleMusicDaysWithData(new Set(combinedData.apple_music || []));
+        setYelpDaysWithData(new Set(combinedData.yelp || []));
         
         // Update sync status
         setSyncStatus(latestSyncStatus);
@@ -206,6 +210,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         setLimitlessDaysWithData(new Set());
         setTwitterDaysWithData(new Set());
         setAppleMusicDaysWithData(new Set());
+        setYelpDaysWithData(new Set());
         setSyncStatus(null);
       }
     } finally {
@@ -268,6 +273,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
       const hasTwitterEvents = twitterDaysWithData.has(dateString);
       const hasAppleMusicEvents = appleMusicDaysWithData.has(dateString);
+      const hasYelpEvents = yelpDaysWithData.has(dateString);
 
       days.push({
         date: dayNumber,
@@ -277,7 +283,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         hasNewsEvents,
         hasLimitlessEvents,
         hasTwitterEvents,
-        hasAppleMusicEvents
+        hasAppleMusicEvents,
+        hasYelpEvents
       });
     }
     
@@ -291,6 +298,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
       const hasTwitterEvents = twitterDaysWithData.has(dateString);
       const hasAppleMusicEvents = appleMusicDaysWithData.has(dateString);
+      const hasYelpEvents = yelpDaysWithData.has(dateString);
 
       days.push({
         date: day,
@@ -300,7 +308,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         hasNewsEvents,
         hasLimitlessEvents,
         hasTwitterEvents,
-        hasAppleMusicEvents
+        hasAppleMusicEvents,
+        hasYelpEvents
       });
     }
     
@@ -317,6 +326,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
       const hasLimitlessEvents = limitlessDaysWithData.has(dateString);
       const hasTwitterEvents = twitterDaysWithData.has(dateString);
       const hasAppleMusicEvents = appleMusicDaysWithData.has(dateString);
+      const hasYelpEvents = yelpDaysWithData.has(dateString);
 
       days.push({
         date: day,
@@ -326,7 +336,8 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
         hasNewsEvents,
         hasLimitlessEvents,
         hasTwitterEvents,
-        hasAppleMusicEvents
+        hasAppleMusicEvents,
+        hasYelpEvents
       });
     }
     
@@ -534,7 +545,7 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
                     }}
                   >
                     <span className="calendar-day-number">{day.date}</span>
-                    {(day.hasAppleMusicEvents || day.hasNewsEvents || day.hasLimitlessEvents || day.hasTwitterEvents) && (
+                    {(day.hasAppleMusicEvents || day.hasNewsEvents || day.hasLimitlessEvents || day.hasTwitterEvents || day.hasYelpEvents) && (
                       <div className="calendar-icons-container">
                         {day.hasAppleMusicEvents && (
                           <span className="calendar-icon apple-music-icon">🎵</span>
@@ -547,6 +558,9 @@ export const CalendarView = ({ onDateSelect }: CalendarViewProps) => {
                         )}
                         {day.hasTwitterEvents && (
                           <img src="/src/assets/logo-black.png" alt="Twitter Data" className="calendar-icon twitter-icon" />
+                        )}
+                        {day.hasYelpEvents && (
+                          <img src="/src/assets/yelp_favicon.svg" alt="Yelp Data" className="calendar-icon yelp-icon" />
                         )}
                       </div>
                     )}

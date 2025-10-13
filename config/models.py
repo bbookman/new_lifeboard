@@ -615,6 +615,15 @@ class AppleMusicConfig(BaseModel):
         return self.enabled
 
 
+class YelpConfig(BaseModel):
+    """Yelp source configuration"""
+    enabled: bool = True
+
+    def is_configured(self) -> bool:
+        """Check if Yelp source is enabled"""
+        return self.enabled
+
+
 class DocumentsConfig(BaseModel):
     """User documents configuration"""
     enabled: bool = True
@@ -657,6 +666,7 @@ class AppConfig(BaseModel):
     twitter: TwitterConfig = TwitterConfig()
     spotify: SpotifyConfig = SpotifyConfig()
     apple_music: AppleMusicConfig = AppleMusicConfig()
+    yelp: YelpConfig = YelpConfig()
     documents: DocumentsConfig = DocumentsConfig()
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()

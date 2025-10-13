@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from services.sync_manager_service import SyncManagerService
 from sources.twitter import TwitterSource
 from sources.apple_music import AppleMusicSource
+from sources.yelp import YelpSource
 from services.twitter_api_service import TwitterAPIService
 from services.twitter_rate_limit_service import TwitterRateLimitService
 from core.dependencies import get_dependency_registry
@@ -40,6 +41,9 @@ class PromptSelectionRequest(BaseModel):
 class PromptSelectionResponse(BaseModel):
     prompt_document_id: Optional[str] = None
     is_active: bool = True
+
+class YelpHtmlRequest(BaseModel):
+    html_content: str
 
 @router.get("/")
 async def get_settings() -> SettingsResponse:
@@ -270,4 +274,64 @@ async def process_apple_music_directory(
     except Exception as e:
         logger.error(f"[APPLE MUSIC] Error processing Apple Music directory: {e}", exc_info=True)
         error_msg = f"An error occurred during Apple Music import: {str(e)}"
+        return JSONResponse(content={"message": error_msg}, status_code=500)
+
+
+@router.post("/process/yelp")
+async def process_yelp_html(request: YelpHtmlRequest):
+    """Process Yelp review HTML content"""
+    if not request.html_content:
+        raise HTTPException(status_code=400, detail="No HTML content provided")
+
+    logger.info("[YELP] Starting Yelp review processing")
+
+    try:
+        # Get the Yelp source and config from dependency registry
+        registry = get_dependency_registry()
+        startup_service = registry.get_startup_service()
+
+        if not startup_service:
+            logger.error("[YELP] Startup service not available")
+            return JSONResponse(content={"message": "Service not available"}, status_code=500)
+
+        # Get config and create Yelp source
+        config = startup_service.config
+        if not config or not hasattr(config, 'yelp'):
+            logger.error("[YELP] Yelp configuration not found")
+            return JSONResponse(content={"message": "Yelp configuration not available"}, status_code=500)
+
+        yelp_source = YelpSource(
+            config=config.yelp,
+            db_service=startup_service.database
+        )
+
+        # Process the HTML content
+        result = await yelp_source.process_html_content(request.html_content)
+
+        if result["success"]:
+            # Ingest the data items if they were returned
+            if result.get("data_items"):
+                if not startup_service.ingestion_service:
+                    logger.error("[YELP] Ingestion service not available")
+                    return JSONResponse(content={"message": "Ingestion service not available"}, status_code=500)
+
+                logger.info(f"[YELP] Ingesting {len(result['data_items'])} data items into database")
+                ingestion_result = await startup_service.ingestion_service.ingest_items(
+                    "yelp",
+                    result["data_items"]
+                )
+                logger.info(f"[YELP] Successfully ingested {ingestion_result.items_stored} reviews "
+                          f"({ingestion_result.items_processed} processed, {ingestion_result.embeddings_generated} embeddings generated)")
+
+            logger.info(f"[YELP] Yelp import successful: {result['message']}")
+            return JSONResponse(content={"message": result["message"]})
+        else:
+            logger.error(f"[YELP] Yelp import failed: {result['message']}")
+            return JSONResponse(content={"message": result["message"]}, status_code=400)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[YELP] Error processing Yelp HTML: {e}", exc_info=True)
+        error_msg = f"An error occurred during Yelp import: {str(e)}"
         return JSONResponse(content={"message": error_msg}, status_code=500)
