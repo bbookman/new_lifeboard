@@ -264,8 +264,9 @@ class TemplateProcessor(BaseService):
                 placeholder = f"[Error resolving {var.full_match}]"
                 resolved_content = resolved_content.replace(var.full_match, placeholder)
         
-        # Cache the result if no errors occurred
-        if not errors and variables_resolved > 0:
+        # Cache the result if no errors occurred and all required data is available
+        # Don't cache templates with missing data to prevent bypassing validation
+        if not errors and variables_resolved > 0 and not self._missing_data_variables:
             await self._cache_result(template_hash, content, target_date, resolved_content, variables_resolved)
         
         # Generate data availability messages

@@ -61,6 +61,7 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
   const [regenerating, setRegenerating] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [dataAvailabilityMessages, setDataAvailabilityMessages] = useState<string[]>([]);
+  const [summaryError, setSummaryError] = useState<{type: 'timeout' | 'missing_data' | 'general' | null, message: string | null}>({type: null, message: null});
 
   const convertToSummaryData = (response: LLMSummaryResponse, date: string): DailySummaryData => {
     const content = response.content || "";
@@ -172,25 +173,38 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
         console.log(`[SummarySection] ✅ Step 2 SUCCESS: Generated new summary (${generateResponse.data.content.length} chars)`);
         const summaryData = convertToSummaryData(generateResponse.data, date);
         setDailySummary(summaryData);
+        setSummaryError({type: null, message: null}); // Clear any previous errors
       } else {
         const errorMsg = generateResponse.data?.error_message || generateResponse.error || 'Failed to generate summary';
         console.error(`[SummarySection] ❌ Step 2 FAILED: ${errorMsg}`);
         console.error(`[SummarySection] 📋 Full error context:`, generateResponse);
-        
+
+        // Detect timeout errors
+        const isTimeout = errorMsg.toLowerCase().includes('timeout') ||
+                         errorMsg.toLowerCase().includes('timed out') ||
+                         errorMsg.toLowerCase().includes('asyncio.exceptions.timeouterror');
+
         // Check if this is a data availability issue (blocked generation)
         if (generateResponse.success && generateResponse.data?.data_availability?.messages) {
           console.log(`[SummarySection] 📋 Generation blocked due to missing data sources`);
           setDataAvailabilityMessages(generateResponse.data.data_availability.messages);
+          setSummaryError({type: 'missing_data', message: 'Required data sources not available'});
+        } else if (isTimeout) {
+          console.log(`[SummarySection] ⏱️ Generation timed out`);
+          setSummaryError({type: 'timeout', message: 'Request timed out while generating summary'});
+          setDataAvailabilityMessages([]); // Clear data availability messages for timeout
         } else {
+          setSummaryError({type: 'general', message: errorMsg});
           setDataAvailabilityMessages([]); // Clear messages on other errors
         }
-        
+
         setDailySummary(null);
       }
     } catch (error) {
       console.error('[SummarySection] 💥 CRITICAL ERROR in summary workflow:', error);
       setDailySummary(null);
       setDataAvailabilityMessages([]); // Clear messages on critical error
+      setSummaryError({type: 'general', message: error instanceof Error ? error.message : 'Unknown error occurred'});
     } finally {
       setSummaryLoading(false);
       console.log(`[SummarySection] 🏁 Summary load workflow completed`);
@@ -217,24 +231,37 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
         console.log(`[SummarySection] Successfully force regenerated summary`);
         const summaryData = convertToSummaryData(generateResponse.data, selectedDate);
         setDailySummary(summaryData);
+        setSummaryError({type: null, message: null}); // Clear any previous errors
       } else {
         const errorMsg = generateResponse.data?.error_message || generateResponse.error || 'Failed to regenerate summary';
         console.error(`[SummarySection] Failed to regenerate summary:`, errorMsg);
-        
+
+        // Detect timeout errors
+        const isTimeout = errorMsg.toLowerCase().includes('timeout') ||
+                         errorMsg.toLowerCase().includes('timed out') ||
+                         errorMsg.toLowerCase().includes('asyncio.exceptions.timeouterror');
+
         // Check if this is a data availability issue (blocked generation)
         if (generateResponse.success && generateResponse.data?.data_availability?.messages) {
           console.log(`[SummarySection] Force regeneration blocked due to missing data sources`);
           setDataAvailabilityMessages(generateResponse.data.data_availability.messages);
+          setSummaryError({type: 'missing_data', message: 'Required data sources not available'});
+        } else if (isTimeout) {
+          console.log(`[SummarySection] ⏱️ Force regeneration timed out`);
+          setSummaryError({type: 'timeout', message: 'Request timed out while generating summary'});
+          setDataAvailabilityMessages([]); // Clear data availability messages for timeout
         } else {
+          setSummaryError({type: 'general', message: errorMsg});
           setDataAvailabilityMessages([]); // Clear messages on other errors
         }
-        
+
         setDailySummary(null);
       }
     } catch (error) {
       console.error('[SummarySection] Error force regenerating summary:', error);
       setDailySummary(null);
       setDataAvailabilityMessages([]); // Clear messages on critical error
+      setSummaryError({type: 'general', message: error instanceof Error ? error.message : 'Unknown error occurred'});
     } finally {
       setRegenerating(false);
     }
@@ -311,13 +338,29 @@ export const SummarySection = ({ selectedDate }: SummarySectionProps) => {
                 </div>
               ) : (
                 <div className="card p-6 relative">
-                  <div className="text-center text-newspaper-byline">
-                    {debugInfo?.summary_ready === false 
-                      ? "Summary system not ready - check debug info above" 
-                      : "No summary available for this date"}
+                  <div className="text-center">
+                    {debugInfo?.summary_ready === false ? (
+                      <div className="text-newspaper-byline">Summary system not ready - check debug info above</div>
+                    ) : summaryError.type === 'timeout' ? (
+                      <div className="space-y-2">
+                        <div className="text-red-600 font-semibold">⏱️ Request timed out</div>
+                        <div className="text-sm text-newspaper-byline">
+                          Summary generation took too long. Try regenerating or check back later.
+                        </div>
+                      </div>
+                    ) : summaryError.type === 'missing_data' ? (
+                      <div className="text-newspaper-byline">Required data not available for summary generation</div>
+                    ) : summaryError.type === 'general' ? (
+                      <div className="space-y-2">
+                        <div className="text-newspaper-byline">Failed to generate summary</div>
+                        <div className="text-xs text-gray-500">{summaryError.message}</div>
+                      </div>
+                    ) : (
+                      <div className="text-newspaper-byline">No summary available for this date</div>
+                    )}
                   </div>
-                  {/* Show refresh button when data availability messages are present */}
-                  {dataAvailabilityMessages.length > 0 && (
+                  {/* Show refresh button for timeout and missing data errors */}
+                  {(summaryError.type === 'timeout' || dataAvailabilityMessages.length > 0) && (
                     <div className="absolute top-4 right-4">
                       <Button
                         variant="outline"

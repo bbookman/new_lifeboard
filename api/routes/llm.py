@@ -115,8 +115,13 @@ async def generate_daily_summary(
             days_date=request.days_date,
             force_regenerate=request.force_regenerate
         )
-        
-        logger.info(f"Successfully generated summary for {request.days_date}. Generation time: {result.generation_time:.2f}s")
+
+        # Log success or failure based on actual result
+        if result.success:
+            logger.info(f"Successfully generated summary for {request.days_date}. Generation time: {result.generation_time:.2f}s")
+        else:
+            logger.error(f"Failed to generate summary for {request.days_date}. Error: {result.error_message}")
+
         return GenerateSummaryResponse.from_generation_result(result, request.days_date)
         
     except Exception as e:

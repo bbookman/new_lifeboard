@@ -371,9 +371,9 @@ class OllamaConfig(BaseModel):
     """Ollama provider configuration"""
     base_url: str = "http://localhost:11434"
     model: str = "llama2"
-    timeout: float = 60.0
+    timeout: float = 180.0  # Increased from 60s to 180s to handle large context generations
     max_retries: int = 3
-    
+
     def is_configured(self) -> bool:
         """Check if Ollama is properly configured"""
         return bool(self.base_url and self.model)

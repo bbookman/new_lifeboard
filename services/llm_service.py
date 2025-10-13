@@ -9,6 +9,7 @@ and content generation workflows.
 import logging
 import asyncio
 import time
+import re
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
@@ -260,6 +261,30 @@ class LLMService(BaseService, ServiceDebugMixin):
                     missing_data_sources=_extract_missing_sources_from_messages(data_availability_messages),
                     data_availability_messages=data_availability_messages
                 )
+
+            # Defensive check: detect placeholder strings that indicate missing data
+            # This catches edge cases where cache or other issues bypass the availability check
+            if '[NO_DATA:' in prompt_text:
+                self.logger.warning(f"Aborting summary generation: placeholder detected in resolved prompt")
+                self.log_service_performance_metric("llm_generation_placeholder_detected", 1, "count")
+
+                # Extract source names from placeholders
+                placeholder_pattern = re.compile(r'\[NO_DATA:([A-Z_]+)_([A-Z]+)\]')
+                missing_sources = []
+                for match in placeholder_pattern.finditer(prompt_text):
+                    source = match.group(1).lower().replace('_', ' ')
+                    missing_sources.append(source)
+
+                return LLMGenerationResult(
+                    content="",
+                    prompt_used=prompt_text,
+                    model_info={},
+                    generation_time=0.0,
+                    success=False,
+                    error_message="Required data sources are not available for summary generation.",
+                    missing_data_sources=missing_sources,
+                    data_availability_messages=[f"No data available for {src} at the moment, try again soon" for src in missing_sources]
+                )
             
             self.logger.debug("Successfully retrieved prompt.")
             self.log_service_performance_metric("llm_prompt_length", len(prompt_text), "chars")
@@ -335,8 +360,8 @@ class LLMService(BaseService, ServiceDebugMixin):
                 },
                 generation_time=generation_time,
                 success=True,
-                missing_data_sources=_extract_missing_sources_from_messages(data_availability_messages),
-                data_availability_messages=data_availability_messages
+                missing_data_sources=[],  # Empty on success - data was available and generation completed
+                data_availability_messages=[]  # Empty on success - no warnings needed when generation succeeds
             )
             
         except LLMError as e:
