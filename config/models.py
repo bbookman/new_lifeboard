@@ -408,7 +408,11 @@ class LLMProviderConfig(BaseModel):
     provider: str = "ollama"  # ollama or openai
     ollama: OllamaConfig = OllamaConfig()
     openai: OpenAIConfig = OpenAIConfig()
-    
+
+    # Summary generation retry configuration (for data availability timing issues)
+    summary_max_retries: int = 3  # Maximum retry attempts for missing data
+    summary_retry_delay: float = 2.0  # Base delay between retries in seconds (exponential backoff)
+
     @field_validator('provider')
     @classmethod
     def validate_provider(cls, v):
@@ -416,7 +420,17 @@ class LLMProviderConfig(BaseModel):
         if v not in valid_providers:
             raise ValueError(f"Provider must be one of: {valid_providers}")
         return v
-    
+
+    @field_validator('summary_max_retries')
+    @classmethod
+    def validate_summary_max_retries(cls, v):
+        return NumericValidator.validate_positive_int(v, "Summary max retries")
+
+    @field_validator('summary_retry_delay')
+    @classmethod
+    def validate_summary_retry_delay(cls, v):
+        return NumericValidator.validate_positive_float(v, "Summary retry delay")
+
     def get_active_provider_config(self):
         """Get the configuration for the active provider"""
         if self.provider == "ollama":
@@ -425,7 +439,7 @@ class LLMProviderConfig(BaseModel):
             return self.openai
         else:
             raise ValueError(f"Unknown provider: {self.provider}")
-    
+
     def is_active_provider_configured(self) -> bool:
         """Check if the active provider is properly configured"""
         active_config = self.get_active_provider_config()

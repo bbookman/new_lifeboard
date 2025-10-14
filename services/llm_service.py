@@ -194,16 +194,91 @@ class LLMService(BaseService, ServiceDebugMixin):
         
         return health_info
     
-    async def generate_daily_summary(self, 
+    async def generate_daily_summary(self,
                                    days_date: str,
-                                   force_regenerate: bool = False) -> LLMGenerationResult:
-        """Generate daily summary using selected prompt and daily data"""
+                                   force_regenerate: bool = False,
+                                   max_retries: Optional[int] = None,
+                                   retry_delay: Optional[float] = None) -> LLMGenerationResult:
+        """
+        Generate daily summary with intelligent retry logic for data availability
+
+        Args:
+            days_date: Date for summary generation (YYYY-MM-DD)
+            force_regenerate: Force regeneration even if cached
+            max_retries: Maximum number of retry attempts (None = use config default)
+            retry_delay: Base delay between retries in seconds (None = use config default)
+
+        Returns:
+            LLMGenerationResult with generation outcome and metadata
+        """
+        # Use config defaults if not specified
+        if max_retries is None:
+            max_retries = self.config.llm_provider.summary_max_retries
+        if retry_delay is None:
+            retry_delay = self.config.llm_provider.summary_retry_delay
+
         self.log_service_call("generate_daily_summary", {
             "days_date": days_date,
-            "force_regenerate": force_regenerate
+            "force_regenerate": force_regenerate,
+            "max_retries": max_retries,
+            "retry_delay": retry_delay
         })
-        
-        self.logger.info(f"Starting daily summary generation for date: {days_date}")
+
+        self.logger.info(f"Starting daily summary generation for date: {days_date} (max_retries={max_retries}, retry_delay={retry_delay}s)")
+
+        # Retry loop for handling transient data availability issues
+        for attempt in range(max_retries):
+            attempt_num = attempt + 1
+            self.logger.info(f"Summary generation attempt {attempt_num}/{max_retries} for {days_date}")
+
+            result = await self._generate_summary_attempt(days_date, force_regenerate)
+
+            # Success - return immediately
+            if result.success:
+                if attempt > 0:
+                    self.logger.info(f"Summary generated successfully on attempt {attempt_num}/{max_retries}")
+                return result
+
+            # Check if this is a retryable error (missing data that might appear with time)
+            is_missing_data_error = (
+                result.missing_data_sources is not None and
+                len(result.missing_data_sources) > 0
+            ) or (
+                result.data_availability_messages is not None and
+                len(result.data_availability_messages) > 0
+            )
+
+            # If this is the last attempt OR not a retryable error, return the failure
+            if attempt >= max_retries - 1 or not is_missing_data_error:
+                if is_missing_data_error:
+                    self.logger.warning(
+                        f"Summary generation failed after {max_retries} attempts: "
+                        f"missing sources: {result.missing_data_sources}"
+                    )
+                return result
+
+            # Wait before retrying (exponential backoff: 2s, 4s, 6s)
+            wait_time = retry_delay * attempt_num
+            self.logger.info(
+                f"Data not yet available for {days_date} (missing: {result.missing_data_sources}). "
+                f"Retrying in {wait_time}s... (attempt {attempt_num}/{max_retries})"
+            )
+            self.log_service_performance_metric("llm_generation_retry", 1, "count")
+
+            await asyncio.sleep(wait_time)
+
+        # Should not reach here, but return last result as fallback
+        return result
+
+    async def _generate_summary_attempt(self,
+                                       days_date: str,
+                                       force_regenerate: bool) -> LLMGenerationResult:
+        """
+        Single attempt at generating a daily summary
+
+        This method contains the core generation logic and can be called
+        multiple times by the retry wrapper.
+        """
         start_time = datetime.now(timezone.utc)
         generation_start = time.time()
         

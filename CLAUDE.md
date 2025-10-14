@@ -249,6 +249,14 @@ Claude should:
 * Ask clarifying questions when needed
 * Use neutral, factual tone; avoid phrases like "you're right" or "great question"
 
+### Requirement Interpretation
+
+* **Build ONLY what is explicitly requested** - do not infer additional features or integration steps
+* **Ask for clarification** if requirements are ambiguous or scope is unclear
+* **Do not assume** related functionality needs to be implemented together
+* **Treat each requirement independently** - wait for explicit requests for related changes
+* **Error on the side of doing less** rather than more when requirements are vague
+
 ## Development Reminders
 
 * **Unified Data Flow**: All sources must yield DataItem objects for consistent processing through the ingestion pipeline

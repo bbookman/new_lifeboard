@@ -541,7 +541,7 @@ def create_enhanced_api_retry_condition() -> RetryCondition:
     ])
 
 
-def create_llm_retry_config(max_retries: int = 3) -> RetryConfig:
+def create_llm_retry_config(max_retries: int = 3, timeout: float = 300.0) -> RetryConfig:
     """Create retry config optimized for LLM provider calls"""
     return RetryConfig(
         max_retries=max_retries,
@@ -549,7 +549,7 @@ def create_llm_retry_config(max_retries: int = 3) -> RetryConfig:
         max_delay=30.0,
         backoff_strategy=BackoffStrategy.EXPONENTIAL,
         jitter=True,
-        timeout=60.0  # LLM calls can be slower
+        timeout=timeout  # Allow configuration via parameter, default to 5 minutes for large context
     )
 
 

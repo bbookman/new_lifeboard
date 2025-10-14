@@ -267,8 +267,8 @@ class OpenAIProvider(BaseLLMProvider, HTTPClientMixin):
     
     async def _make_request_with_retry(self, client: httpx.AsyncClient, endpoint: str, payload: Dict[str, Any]) -> httpx.Response:
         """Make HTTP request with retry logic using unified retry framework"""
-        # Create retry configuration optimized for LLM calls
-        retry_config = create_llm_retry_config(max_retries=self.config.max_retries)
+        # Create retry configuration optimized for LLM calls, use config timeout
+        retry_config = create_llm_retry_config(max_retries=self.config.max_retries, timeout=self.config.timeout)
         retry_condition = NetworkErrorRetryCondition()
         retry_executor = RetryExecutor(retry_config, retry_condition)
         

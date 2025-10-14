@@ -107,11 +107,7 @@ const DailySummaryContent = ({ data }: { data: DailySummaryData }) => {
               </Badge>
             )}
           </div>
-          {data.generationTime && (
-            <div className="text-xs text-gray-500">
-              Generated in {data.generationTime.toFixed(1)}s
-            </div>
-          )}
+          
         </div>
 
         {/* Full generated content */}
