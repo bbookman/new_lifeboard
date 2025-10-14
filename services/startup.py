@@ -80,7 +80,10 @@ class StartupService:
             
             # 2.65. Initialize default prompt if needed
             await self._initialize_default_prompt(startup_result)
-            
+
+            # 2.66. Initialize speaker labeling prompt if needed
+            await self._initialize_speaker_prompt(startup_result)
+
             # 2.7. Initialize LLM service
             await self._initialize_llm_service(startup_result)
             
@@ -262,75 +265,149 @@ class StartupService:
         """Initialize default summary prompt if none exists"""
         try:
             logger.info("Checking for default summary prompt...")
-            
+
             # Check if any daily summary prompt already exists
             with self.database.get_connection() as conn:
                 cursor = conn.execute("""
                     SELECT COUNT(*) as count
-                    FROM prompt_settings 
-                    WHERE setting_key LIKE 'daily_summary_prompt_%' 
+                    FROM prompt_settings
+                    WHERE setting_key LIKE 'daily_summary_prompt_%'
                     AND is_active = TRUE
                 """)
                 existing_count = cursor.fetchone()['count']
-            
+
             if existing_count > 0:
                 logger.info(f"Found {existing_count} existing daily summary prompt(s), skipping default creation")
                 startup_result["default_prompt_created"] = False
                 return
-            
+
             logger.info("No daily summary prompt found, creating default from file...")
-            
+
             # Load content from external file
             file_path = Path("supporting_documents/default_summary.md")
-            
+
             if not file_path.exists():
                 raise FileNotFoundError(f"Default summary file not found: {file_path}")
-            
+
             with open(file_path, 'r', encoding='utf-8') as f:
                 default_prompt_content = f.read().strip()
-            
+
             if not default_prompt_content:
                 raise ValueError("Default summary file is empty")
-            
+
             logger.info(f"Loaded default summary content from {file_path} ({len(default_prompt_content)} characters)")
-            
+
             # Create content in Quill Delta format
             content_delta = {"ops": [{"insert": default_prompt_content + "\n"}]}
-            
+
             document = await self.document_service.create_document(
                 title="DEFAULT SUMMARY",
                 document_type="prompt",
                 content_delta=content_delta,
                 path="/"
             )
-            
+
             # Create prompt setting to activate this document with is_active = 1
             with self.database.get_connection() as conn:
                 conn.execute("""
-                    INSERT INTO prompt_settings 
+                    INSERT INTO prompt_settings
                     (setting_key, prompt_document_id, is_active, created_at, updated_at)
                     VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, ("daily_summary_prompt_default", document.id))
                 conn.commit()
-            
+
             startup_result["default_prompt_created"] = True
             startup_result["default_prompt_document_id"] = document.id
             startup_result["default_prompt_source"] = str(file_path)
             logger.info(f"Default summary prompt created from file with document ID: {document.id}")
-            
+
         except (FileNotFoundError, PermissionError, UnicodeDecodeError, ValueError) as e:
             error_msg = f"Failed to load default prompt from file: {str(e)}"
             logger.error(error_msg)
             startup_result["errors"].append(error_msg)
             startup_result["default_prompt_created"] = False
             # Don't raise - default prompt creation failure shouldn't block startup
-            
+
         except Exception as e:
             error_msg = f"Failed to initialize default prompt: {str(e)}"
             logger.error(error_msg)
             startup_result["errors"].append(error_msg)
             startup_result["default_prompt_created"] = False
             # Don't raise - default prompt creation failure shouldn't block startup
+
+    async def _initialize_speaker_prompt(self, startup_result: Dict[str, Any]):
+        """Initialize speaker labeling prompt if none exists"""
+        try:
+            logger.info("Checking for speaker labeling prompt...")
+
+            # Check if speaker labeling prompt already exists
+            with self.database.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT COUNT(*) as count
+                    FROM prompt_settings
+                    WHERE setting_key = 'speaker_labeling_prompt_default'
+                    AND is_active = TRUE
+                """)
+                existing_count = cursor.fetchone()['count']
+
+            if existing_count > 0:
+                logger.info("Speaker labeling prompt already exists, skipping creation")
+                startup_result["speaker_prompt_created"] = False
+                return
+
+            logger.info("No speaker labeling prompt found, creating default from file...")
+
+            # Load content from external file
+            file_path = Path("supporting_documents/speaker_identification.md")
+
+            if not file_path.exists():
+                raise FileNotFoundError(f"Speaker identification file not found: {file_path}")
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                speaker_prompt_content = f.read().strip()
+
+            if not speaker_prompt_content:
+                raise ValueError("Speaker identification file is empty")
+
+            logger.info(f"Loaded speaker identification content from {file_path} ({len(speaker_prompt_content)} characters)")
+
+            # Create content in Quill Delta format
+            content_delta = {"ops": [{"insert": speaker_prompt_content + "\n"}]}
+
+            document = await self.document_service.create_document(
+                title="SPEAKER LABELING",
+                document_type="prompt",
+                content_delta=content_delta,
+                path="/"
+            )
+
+            # Create prompt setting to activate this document with is_active = 1
+            with self.database.get_connection() as conn:
+                conn.execute("""
+                    INSERT INTO prompt_settings
+                    (setting_key, prompt_document_id, is_active, created_at, updated_at)
+                    VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, ("speaker_labeling_prompt_default", document.id))
+                conn.commit()
+
+            startup_result["speaker_prompt_created"] = True
+            startup_result["speaker_prompt_document_id"] = document.id
+            startup_result["speaker_prompt_source"] = str(file_path)
+            logger.info(f"Speaker labeling prompt created from file with document ID: {document.id}")
+
+        except (FileNotFoundError, PermissionError, UnicodeDecodeError, ValueError) as e:
+            error_msg = f"Failed to load speaker prompt from file: {str(e)}"
+            logger.error(error_msg)
+            startup_result["errors"].append(error_msg)
+            startup_result["speaker_prompt_created"] = False
+            # Don't raise - speaker prompt creation failure shouldn't block startup
+
+        except Exception as e:
+            error_msg = f"Failed to initialize speaker prompt: {str(e)}"
+            logger.error(error_msg)
+            startup_result["errors"].append(error_msg)
+            startup_result["speaker_prompt_created"] = False
+            # Don't raise - speaker prompt creation failure shouldn't block startup
     
     async def _initialize_llm_service(self, startup_result: Dict[str, Any]):
         """Initialize the LLM service"""

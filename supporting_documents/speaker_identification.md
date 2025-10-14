@@ -41,6 +41,15 @@ Inference is encouraged — this is an **inexact science**, and you should use r
     ```
     → The second “Unknown” is likely **Ivette**.
 
+  - Example:
+    ```
+    You (10/10/25 9:10 AM): Hi, Becky. This is Bruce Bookman.
+
+    Unknown (10/10/25 9:10 AM): Hey Bruce, how are you doing today?
+   ```
+    → The “Unknown” is likely **Becky**.
+
+
 ## Consecutive Unknown Lines
 
 - If two or more “Unknown” lines appear in sequence:
@@ -110,6 +119,9 @@ If uncertain, label as:
 
 Unknown (likely Ivette) (9/6/25 9:27 AM): I'm great.
 Reason: Context clues suggest Ivette but confidence is medium.
+
+Your output is plain text
+
 
 ## Example Before → After
 
