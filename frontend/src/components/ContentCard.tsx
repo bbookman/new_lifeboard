@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Clock, ExternalLink } from "lucide-react";
+import { ChevronDown, Clock, ExternalLink, UserCircle } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -314,7 +314,8 @@ const ContentItemContent = ({ data }: { data: ContentItemData }) => {
 const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
   const [viewMode, setViewMode] = useState<'condensed' | 'full'>('condensed');
   const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set());
-  
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
   const toggleClusterExpansion = (clusterId: string) => {
     const newExpanded = new Set(expandedClusters);
     if (newExpanded.has(clusterId)) {
@@ -328,6 +329,39 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
   const handleExpandContent = () => {
     const contentData = encodeURIComponent(JSON.stringify(data));
     window.open(`/limitless-content/${data.id}?data=${contentData}`, '_blank');
+  };
+
+  const handleRegenerateSpeakerLabels = async () => {
+    try {
+      setIsRegenerating(true);
+
+      // Extract date from timestamp (format: YYYY-MM-DD)
+      const daysDate = data.timestamp.split('T')[0];
+
+      const response = await fetch('https://localhost:8000/api/speaker-labeling/regenerate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ days_date: daysDate }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to regenerate speaker labels: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('Speaker labeling regeneration result:', result);
+
+      // Show success message and reload after a short delay
+      alert(`Speaker labels regenerated successfully!\n\nItems improved: ${result.items_improved}\nItems skipped: ${result.items_skipped}\n\nThe page will reload to show updated content.`);
+      window.location.reload();
+    } catch (error) {
+      console.error('Error regenerating speaker labels:', error);
+      alert('Failed to regenerate speaker labels. Please try again.');
+    } finally {
+      setIsRegenerating(false);
+    }
   };
 
   return (
@@ -353,6 +387,16 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
             onClick={() => setViewMode(viewMode === 'condensed' ? 'full' : 'condensed')}
           >
             {viewMode === 'condensed' ? 'Show Full' : 'Show Condensed'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRegenerateSpeakerLabels}
+            disabled={isRegenerating}
+            className="p-2 bg-white hover:bg-gray-50 border-gray-200"
+            title="Regenerate speaker labels"
+          >
+            <UserCircle className={`w-4 h-4 text-gray-600 ${isRegenerating ? 'animate-spin' : ''}`} />
           </Button>
           <Button
             variant="outline"

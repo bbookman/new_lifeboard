@@ -86,16 +86,19 @@ class StartupService:
 
             # 2.7. Initialize LLM service
             await self._initialize_llm_service(startup_result)
-            
+
             # 3. Register data sources
             await self._register_data_sources(startup_result)
-            
+
             # 4. Initialize sync status service
             await self._initialize_sync_status_service(startup_result)
-            
+
             # 5. Initialize scheduler and sync management
             await self._initialize_sync_services(startup_result)
             await self._start_auto_sync(startup_result)
+
+            # 5.5. Start speaker labeling processing (requires scheduler to be initialized)
+            await self._start_speaker_labeling_processing(startup_result)
             
             # 6. Start background sync
             await self._start_background_sync(startup_result)
@@ -431,7 +434,74 @@ class StartupService:
             logger.error(error_msg)
             # Don't raise - LLM service failure shouldn't block startup
             startup_result["errors"].append(error_msg)
-    
+
+    async def _start_speaker_labeling_processing(self, startup_result: Dict[str, Any]):
+        """Register periodic speaker labeling job with scheduler"""
+        try:
+            if not self.config.speaker_labeling.enabled:
+                logger.info("Speaker labeling processing is disabled")
+                startup_result["speaker_labeling_started"] = False
+                return
+
+            logger.info("Registering speaker labeling periodic job...")
+
+            # Create periodic processing function
+            async def speaker_labeling_job():
+                """Periodic job to process speaker labeling batches"""
+                from services.speaker_labeling_service import SpeakerLabelingService
+
+                speaker_service = SpeakerLabelingService(
+                    database=self.database,
+                    config=self.config
+                )
+
+                batch_size = self.config.speaker_labeling.batch_size
+                max_batches = self.config.speaker_labeling.max_batches_per_run
+                total_processed = 0
+
+                # Process multiple batches until queue empty or limit reached
+                for batch_num in range(max_batches):
+                    result = await speaker_service.process_pending_speaker_labeling(
+                        batch_size=batch_size,
+                        force_reprocess=False
+                    )
+
+                    total_processed += result['items_completed']
+
+                    # Stop if no more pending items
+                    if result['items_processed'] == 0:
+                        break
+
+                logger.info(f"Speaker labeling job completed: {total_processed} items processed")
+                return {"total_processed": total_processed}
+
+            # Register job with scheduler
+            interval_seconds = self.config.speaker_labeling.sync_interval_minutes * 60
+            timeout_seconds = self.config.speaker_labeling.timeout_minutes * 60
+
+            # Delay first run by 30 seconds to allow initial data ingestion to complete
+            initial_delay_seconds = 30
+
+            job_id = self.scheduler.add_job(
+                name="speaker_labeling",
+                namespace="system",
+                func=speaker_labeling_job,
+                interval_seconds=interval_seconds,
+                max_retries=3,
+                timeout_seconds=timeout_seconds,
+                initial_delay_seconds=initial_delay_seconds
+            )
+
+            startup_result["speaker_labeling_job_id"] = job_id
+            startup_result["speaker_labeling_started"] = True
+            logger.info(f"Speaker labeling job registered: {job_id}, interval: {interval_seconds}s, first run delayed by {initial_delay_seconds}s")
+
+        except Exception as e:
+            error_msg = f"Failed to register speaker labeling job: {str(e)}"
+            logger.error(error_msg)
+            startup_result["errors"].append(error_msg)
+            startup_result["speaker_labeling_started"] = False
+
     async def _register_data_sources(self, startup_result: Dict[str, Any]):
         """Register available data sources"""
         try:

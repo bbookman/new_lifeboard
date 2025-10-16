@@ -980,9 +980,59 @@ async def fetch_news_for_date(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
+@router.get("/speaker-labeling-status/{date}")
+async def get_speaker_labeling_status(
+    date: str,
+    database: DatabaseService = Depends(get_database_service_dependency)
+) -> Dict[str, Any]:
+    """Check if all limitless items for a specific date have completed speaker labeling"""
+    try:
+        # Validate date format
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+        # Get all limitless items for the date
+        limitless_items = await database.async_get_data_items_by_date(date, namespaces=['limitless'])
+
+        if not limitless_items:
+            return {
+                "all_labeled": False,
+                "total_items": 0,
+                "completed_items": 0,
+                "pending_items": 0,
+                "processing_items": 0,
+                "message": "No limitless items found for this date"
+            }
+
+        # Count items by speaker_label_status
+        total = len(limitless_items)
+        completed = sum(1 for item in limitless_items if item.get('speaker_label_status') == 'completed')
+        pending = sum(1 for item in limitless_items if item.get('speaker_label_status') == 'pending')
+        processing = sum(1 for item in limitless_items if item.get('speaker_label_status') == 'processing')
+
+        all_labeled = (completed == total)
+
+        return {
+            "all_labeled": all_labeled,
+            "total_items": total,
+            "completed_items": completed,
+            "pending_items": pending,
+            "processing_items": processing,
+            "completion_percentage": round((completed / total * 100), 1) if total > 0 else 0
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting speaker labeling status for {date}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get speaker labeling status")
+
+
 @router.get("/data_items/{date}")
 async def get_data_items_for_date(
-    date: str, 
+    date: str,
     namespaces: Optional[str] = None,
     database: DatabaseService = Depends(get_database_service_dependency)
 ) -> List[Dict[str, Any]]:

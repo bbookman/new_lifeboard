@@ -268,7 +268,7 @@ class SearchConfig(BaseModel):
 
 class SchedulerConfig(BaseModel):
     """Scheduler configuration"""
-    check_interval_seconds: int = 300  # 5 minutes
+    check_interval_seconds: int = 60  # 1 minute - check for due jobs more frequently
     max_concurrent_jobs: int = 3
     job_timeout_minutes: int = 30
 
@@ -669,6 +669,21 @@ class DocumentsConfig(BaseModel):
         return StringValidator.validate_non_empty_string(v, "Default user ID")
 
 
+class SpeakerLabelingConfig(BaseModel):
+    """Speaker labeling background processing configuration"""
+    enabled: bool = True
+    sync_interval_minutes: int = 15
+    batch_size: int = 20
+    max_batches_per_run: int = 5
+    timeout_minutes: int = 10
+
+    @field_validator('sync_interval_minutes', 'batch_size', 'max_batches_per_run', 'timeout_minutes')
+    @classmethod
+    def validate_positive_ints(cls, v, info):
+        field_name = info.field_name.replace('_', ' ').title()
+        return NumericValidator.validate_positive_int(v, field_name)
+
+
 class AppConfig(BaseModel):
     """Main application configuration"""
     database: DatabaseConfig = DatabaseConfig()
@@ -685,7 +700,8 @@ class AppConfig(BaseModel):
     search: SearchConfig = SearchConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     logging: LoggingConfig = LoggingConfig()
-    
+    speaker_labeling: SpeakerLabelingConfig = SpeakerLabelingConfig()
+
     # Phase 6: LLM and Chat Capabilities
     llm_provider: LLMProviderConfig = LLMProviderConfig()
     chat: ChatConfig = ChatConfig()

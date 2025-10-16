@@ -138,12 +138,12 @@ class UnifiedDatabaseService:
                 content TEXT,
                 metadata TEXT,
                 embedding_status TEXT DEFAULT 'pending',
+                speaker_label_status TEXT DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 days_date TEXT NOT NULL,
                 semantic_status TEXT DEFAULT 'pending' CHECK (semantic_status IN ('pending', 'processing', 'completed', 'failed')),
                 semantic_processed_at TIMESTAMP,
-                processing_priority INTEGER DEFAULT 1,
                 ingestion_status TEXT DEFAULT 'complete' CHECK (ingestion_status IN ('partial', 'complete', 'failed'))
             )
         """)
@@ -202,6 +202,7 @@ class UnifiedDatabaseService:
                 is_starred BOOLEAN DEFAULT FALSE,
                 updated_at_api TEXT,
                 processed_content TEXT,
+                speaker_labeled_content TEXT,
                 raw_data TEXT,
                 days_date TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -336,6 +337,8 @@ class UnifiedDatabaseService:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_embedding_status ON data_items(embedding_status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_updated_at ON data_items(updated_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_days_date ON data_items(days_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_speaker_status ON data_items(speaker_label_status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_namespace_speaker_status ON data_items(namespace, speaker_label_status)")
         
         # Semantic processing indexes
         conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_semantic_status ON data_items(semantic_status)")
@@ -343,8 +346,7 @@ class UnifiedDatabaseService:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_namespace_semantic_status ON data_items(namespace, semantic_status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_status_date ON data_items(semantic_status, days_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_processed_at ON data_items(semantic_processed_at)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_queue ON data_items(semantic_status, processing_priority, days_date, created_at)")
-        
+
         # Ingestion status indexes
         conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_ingestion_status ON data_items(ingestion_status)")
         
@@ -369,6 +371,7 @@ class UnifiedDatabaseService:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_days_date ON limitless(days_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_lifelog_id ON limitless(lifelog_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_start_time ON limitless(start_time)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_speaker_labeled ON limitless(lifelog_id) WHERE speaker_labeled_content IS NOT NULL")
         
         # ========================================
         # SEMANTIC DEDUPLICATION INDEXES

@@ -492,21 +492,29 @@ class DatabaseService:
         """Extract and combine markdown content from metadata for a specific date"""
         logger.info(f"[MARKDOWN DEBUG] Getting markdown for date: {date}, namespaces: {namespaces}")
         markdown_parts = []
-        
+
         # Use unified data_items table for all namespaces
         data_items = self.get_data_items_by_date(date, namespaces)
         logger.info(f"[MARKDOWN DEBUG] Found {len(data_items)} data items for date {date}")
-        
+
         for i, item in enumerate(data_items, 1):
             logger.info(f"[MARKDOWN DEBUG] Processing item {i+1}/{len(data_items)}: {item.get('id', 'unknown')}")
-            
+
             if item.get('metadata'):
                 metadata = item['metadata']
                 markdown_content = None
                 fallback_used = None
-                
+
                 if isinstance(metadata, dict):
-                    # First, try to get pre-generated cleaned markdown
+                    # PRIORITY 1: Check for speaker-labeled content (processed by speaker labeling service)
+                    if 'speaker_labeled_content' in metadata:
+                        markdown_content = metadata['speaker_labeled_content']
+                        fallback_used = "speaker_labeled_content"
+                        logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Using speaker-labeled content (length: {len(markdown_content)})")
+                        logger.info(f"[MARKDOWN DEBUG] Item {i+1}: Speaker-labeled preview: {repr(markdown_content[:100])}")
+
+                if isinstance(metadata, dict) and not markdown_content:
+                    # Try to get pre-generated cleaned markdown
                     markdown_content = metadata.get('cleaned_markdown')
                     if markdown_content:
                         fallback_used = "cleaned_markdown"

@@ -263,17 +263,28 @@ class AsyncScheduler:
         
         self.running_jobs[job.id] = task
     
-    def add_job(self, 
+    def add_job(self,
                 name: str,
                 namespace: str,
-                func: Callable[[], Awaitable[Any]], 
+                func: Callable[[], Awaitable[Any]],
                 interval_seconds: int,
                 max_retries: int = 3,
-                timeout_seconds: int = 1800) -> str:
-        """Add a new scheduled job"""
+                timeout_seconds: int = 1800,
+                initial_delay_seconds: int = 0) -> str:
+        """Add a new scheduled job
+
+        Args:
+            name: Job name
+            namespace: Job namespace
+            func: Async function to execute
+            interval_seconds: Interval between executions
+            max_retries: Maximum retry attempts
+            timeout_seconds: Execution timeout
+            initial_delay_seconds: Delay before first execution (default: 0 = immediate)
+        """
         job_id = str(uuid.uuid4())
         creation_timestamp = datetime.now(timezone.utc).isoformat()
-        
+
         job = ScheduledJob(
             id=job_id,
             name=name,
@@ -283,14 +294,21 @@ class AsyncScheduler:
             max_retries=max_retries,
             timeout_seconds=timeout_seconds
         )
-        
+
+        # Set initial delay if specified
+        if initial_delay_seconds > 0:
+            job.next_run = datetime.now(timezone.utc) + timedelta(seconds=initial_delay_seconds)
+
         self.jobs[job_id] = job
-        
+
         if namespace == 'twitter':
             logger.info(f"Added Twitter sync job {job_id}")
         else:
-            logger.info(f"Added job: {job_id} ({name}) - interval: {interval_seconds}s")
-        
+            if initial_delay_seconds > 0:
+                logger.info(f"Added job: {job_id} ({name}) - interval: {interval_seconds}s, initial delay: {initial_delay_seconds}s")
+            else:
+                logger.info(f"Added job: {job_id} ({name}) - interval: {interval_seconds}s")
+
         return job_id
     
     def remove_job(self, job_id: str) -> bool:

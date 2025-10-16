@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from .models import (
     AppConfig, DatabaseConfig, EmbeddingConfig, VectorStoreConfig,
     LimitlessConfig, NewsConfig, WeatherConfig, TwitterConfig, SpotifyConfig, AppleMusicConfig, SearchConfig, SchedulerConfig, LoggingConfig,
-    LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig
+    LLMProviderConfig, OllamaConfig, OpenAIConfig, ChatConfig, InsightsConfig, EnhancementConfig, SpeakerLabelingConfig
 )
 
 
@@ -193,7 +193,7 @@ def create_production_config() -> AppConfig:
             max_top_k=int(os.getenv("SEARCH_MAX_TOP_K", "50"))
         ),
         scheduler=SchedulerConfig(
-            check_interval_seconds=int(os.getenv("SCHEDULER_CHECK_INTERVAL", "300")),
+            check_interval_seconds=int(os.getenv("SCHEDULER_CHECK_INTERVAL", "60")),  # 1 minute - check for due jobs more frequently
             max_concurrent_jobs=int(os.getenv("SCHEDULER_MAX_JOBS", "3")),
             job_timeout_minutes=int(os.getenv("SCHEDULER_JOB_TIMEOUT", "30"))
         ),
@@ -242,6 +242,13 @@ def create_production_config() -> AppConfig:
             schedule=os.getenv("ENHANCEMENT_SCHEDULE", "nightly"),
             batch_size=int(os.getenv("ENHANCEMENT_BATCH_SIZE", "100")),
             max_concurrent_jobs=int(os.getenv("ENHANCEMENT_MAX_CONCURRENT_JOBS", "2"))
+        ),
+        speaker_labeling=SpeakerLabelingConfig(
+            enabled=os.getenv("SPEAKER_LABELING__ENABLED", "true").lower() == "true",
+            sync_interval_minutes=int(os.getenv("SPEAKER_LABELING__SYNC_INTERVAL_MINUTES", "15")),
+            batch_size=int(os.getenv("SPEAKER_LABELING__BATCH_SIZE", "20")),
+            max_batches_per_run=int(os.getenv("SPEAKER_LABELING__MAX_BATCHES_PER_RUN", "5")),
+            timeout_minutes=int(os.getenv("SPEAKER_LABELING__TIMEOUT_MINUTES", "10"))
         ),
         debug=os.getenv("DEBUG", "false").lower() == "true"
     )

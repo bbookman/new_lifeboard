@@ -4,6 +4,7 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { useLimitlessData } from "../hooks/useLimitlessData";
 import { useAutoFetch } from "../hooks/useAutoFetch";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { useState, useEffect } from "react";
 
 interface ExtendedNewsCardProps {
   headline: string;
@@ -16,6 +17,15 @@ interface ExtendedNewsCardProps {
   selectedDate?: string;
 }
 
+interface SpeakerLabelingStatus {
+  all_labeled: boolean;
+  total_items: number;
+  completed_items: number;
+  pending_items: number;
+  processing_items: number;
+  completion_percentage: number;
+}
+
 /**
  * ExtendedNewsCard component - Optimized version
  * Displays limitless markdown content using custom hooks for better separation of concerns
@@ -25,6 +35,28 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
   // Use custom hooks for data management and auto-fetch logic
   const limitlessData = useLimitlessData();
   useAutoFetch(selectedDate, limitlessData);
+
+  // State for speaker labeling status
+  const [speakerLabelingStatus, setSpeakerLabelingStatus] = useState<SpeakerLabelingStatus | null>(null);
+
+  // Fetch speaker labeling status when selectedDate changes
+  useEffect(() => {
+    const fetchSpeakerLabelingStatus = async () => {
+      if (!selectedDate) return;
+
+      try {
+        const response = await fetch(`https://localhost:8000/api/calendar/speaker-labeling-status/${selectedDate}`);
+        if (response.ok) {
+          const data = await response.json();
+          setSpeakerLabelingStatus(data);
+        }
+      } catch (error) {
+        console.error('Error fetching speaker labeling status:', error);
+      }
+    };
+
+    fetchSpeakerLabelingStatus();
+  }, [selectedDate]);
 
   const handleRefresh = async () => {
     // Get today's date as fallback if selectedDate is not provided
@@ -77,6 +109,11 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
             <Badge variant="outline" className="text-xs">
               Limitless
             </Badge>
+            {speakerLabelingStatus?.all_labeled && (
+              <Badge variant="outline" className="text-xs">
+                Speakers labeled
+              </Badge>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <Button

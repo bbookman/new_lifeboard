@@ -6,11 +6,10 @@ migration files. Designed for test/development environments where the database
 is frequently deleted and rebuilt.
 
 Schema includes:
-- Core data storage (data_items, data_sources)  
+- Core data storage (data_items, data_sources)
 - Chat functionality (chat_messages)
 - Weather data (weather)
 - News data (news)
-- Limitless integration (limitless)
 - User documents with FTS5 search (user_documents, user_documents_fts)
 - Semantic deduplication (semantic_clusters, line_cluster_mapping)
 - System settings and migration tracking
@@ -74,12 +73,12 @@ def create_complete_schema(conn: sqlite3.Connection) -> None:
             content TEXT,
             metadata TEXT,
             embedding_status TEXT DEFAULT 'pending',
+            speaker_label_status TEXT DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             days_date TEXT NOT NULL,
             semantic_status TEXT DEFAULT 'pending' CHECK (semantic_status IN ('pending', 'processing', 'completed', 'failed')),
             semantic_processed_at TIMESTAMP,
-            processing_priority INTEGER DEFAULT 1,
             ingestion_status TEXT DEFAULT 'complete' CHECK (ingestion_status IN ('partial', 'complete', 'failed'))
         )
     """)
@@ -126,25 +125,7 @@ def create_complete_schema(conn: sqlite3.Connection) -> None:
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
-    # Limitless lifelog data for specialized processing
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS limitless (
-            id TEXT PRIMARY KEY,
-            lifelog_id TEXT NOT NULL UNIQUE,
-            title TEXT,
-            start_time TEXT,
-            end_time TEXT,
-            is_starred BOOLEAN DEFAULT FALSE,
-            updated_at_api TEXT,
-            processed_content TEXT,
-            raw_data TEXT,
-            days_date TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
+
     # ========================================
     # SEMANTIC DEDUPLICATION SYSTEM
     # ========================================
@@ -281,8 +262,7 @@ def create_all_indexes(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_namespace_semantic_status ON data_items(namespace, semantic_status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_status_date ON data_items(semantic_status, days_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_processed_at ON data_items(semantic_processed_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_queue ON data_items(semantic_status, processing_priority, days_date, created_at)")
-    
+
     # Ingestion status indexes
     conn.execute("CREATE INDEX IF NOT EXISTS idx_data_items_ingestion_status ON data_items(ingestion_status)")
     
@@ -302,12 +282,7 @@ def create_all_indexes(conn: sqlite3.Connection) -> None:
     # News indexes
     conn.execute("CREATE INDEX IF NOT EXISTS idx_news_days_date ON news(days_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_news_title ON news(title)")
-    
-    # Limitless indexes
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_days_date ON limitless(days_date)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_lifelog_id ON limitless(lifelog_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_limitless_start_time ON limitless(start_time)")
-    
+
     # ========================================
     # SEMANTIC DEDUPLICATION INDEXES
     # ========================================
