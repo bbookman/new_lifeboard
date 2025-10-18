@@ -109,7 +109,10 @@ class SpeakerLabelingService(BaseService):
         Returns:
             Dictionary with regeneration results
         """
-        logger.info(f"Starting speaker labeling regeneration for date: {days_date}")
+        logger.info("=" * 80)
+        logger.info("[SERVICE] ===== REGENERATE FOR DATE =====")
+        logger.info(f"[SERVICE] Date: {days_date}")
+        logger.info(f"[SERVICE] Timestamp: {datetime.now(timezone.utc).isoformat()}")
 
         result = {
             "success": False,
@@ -122,40 +125,69 @@ class SpeakerLabelingService(BaseService):
 
         try:
             # Get all limitless data_items for this date
+            logger.info(f"[SERVICE] Calling _get_items_for_date('{days_date}')...")
             items = await self._get_items_for_date(days_date)
-            logger.info(f"Found {len(items)} items for date {days_date}")
+            logger.info(f"[SERVICE] Found {len(items)} items for date {days_date}")
 
             if not items:
+                logger.info("[SERVICE] No items found, returning success with 0 items")
                 result["success"] = True
+                logger.info("=" * 80)
                 return result
 
+            # Log each item's current status
+            for i, item in enumerate(items, 1):
+                logger.info(f"[SERVICE] Item {i}/{len(items)}: id={item['id']}")
+
             # Reset their status to pending
+            logger.info(f"[SERVICE] Resetting all {len(items)} items to 'pending' status...")
             for item in items:
+                logger.debug(f"[SERVICE] Resetting {item['id']} to pending")
                 self.update_speaker_label_status(item['id'], 'pending')
+            logger.info(f"[SERVICE] All items reset to pending")
 
             # Process them
-            for item in items:
+            logger.info(f"[SERVICE] Starting processing of {len(items)} items...")
+            for i, item in enumerate(items, 1):
                 try:
+                    logger.info(f"[SERVICE] Processing item {i}/{len(items)}: {item['id']}")
                     item_result = await self.process_single_item(item['id'])
+                    logger.info(f"[SERVICE] Item {i} result: {item_result}")
+
                     result["items_reprocessed"] += 1
 
                     if item_result["status"] == "completed":
                         result["items_improved"] += 1
+                        logger.info(f"[SERVICE] Item {i} IMPROVED")
                     elif item_result["status"] == "skipped":
                         result["items_skipped"] += 1
+                        logger.info(f"[SERVICE] Item {i} SKIPPED")
+                    else:
+                        logger.warning(f"[SERVICE] Item {i} status: {item_result['status']}")
 
                 except Exception as e:
                     error_msg = f"Error processing item {item['id']}: {str(e)}"
-                    logger.error(error_msg)
+                    logger.error(f"[SERVICE] {error_msg}")
+                    logger.error(f"[SERVICE] Exception type: {type(e).__name__}")
+                    logger.error(f"[SERVICE] Exception stack:", exc_info=True)
                     result["errors"].append(error_msg)
 
             result["success"] = True
-            logger.info(f"Regeneration complete for {days_date}: {result['items_improved']} improved, "
-                       f"{result['items_skipped']} skipped")
+            logger.info("[SERVICE] ===== REGENERATION COMPLETE =====")
+            logger.info(f"[SERVICE] Total items reprocessed: {result['items_reprocessed']}")
+            logger.info(f"[SERVICE] Items improved: {result['items_improved']}")
+            logger.info(f"[SERVICE] Items skipped: {result['items_skipped']}")
+            logger.info(f"[SERVICE] Errors: {len(result['errors'])}")
+            logger.info("=" * 80)
 
         except Exception as e:
             error_msg = f"Error regenerating for date {days_date}: {str(e)}"
-            logger.error(error_msg)
+            logger.error("=" * 80)
+            logger.error("[SERVICE] ===== ERROR IN REGENERATION =====")
+            logger.error(f"[SERVICE] {error_msg}")
+            logger.error(f"[SERVICE] Exception type: {type(e).__name__}")
+            logger.error("[SERVICE] Stack trace:", exc_info=True)
+            logger.error("=" * 80)
             result["errors"].append(error_msg)
             result["success"] = False
 

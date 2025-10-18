@@ -50,9 +50,33 @@ Inference is encouraged — this is an **inexact science**, and you should use r
     → The “Unknown” is likely **Becky**.
 
 
-## Consecutive Unknown Lines
+## Unknown Lines Following a Known Speaker
 
-- If two or more “Unknown” lines appear in sequence:
+**CRITICAL RULE**: If an "Unknown" line appears **immediately after** a known speaker (e.g., "You", "Bruce", "Ivette") and the content **continues the same thought or topic**, replace "Unknown" with that speaker's label.
+
+Examples of same-speaker continuation:
+- Continuing a journal entry or reflection
+- Continuing a story or explanation
+- Completing a multi-part statement
+- Same timestamp or within a few seconds
+
+**DO NOT** leave as "Unknown" just because it's reflective or continues a thought. If the previous line was "You" (Bruce) and the next line continues the same reflection, it should also be "You" (Bruce).
+
+Example:
+```
+You (10/17/25 10:18 AM): All right, recording my journal entry for today.
+Unknown (10/17/25 10:18 AM): Last few days I've definitely had a little anxiety.
+```
+→ Should become:
+```
+You (10/17/25 10:18 AM): All right, recording my journal entry for today.
+You (10/17/25 10:18 AM): Last few days I've definitely had a little anxiety.
+Reason: Continues journal entry from previous line at same timestamp.
+```
+
+## Consecutive Unknown Lines (No Prior Known Speaker)
+
+- If two or more "Unknown" lines appear in sequence **with no preceding known speaker**:
   - If the content resembles a **monologue** (continuous thoughts, journaling, narration, or no clear dialogue exchange), assign **Bruce**.
   - Otherwise, assume speakers **alternate**, unless context clearly indicates one person continues.
 
@@ -125,11 +149,34 @@ Your output is plain text
 
 ## Example Before → After
 
+**Example 1: Name-based identification**
+
 INPUT:
+```
 Unknown (9/6/25 9:27 AM): Hey Ivette, how are you?
 Unknown (9/6/25 9:27 AM): I'm great.
+```
 
 OUTPUT:
+```
 Bruce (9/6/25 9:27 AM): Hey Ivette, how are you?
 Ivette (9/6/25 9:27 AM): I'm great.
-Reason: The first line is a monologue (Bruce), second line follows Ivette’s name.
+Reason: First line addresses Ivette by name (likely Bruce), second line is Ivette responding.
+```
+
+**Example 2: Same-speaker continuation (CRITICAL)**
+
+INPUT:
+```
+You (10/17/25 10:18 AM): All right, recording my journal entry for today.
+Unknown (10/17/25 10:18 AM): Last few days I've definitely had a little anxiety. It's generalized anxiety.
+Unknown (10/17/25 10:19 AM): Been thinking about work and upcoming projects.
+```
+
+OUTPUT:
+```
+You (10/17/25 10:18 AM): All right, recording my journal entry for today.
+You (10/17/25 10:18 AM): Last few days I've definitely had a little anxiety. It's generalized anxiety.
+You (10/17/25 10:19 AM): Been thinking about work and upcoming projects.
+Reason: All lines are Bruce continuing his journal entry at the same time.
+```

@@ -332,35 +332,73 @@ const LimitlessContent = ({ data }: { data: LimitlessContentData }) => {
   };
 
   const handleRegenerateSpeakerLabels = async () => {
+    console.log('[ContentCard] ===== SPEAKER REGENERATE BUTTON CLICKED =====');
+    console.log('[ContentCard] Timestamp:', new Date().toISOString());
+    console.log('[ContentCard] Data object:', data);
+    console.log('[ContentCard] Data timestamp:', data.timestamp);
+
     try {
       setIsRegenerating(true);
+      console.log('[ContentCard] Set isRegenerating=true');
 
       // Extract date from timestamp (format: YYYY-MM-DD)
       const daysDate = data.timestamp.split('T')[0];
+      console.log('[ContentCard] Extracted days_date:', daysDate);
 
-      const response = await fetch('https://localhost:8000/api/speaker-labeling/regenerate', {
+      const apiUrl = '/api/speaker-labeling/regenerate';
+      const requestBody = { days_date: daysDate };
+      console.log('[ContentCard] API URL:', apiUrl);
+      console.log('[ContentCard] Request body:', JSON.stringify(requestBody));
+      console.log('[ContentCard] Making fetch request...');
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ days_date: daysDate }),
+        body: JSON.stringify(requestBody),
       });
 
+      console.log('[ContentCard] Response received');
+      console.log('[ContentCard] Response status:', response.status);
+      console.log('[ContentCard] Response statusText:', response.statusText);
+      console.log('[ContentCard] Response ok:', response.ok);
+      console.log('[ContentCard] Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[ContentCard] Response NOT OK');
+        console.error('[ContentCard] Error response body:', errorText);
         throw new Error(`Failed to regenerate speaker labels: ${response.statusText}`);
       }
 
+      console.log('[ContentCard] Parsing JSON response...');
       const result = await response.json();
-      console.log('Speaker labeling regeneration result:', result);
+      console.log('[ContentCard] API Response parsed successfully:', result);
+      console.log('[ContentCard] Items reprocessed:', result.items_reprocessed);
+      console.log('[ContentCard] Items improved:', result.items_improved);
+      console.log('[ContentCard] Items skipped:', result.items_skipped);
+      console.log('[ContentCard] Errors:', result.errors);
 
       // Show success message and reload after a short delay
-      alert(`Speaker labels regenerated successfully!\n\nItems improved: ${result.items_improved}\nItems skipped: ${result.items_skipped}\n\nThe page will reload to show updated content.`);
+      const successMessage = `Speaker labels regenerated successfully!\n\nItems improved: ${result.items_improved}\nItems skipped: ${result.items_skipped}\n\nThe page will reload to show updated content.`;
+      console.log('[ContentCard] Showing success alert:', successMessage);
+      alert(successMessage);
+
+      console.log('[ContentCard] Reloading page...');
       window.location.reload();
     } catch (error) {
-      console.error('Error regenerating speaker labels:', error);
-      alert('Failed to regenerate speaker labels. Please try again.');
+      console.error('[ContentCard] ===== ERROR OCCURRED =====');
+      console.error('[ContentCard] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+      console.error('[ContentCard] Error message:', error instanceof Error ? error.message : String(error));
+      console.error('[ContentCard] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      console.error('[ContentCard] Full error object:', error);
+
+      alert('Failed to regenerate speaker labels. Check console for details.');
     } finally {
       setIsRegenerating(false);
+      console.log('[ContentCard] Set isRegenerating=false');
+      console.log('[ContentCard] ===== SPEAKER REGENERATE COMPLETE =====');
     }
   };
 

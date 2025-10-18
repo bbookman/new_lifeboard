@@ -5,6 +5,7 @@ export interface DataItem {
   namespace: string;
   days_date: string;
   metadata?: {
+    speaker_labeled_content?: string;  // PRIORITY 1: LLM-improved speaker labels
     processed_response?: {
       cleaned_markdown?: string;
       [key: string]: any;
@@ -52,30 +53,54 @@ export const useLimitlessData = (): LimitlessDataState & LimitlessDataActions =>
 
   /**
    * Extract markdown content from data items in priority order
+   *
+   * Priority hierarchy:
+   * 1. speaker_labeled_content - LLM-improved content with better speaker labels
+   * 2. processed_response.cleaned_markdown - Processed markdown from API
+   * 3. original_response.markdown - Original response markdown
+   * 4. cleaned_markdown - Cleaned markdown fallback
+   * 5. markdown - Direct markdown field
+   * 6. original_lifelog.markdown - Original lifelog markdown
+   * 7. content - Raw content field
    */
   const extractMarkdownContent = useCallback((dataItems: DataItem[]): string => {
     const markdownParts: string[] = [];
-    
+
     dataItems.forEach((item, index) => {
       let itemMarkdown = '';
-      
-      // Priority order: processed_response.cleaned_markdown > original_response.markdown > cleaned_markdown > markdown > content
-      if (item.metadata?.processed_response?.cleaned_markdown) {
+
+      // PRIORITY 1: Speaker-labeled content (LLM-improved with better speaker identification)
+      if (item.metadata?.speaker_labeled_content) {
+        itemMarkdown = item.metadata.speaker_labeled_content;
+        console.log(`[useLimitlessData] Item ${index}: Using speaker_labeled_content (${itemMarkdown.length} chars) ⭐`);
+      }
+      // PRIORITY 2: Processed response cleaned markdown
+      else if (item.metadata?.processed_response?.cleaned_markdown) {
         itemMarkdown = item.metadata.processed_response.cleaned_markdown;
         console.log(`[useLimitlessData] Item ${index}: Using processed_response.cleaned_markdown (${itemMarkdown.length} chars)`);
-      } else if (item.metadata?.original_response?.markdown) {
+      }
+      // PRIORITY 3: Original response markdown
+      else if (item.metadata?.original_response?.markdown) {
         itemMarkdown = item.metadata.original_response.markdown;
         console.log(`[useLimitlessData] Item ${index}: Using original_response.markdown (${itemMarkdown.length} chars)`);
-      } else if (item.metadata?.cleaned_markdown) {
+      }
+      // PRIORITY 4: Cleaned markdown (fallback for items without speaker labeling)
+      else if (item.metadata?.cleaned_markdown) {
         itemMarkdown = item.metadata.cleaned_markdown;
         console.log(`[useLimitlessData] Item ${index}: Using cleaned_markdown (${itemMarkdown.length} chars)`);
-      } else if (item.metadata?.markdown) {
+      }
+      // PRIORITY 5: Direct markdown field
+      else if (item.metadata?.markdown) {
         itemMarkdown = item.metadata.markdown;
         console.log(`[useLimitlessData] Item ${index}: Using metadata.markdown (${itemMarkdown.length} chars)`);
-      } else if (item.metadata?.original_lifelog?.markdown) {
+      }
+      // PRIORITY 6: Original lifelog markdown
+      else if (item.metadata?.original_lifelog?.markdown) {
         itemMarkdown = item.metadata.original_lifelog.markdown;
         console.log(`[useLimitlessData] Item ${index}: Using original_lifelog.markdown (${itemMarkdown.length} chars)`);
-      } else if (item.content) {
+      }
+      // PRIORITY 7: Raw content field
+      else if (item.content) {
         itemMarkdown = item.content;
         console.log(`[useLimitlessData] Item ${index}: Using content (${itemMarkdown.length} chars)`);
       } else {

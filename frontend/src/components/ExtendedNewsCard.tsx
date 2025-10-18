@@ -45,7 +45,7 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
       if (!selectedDate) return;
 
       try {
-        const response = await fetch(`https://localhost:8000/api/calendar/speaker-labeling-status/${selectedDate}`);
+        const response = await fetch(`/api/calendar/speaker-labeling-status/${selectedDate}`);
         if (response.ok) {
           const data = await response.json();
           setSpeakerLabelingStatus(data);
@@ -59,15 +59,31 @@ export const ExtendedNewsCard = ({ selectedDate }: Pick<ExtendedNewsCardProps, '
   }, [selectedDate]);
 
   const handleRefresh = async () => {
+    console.log('[ExtendedNewsCard] ===== REFRESH BUTTON CLICKED =====');
+    console.log('[ExtendedNewsCard] Timestamp:', new Date().toISOString());
+    console.log('[ExtendedNewsCard] Selected date prop:', selectedDate);
+
     // Get today's date as fallback if selectedDate is not provided
     const today = new Date().toISOString().split('T')[0];
     const targetDate = selectedDate || today;
-    
+    console.log('[ExtendedNewsCard] Today:', today);
+    console.log('[ExtendedNewsCard] Target date (computed):', targetDate);
+
     // Reset fetch attempted state for the targeted date only
+    console.log('[ExtendedNewsCard] Calling resetFetchAttempted for:', targetDate);
     limitlessData.resetFetchAttempted(targetDate);
-    
+    console.log('[ExtendedNewsCard] resetFetchAttempted completed');
+
     // Trigger a fresh data fetch (loading state will prevent flicker)
-    await limitlessData.fetchData(targetDate, true);
+    console.log('[ExtendedNewsCard] Calling fetchData with force=true...');
+    try {
+      await limitlessData.fetchData(targetDate, true);
+      console.log('[ExtendedNewsCard] fetchData completed successfully');
+    } catch (error) {
+      console.error('[ExtendedNewsCard] fetchData FAILED:', error);
+      console.error('[ExtendedNewsCard] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    }
+    console.log('[ExtendedNewsCard] ===== REFRESH COMPLETE =====');
   };
 
   const handleExpandContent = () => {

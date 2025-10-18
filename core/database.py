@@ -23,7 +23,7 @@ class DatabaseService:
     
     @contextmanager
     def get_connection(self):
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
@@ -33,7 +33,7 @@ class DatabaseService:
     @asynccontextmanager
     async def get_async_connection(self):
         """Async context manager for database connections"""
-        async with aiosqlite.connect(self.db_path) as conn:
+        async with aiosqlite.connect(self.db_path, timeout=30.0) as conn:
             conn.row_factory = aiosqlite.Row
             try:
                 yield conn
@@ -58,9 +58,25 @@ class DatabaseService:
         """Initialize database using migration system"""
         migration_runner = MigrationRunner(self.db_path)
         result = migration_runner.run_migrations()
-        
+
         if not result["success"]:
             raise RuntimeError(f"Database initialization failed: {result['errors']}")
+
+        # Configure SQLite for concurrent access and performance
+        with self.get_connection() as conn:
+            # Enable Write-Ahead Logging for concurrent reads during writes
+            conn.execute("PRAGMA journal_mode=WAL")
+            logger.info("SQLite WAL mode enabled for concurrent access")
+
+            # Set busy timeout to 30 seconds (30000ms) for automatic retry
+            conn.execute("PRAGMA busy_timeout=30000")
+            logger.info("SQLite busy_timeout set to 30000ms")
+
+            # Reduce synchronous setting for better performance while maintaining safety
+            conn.execute("PRAGMA synchronous=NORMAL")
+            logger.info("SQLite synchronous set to NORMAL")
+
+            conn.commit()
     
     def store_data_item(self, id: str, namespace: str, source_id: str, 
                        content: str, metadata: Dict = None, days_date: str = None,
@@ -83,8 +99,8 @@ class DatabaseService:
         placeholders = ','.join('?' * len(ids))
         with self.get_connection() as conn:
             cursor = conn.execute(f"""
-                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
-                FROM data_items 
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at, speaker_label_status
+                FROM data_items
                 WHERE id IN ({placeholders})
                 ORDER BY updated_at DESC
             """, ids)
@@ -97,8 +113,8 @@ class DatabaseService:
         """Get data items for a specific namespace"""
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
-                FROM data_items 
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at, speaker_label_status
+                FROM data_items
                 WHERE namespace = ?
                 ORDER BY updated_at DESC
                 LIMIT ?
@@ -381,8 +397,8 @@ class DatabaseService:
         with self.get_connection() as conn:
             # Base query - fetch more items initially to allow for proper sorting
             query = """
-                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
-                FROM data_items 
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at, speaker_label_status
+                FROM data_items
                 WHERE days_date >= ? AND days_date <= ?
             """
             params = [start_date, end_date]
@@ -739,7 +755,87 @@ class DatabaseService:
                             f"content_length={len(content) if content else 0}")
             logger.error(f"Error in async_store_data_item: {e}")
             raise
-    
+
+    async def async_store_data_items_batch(self, items: List[Dict[str, Any]], batch_size: int = 100) -> Dict[str, Any]:
+        """
+        Store multiple data items in batched transactions for better performance.
+
+        Args:
+            items: List of dicts with keys: id, namespace, source_id, content, metadata, days_date, ingestion_status
+            batch_size: Number of items to commit in each transaction (default: 100)
+
+        Returns:
+            Dict with keys: items_stored (int), items_failed (int), errors (List[str])
+        """
+        start_time = time.time()
+        items_stored = 0
+        items_failed = 0
+        errors = []
+
+        logger.info(f"[BATCH STORE] Starting batch storage of {len(items)} items in batches of {batch_size}")
+
+        try:
+            # Process items in batches
+            for i in range(0, len(items), batch_size):
+                batch = items[i:i + batch_size]
+                batch_start = time.time()
+
+                try:
+                    async with self.get_async_connection() as conn:
+                        for item in batch:
+                            try:
+                                serialized_metadata = JSONMetadataParser.serialize_metadata(item.get('metadata'))
+
+                                await conn.execute("""
+                                    INSERT OR REPLACE INTO data_items
+                                    (id, namespace, source_id, content, metadata, days_date, updated_at, ingestion_status)
+                                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                                """, (
+                                    item['id'],
+                                    item['namespace'],
+                                    item['source_id'],
+                                    item.get('content', ''),
+                                    serialized_metadata,
+                                    item.get('days_date'),
+                                    item.get('ingestion_status', 'complete')
+                                ))
+                                items_stored += 1
+
+                            except Exception as item_error:
+                                items_failed += 1
+                                error_msg = f"Failed to store item {item['id']}: {item_error}"
+                                errors.append(error_msg)
+                                logger.error(f"[BATCH STORE] {error_msg}")
+
+                        # Single commit for entire batch
+                        await conn.commit()
+
+                        batch_time = (time.time() - batch_start) * 1000
+                        logger.info(f"[BATCH STORE] Batch {i//batch_size + 1} completed: {len(batch)} items in {batch_time:.2f}ms")
+
+                except Exception as batch_error:
+                    # If batch fails, mark all items in batch as failed
+                    batch_failed = len(batch) - (items_stored % batch_size)
+                    items_failed += batch_failed
+                    error_msg = f"Batch {i//batch_size + 1} failed: {batch_error}"
+                    errors.append(error_msg)
+                    logger.error(f"[BATCH STORE] {error_msg}")
+
+            total_time = (time.time() - start_time) * 1000
+            logger.info(f"[BATCH STORE] Batch storage completed: {items_stored} stored, {items_failed} failed in {total_time:.2f}ms")
+
+            return {
+                'items_stored': items_stored,
+                'items_failed': items_failed,
+                'errors': errors,
+                'total_time_ms': total_time
+            }
+
+        except Exception as e:
+            total_time = (time.time() - start_time) * 1000
+            logger.error(f"[BATCH STORE] Critical error in batch storage after {total_time:.2f}ms: {e}")
+            raise
+
     async def async_get_data_items_by_ids(self, ids: List[str]) -> List[Dict]:
         """Async version of get_data_items_by_ids"""
         if not ids:
@@ -771,8 +867,8 @@ class DatabaseService:
         try:
             async with self.get_async_connection() as conn:
                 async with conn.execute("""
-                    SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
-                    FROM data_items 
+                    SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at, speaker_label_status
+                    FROM data_items
                     WHERE namespace = ?
                     ORDER BY updated_at DESC
                     LIMIT ?
@@ -809,8 +905,8 @@ class DatabaseService:
         try:
             # Base query - fetch more items initially to allow for proper sorting
             query = """
-                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at
-                FROM data_items 
+                SELECT id, namespace, source_id, content, metadata, days_date, created_at, updated_at, speaker_label_status
+                FROM data_items
                 WHERE days_date >= ? AND days_date <= ?
             """
             params = [start_date, end_date]

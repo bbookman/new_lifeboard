@@ -196,9 +196,8 @@ class IngestionService(BaseService, ServiceDebugMixin):
                         if namespace == 'twitter':
                             logger.debug(f"[TWITTER TRACE] Twitter batch processing completed, got {len(processed_items)} processed items")
                         
-                        # Store each processed item
-                        for processed_item in processed_items:
-                            await self._store_processed_item(processed_item, result)
+                        # Store processed items using batch storage for better performance
+                        await self._store_processed_items_batch(processed_items, result)
                             
                     except Exception as e:
                         logger.error(f"Batch processing failed for {namespace}: {e}")
@@ -307,7 +306,60 @@ class IngestionService(BaseService, ServiceDebugMixin):
                 logger.error(f"[TWITTER TRACE] Twitter database storage failed for {processed_item.source_id}: {str(e)}")
                 logger.debug(f"[TWITTER TRACE] Twitter storage error context: namespaced_id={namespaced_id if 'namespaced_id' in locals() else 'not_created'}")
             result.errors.append(error_msg)
-    
+
+    async def _store_processed_items_batch(self, processed_items: List[DataItem], result: IngestionResult):
+        """Store multiple pre-processed data items using batch operations"""
+        if not processed_items:
+            return
+
+        try:
+            batch_start = time.time()
+
+            # Prepare items for batch storage
+            items_to_store = []
+            for processed_item in processed_items:
+                # Create namespaced ID
+                namespaced_id = NamespacedIDManager.create_id(
+                    processed_item.namespace,
+                    processed_item.source_id
+                )
+
+                # Extract days_date for calendar support
+                days_date = self._extract_days_date(processed_item)
+
+                items_to_store.append({
+                    'id': namespaced_id,
+                    'namespace': processed_item.namespace,
+                    'source_id': processed_item.source_id,
+                    'content': processed_item.content,
+                    'metadata': processed_item.metadata,
+                    'days_date': days_date,
+                    'ingestion_status': 'complete'
+                })
+
+            # Use batch storage with database service
+            batch_result = await self.database.async_store_data_items_batch(
+                items=items_to_store,
+                batch_size=100
+            )
+
+            # Update result counters
+            result.items_stored += batch_result['items_stored']
+            result.errors.extend(batch_result['errors'])
+
+            batch_duration = (time.time() - batch_start) * 1000
+            logger.info(f"Batch stored {batch_result['items_stored']} items in {batch_duration:.2f}ms "
+                       f"({len(processed_items)/batch_duration*1000:.1f} items/sec)")
+
+        except Exception as e:
+            error_msg = f"Error in batch storage: {str(e)}"
+            logger.error(error_msg)
+            result.errors.append(error_msg)
+            # Fall back to individual storage
+            logger.info("Falling back to individual item storage")
+            for processed_item in processed_items:
+                await self._store_processed_item(processed_item, result)
+
     async def _process_and_store_item(self, item: DataItem, result: IngestionResult):
         """Process and store a single data item"""
         try:

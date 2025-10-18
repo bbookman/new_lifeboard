@@ -83,24 +83,41 @@ async def regenerate_speaker_labeling_for_date(
     This endpoint resets all limitless items for the specified date to pending status
     and reprocesses them through the speaker labeling pipeline.
     """
-    logger.info(f"Received request to regenerate speaker labeling for date: {request.days_date}")
+    import time
+    from datetime import datetime
+
+    logger.info("=" * 80)
+    logger.info("[REGENERATE API] ===== REQUEST RECEIVED =====")
+    logger.info(f"[REGENERATE API] Timestamp: {datetime.now().isoformat()}")
+    logger.info(f"[REGENERATE API] Request days_date: {request.days_date}")
+    logger.info(f"[REGENERATE API] Request object: {request}")
 
     try:
-        import time
         start_time = time.time()
+        logger.info(f"[REGENERATE API] Start time: {start_time}")
 
         # Regenerate for the date
+        logger.info(f"[REGENERATE API] Calling service.regenerate_speaker_labeling_for_date('{request.days_date}')...")
         result = await service.regenerate_speaker_labeling_for_date(request.days_date)
+        logger.info(f"[REGENERATE API] Service call returned")
+        logger.info(f"[REGENERATE API] Result: {result}")
 
         duration = time.time() - start_time
+        logger.info(f"[REGENERATE API] Duration: {duration:.2f} seconds")
 
         if result["success"]:
-            logger.info(f"Successfully regenerated speaker labeling for {request.days_date}: "
-                       f"{result['items_improved']} improved, {result['items_skipped']} skipped")
+            logger.info("[REGENERATE API] ===== SUCCESS =====")
+            logger.info(f"[REGENERATE API] Date: {request.days_date}")
+            logger.info(f"[REGENERATE API] Items reprocessed: {result['items_reprocessed']}")
+            logger.info(f"[REGENERATE API] Items improved: {result['items_improved']}")
+            logger.info(f"[REGENERATE API] Items skipped: {result['items_skipped']}")
+            logger.info(f"[REGENERATE API] Errors: {result.get('errors', [])}")
         else:
-            logger.error(f"Failed to regenerate speaker labeling for {request.days_date}: {result.get('errors', [])}")
+            logger.error("[REGENERATE API] ===== FAILURE =====")
+            logger.error(f"[REGENERATE API] Failed to regenerate for {request.days_date}")
+            logger.error(f"[REGENERATE API] Errors: {result.get('errors', [])}")
 
-        return RegenerateResponse(
+        response = RegenerateResponse(
             success=result["success"],
             days_date=request.days_date,
             items_reprocessed=result["items_reprocessed"],
@@ -109,9 +126,18 @@ async def regenerate_speaker_labeling_for_date(
             duration_seconds=duration,
             errors=result.get("errors", [])
         )
+        logger.info(f"[REGENERATE API] Response object: {response}")
+        logger.info("=" * 80)
+        return response
 
     except Exception as e:
-        logger.error(f"Fatal error in regenerate endpoint for date {request.days_date}: {e}", exc_info=True)
+        logger.error("=" * 80)
+        logger.error("[REGENERATE API] ===== FATAL ERROR =====")
+        logger.error(f"[REGENERATE API] Error type: {type(e).__name__}")
+        logger.error(f"[REGENERATE API] Error message: {str(e)}")
+        logger.error(f"[REGENERATE API] Date: {request.days_date}")
+        logger.error("[REGENERATE API] Stack trace:", exc_info=True)
+        logger.error("=" * 80)
         raise HTTPException(status_code=500, detail=f"Failed to regenerate speaker labeling: {e}")
 
 

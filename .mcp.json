@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+    "serena": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-v",
+        "/Users/brucebookman/code/new_lifeboard:/workspace",
+        "ghcr.io/oraios/serena:latest",
+        "serena",
+        "start-mcp-server",
+        "--context", "ide-assistant",
+        "--project", "/workspace"
+      ]
+    }
+  }
+}

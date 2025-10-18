@@ -17,7 +17,7 @@ Key features:
 
 ## Architecture
 
-The project follows a KISS multi-source memory chat application architecture with:
+The project follows a KISS multi-source memory application architecture with:
 
 ### Data Flow
 - All sources → DataItem objects → processor pipeline (if needed) → store in data_items table → generate embeddings → add to FAISS with same ID
@@ -151,7 +151,6 @@ Format: `namespace:source_id` for data isolation and filtering.
 *   **Configuration:** All configuration is managed through Pydantic models defined in `config/models.py` and loaded via the factory in `config/factory.py`. `.env` files are used for local development.
 *   **Dependency Injection:** Services are designed to be injected, improving testability.
 *   **Single Responsibility:** Services and modules have a clear and focused purpose.
-*   **Database-First Settings:** Application settings are stored in the database to avoid reliance on environment variables for state.
 *   **Eager Initialization:** Services are initialized at startup to ensure the application is in a valid state and to fail fast if there are issues.
 
 ## Testing
@@ -159,7 +158,7 @@ Format: `namespace:source_id` for data isolation and filtering.
 *   **Framework:** `pytest`
 *   **Location:** All tests are located in the `/tests` directory at the project root.
 *   **Execution:** Run tests using `PYTHONPATH=. python -m pytest`.
-*   **Test Review:** A `test_review.md` file is maintained to document the investigation of test failures and propose solutions.
+
 
 ## Project Structure
 
@@ -193,10 +192,12 @@ Format: `namespace:source_id` for data isolation and filtering.
 
 ### Role
 
-Claude should:
+Claude must:
 
 * Write new code, refactor, and explain existing code
 * Access and modify all codebase parts without restrictions
+* Approach problem solving with extreme thoroughness, taking extra time and effort to understand current classes and methods
+* Leverage existing classes and methods if appropriate
 
 ### Coding Rules
 
@@ -221,15 +222,7 @@ Claude should:
 ### Testing
 
 * Auto-generate tests for new/refactored code using `pytest` in `/tests`
-* Avoid leaving TODOs or incomplete code; log deferred tasks only in Development log
-
-### Development Log
-
-* Maintain `supporting_documents/Development log.md` as changelog
-* Group related changes under existing entries
-* Reword or reorganize entries as needed
-* Update it automatically on changes, no backups required
-* Prioritize code writing before documentation updates
+* Do not leave TODOs or incomplete code
 
 ### Error Handling
 
@@ -325,10 +318,17 @@ The project will never be run on a mobile device.  only design for desktop and l
      - Test in development server
 
 
-NEVER VIOLATE: do not restore code unless requested.  Do not add code for items not requested by the user. Error on the side of caution.  Add code only required to meet the objective.
+NEVER VIOLATE: 
+
+Do not add code for items not requested by the user. 
+Error on the side of caution.  
+Add code only required to meet the objective.
+Do not assume facts about the codebase without verifying
+Verify every statement and fact you discover about the codebase
+Do not create any documentation such as markdown files without request from the user
 
 Project uses PYTHON3. Never execute anything with "python" in the command.  Always "python3"
-There is a progress monitor ui in the calendar view.  As new data sources are added, this ui will need to be updated to add the new sources.  The method of calculating completeness will require updating.
+
 
 
 ```
