@@ -60,17 +60,17 @@ Examples of same-speaker continuation:
 - Completing a multi-part statement
 - Same timestamp or within a few seconds
 
-**DO NOT** leave as "Unknown" just because it's reflective or continues a thought. If the previous line was "You" (Bruce) and the next line continues the same reflection, it should also be "You" (Bruce).
+**DO NOT** leave as "Unknown" just because it's reflective or continues a thought. For example, if the previous line was "Bruce" and the next line continues the same reflection, it should also be "Bruce".
 
 Example:
 ```
-You (10/17/25 10:18 AM): All right, recording my journal entry for today.
+Ivette (10/17/25 10:18 AM): All right, recording my journal entry for today.
 Unknown (10/17/25 10:18 AM): Last few days I've definitely had a little anxiety.
 ```
 → Should become:
 ```
-You (10/17/25 10:18 AM): All right, recording my journal entry for today.
-You (10/17/25 10:18 AM): Last few days I've definitely had a little anxiety.
+Ivette (10/17/25 10:18 AM): All right, recording my journal entry for today.
+Ivette (10/17/25 10:18 AM): Last few days I've definitely had a little anxiety.
 Reason: Continues journal entry from previous line at same timestamp.
 ```
 

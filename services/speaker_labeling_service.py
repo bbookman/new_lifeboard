@@ -305,6 +305,9 @@ class SpeakerLabelingService(BaseService):
                 result["success"] = True
                 return result
 
+            # Preprocess speaker labels (You → Bruce)
+            processed_content = self._preprocess_speaker_labels(processed_content)
+
             # Extract speaker lines
             speaker_lines, line_mapping = await self._extract_speaker_lines(processed_content)
 
@@ -394,6 +397,30 @@ class SpeakerLabelingService(BaseService):
                 }
 
         return speaker_lines, line_mapping
+
+    def _preprocess_speaker_labels(self, processed_content: str) -> str:
+        """
+        Preprocess speaker labels by replacing 'You' with 'Bruce'
+
+        This preprocessing step runs before LLM processing to ensure the
+        correct speaker name appears in the transcription.
+
+        Args:
+            processed_content: Original markdown content with speaker labels
+
+        Returns:
+            Content with 'You' speaker labels replaced with 'Bruce'
+
+        Example:
+            Input:  "- You (10/17/25 10:19 AM): Been thinking about work."
+            Output: "- Bruce (10/17/25 10:19 AM): Been thinking about work."
+        """
+        # Replace 'You' speaker labels with 'Bruce' (case-sensitive)
+        # Pattern matches "You (" to ensure we only replace speaker labels, not "you" in text
+        preprocessed_content = re.sub(r'You \(', r'Bruce (', processed_content)
+
+        logger.debug(f"Preprocessed speaker labels: replaced 'You' with 'Bruce'")
+        return preprocessed_content
 
     async def _apply_speaker_prompt(
         self,
